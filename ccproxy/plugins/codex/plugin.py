@@ -16,7 +16,19 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
-from ccproxy.llms.formatters.formatter_adapter import create_formatter_adapter_factory
+from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
+from ccproxy.services.adapters.simple_converters import (
+    convert_anthropic_to_openai_responses_request,
+    convert_anthropic_to_openai_responses_response,
+    convert_openai_chat_to_openai_responses_request,
+    convert_openai_chat_to_openai_responses_response,
+    convert_openai_chat_to_openai_responses_stream,
+    convert_openai_responses_to_anthropic_request,
+    convert_openai_responses_to_anthropic_response,
+    convert_openai_responses_to_openai_chat_request,
+    convert_openai_responses_to_openai_chat_response,
+    convert_openai_responses_to_openai_chat_stream,
+)
 from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
 from .adapter import CodexAdapter
@@ -345,38 +357,48 @@ class CodexFactory(BaseProviderPluginFactory):
         FormatAdapterSpec(
             from_format=FORMAT_OPENAI_CHAT,
             to_format=FORMAT_OPENAI_RESPONSES,
-            adapter_factory=create_formatter_adapter_factory(
-                "openai.chat_completions", "openai.responses"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_openai_chat_to_openai_responses_request,
+                response=convert_openai_chat_to_openai_responses_response,
+                stream=convert_openai_chat_to_openai_responses_stream,
+                name="openai_chat_to_responses_codex",
             ),
             priority=50,  # Medium priority
-            description="OpenAI ChatCompletions to OpenAI Responses (FormatterRegistry)",
+            description="OpenAI ChatCompletions to OpenAI Responses (SimpleFormatAdapter)",
         ),
         FormatAdapterSpec(
             from_format=FORMAT_OPENAI_RESPONSES,
             to_format=FORMAT_OPENAI_CHAT,
-            adapter_factory=create_formatter_adapter_factory(
-                "openai.responses", "openai.chat_completions"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_openai_responses_to_openai_chat_request,
+                response=convert_openai_responses_to_openai_chat_response,
+                stream=convert_openai_responses_to_openai_chat_stream,
+                name="openai_responses_to_chat_codex",
             ),
             priority=50,  # Medium priority
-            description="OpenAI Responses to OpenAI ChatCompletions (FormatterRegistry)",
+            description="OpenAI Responses to OpenAI ChatCompletions (SimpleFormatAdapter)",
         ),
         FormatAdapterSpec(
             from_format=FORMAT_ANTHROPIC_MESSAGES,
             to_format=FORMAT_OPENAI_RESPONSES,
-            adapter_factory=create_formatter_adapter_factory(
-                "anthropic.messages", "openai.responses"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_anthropic_to_openai_responses_request,
+                response=convert_anthropic_to_openai_responses_response,
+                name="anthropic_to_openai_responses_codex",
             ),
             priority=50,  # Medium priority
-            description="Anthropic Messages to OpenAI Responses (FormatterRegistry)",
+            description="Anthropic Messages to OpenAI Responses (SimpleFormatAdapter)",
         ),
         FormatAdapterSpec(
             from_format=FORMAT_OPENAI_RESPONSES,
             to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=create_formatter_adapter_factory(
-                "openai.responses", "anthropic.messages"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_openai_responses_to_anthropic_request,
+                response=convert_openai_responses_to_anthropic_response,
+                name="openai_responses_to_anthropic_codex",
             ),
             priority=50,  # Medium priority
-            description="OpenAI Responses to Anthropic Messages (FormatterRegistry)",
+            description="OpenAI Responses to Anthropic Messages (SimpleFormatAdapter)",
         ),
     ]
 

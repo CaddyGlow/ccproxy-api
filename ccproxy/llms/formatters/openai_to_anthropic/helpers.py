@@ -1076,6 +1076,7 @@ def convert__openai_chat_to_anthropic_messages__stream(
         text_block_started = False
         accumulated_content = ""
         model_id = ""
+        current_index = 0
 
         async for chunk in stream:
             # Handle both dict and typed model inputs
@@ -1115,18 +1116,21 @@ def convert__openai_chat_to_anthropic_messages__stream(
                 )
                 message_started = True
 
-            # Handle content delta - support both dict and typed formats
+            # Handle content delta and tool calls - support both dict and typed formats
             content = None
             finish_reason = None
+            tool_calls = None
 
             if isinstance(chunk, dict):
                 if choice.get("delta") and choice["delta"].get("content"):
                     content = choice["delta"]["content"]
                 finish_reason = choice.get("finish_reason")
+                tool_calls = choice.get("delta", {}).get("tool_calls") or choice.get("tool_calls")
             else:
                 if choice.delta and choice.delta.content:
                     content = choice.delta.content
                 finish_reason = choice.finish_reason
+                tool_calls = getattr(choice.delta, "tool_calls", None) or getattr(choice, "tool_calls", None)
 
             if content:
                 accumulated_content += content
@@ -1143,28 +1147,63 @@ def convert__openai_chat_to_anthropic_messages__stream(
                 # Emit content delta
                 yield anthropic_models.ContentBlockDeltaEvent(
                     type="content_block_delta",
-                    index=0,
+                    index=current_index,
                     delta=anthropic_models.TextBlock(type="text", text=content),
                 )
+
+            # Handle tool calls (strict JSON parsing)
+            if tool_calls and isinstance(tool_calls, list):
+                # Close any active text block before emitting tool_use
+                if text_block_started:
+                    yield anthropic_models.ContentBlockStopEvent(
+                        type="content_block_stop", index=current_index
+                    )
+                    text_block_started = False
+                    current_index += 1
+                for i, tc in enumerate(tool_calls):
+                    fn = None
+                    if isinstance(tc, dict):
+                        fn = tc.get("function")
+                        tool_id = tc.get("id") or f"call_{i}"
+                        name = fn.get("name") if isinstance(fn, dict) else None
+                        args_raw = fn.get("arguments") if isinstance(fn, dict) else None
+                    else:
+                        fn = getattr(tc, "function", None)
+                        tool_id = getattr(tc, "id", None) or f"call_{i}"
+                        name = getattr(fn, "name", None) if fn is not None else None
+                        args_raw = getattr(fn, "arguments", None) if fn is not None else None
+                    from ccproxy.llms.formatters.shared.utils import strict_parse_tool_arguments
+                    args = strict_parse_tool_arguments(args_raw)
+                    yield anthropic_models.ContentBlockStartEvent(
+                        type="content_block_start",
+                        index=current_index,
+                        content_block=anthropic_models.ToolUseBlock(
+                            type="tool_use",
+                            id=tool_id,
+                            name=name or "function",
+                            input=args,
+                        ),
+                    )
+                    yield anthropic_models.ContentBlockStopEvent(
+                        type="content_block_stop", index=current_index
+                    )
+                    current_index += 1
 
             # Handle finish reason
             if finish_reason:
                 # Stop content block if started
                 if text_block_started:
                     yield anthropic_models.ContentBlockStopEvent(
-                        type="content_block_stop", index=0
+                        type="content_block_stop", index=current_index
                     )
                     text_block_started = False
+                    current_index += 1
 
-                # Map OpenAI finish reason to Anthropic stop reason
-                stop_reason_map = {
-                    "stop": "end_turn",
-                    "length": "max_tokens",
-                    "function_call": "tool_use",
-                    "content_filter": "stop_sequence",
-                    "null": "end_turn",
-                }
-                stop_reason = stop_reason_map.get(finish_reason, "end_turn")
+                # Map OpenAI finish reason to Anthropic stop reason via shared utility
+                from ccproxy.llms.formatters.shared.utils import (
+                    map_openai_finish_to_anthropic_stop,
+                )
+                stop_reason = map_openai_finish_to_anthropic_stop(finish_reason)
 
                 # Get usage if available
                 if isinstance(chunk, dict):

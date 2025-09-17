@@ -18,7 +18,16 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
-from ccproxy.llms.formatters.formatter_adapter import create_formatter_adapter_factory
+from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
+from ccproxy.services.adapters.simple_converters import (
+    convert_anthropic_to_openai_response,
+    convert_anthropic_to_openai_responses_request,
+    convert_anthropic_to_openai_responses_response,
+    convert_anthropic_to_openai_stream,
+    convert_openai_responses_to_anthropic_request,
+    convert_openai_responses_to_anthropic_response,
+    convert_openai_to_anthropic_request,
+)
 from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
 from .adapter import ClaudeAPIAdapter
@@ -323,20 +332,36 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
         FormatAdapterSpec(
             from_format=FORMAT_OPENAI_CHAT,
             to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=create_formatter_adapter_factory(
-                "openai.chat_completions", "anthropic.messages"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_openai_to_anthropic_request,
+                response=convert_anthropic_to_openai_response,
+                stream=convert_anthropic_to_openai_stream,
+                name="openai_to_anthropic_claude_api",
             ),
             priority=100,  # Lower priority than SDK plugin
-            description="OpenAI ChatCompletions to Anthropic Messages (FormatterRegistry)",
+            description="OpenAI ChatCompletions to Anthropic Messages (SimpleFormatAdapter)",
         ),
         FormatAdapterSpec(
             from_format=FORMAT_OPENAI_RESPONSES,
             to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=create_formatter_adapter_factory(
-                "openai.responses", "anthropic.messages"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_openai_responses_to_anthropic_request,
+                response=convert_openai_responses_to_anthropic_response,
+                name="openai_responses_to_anthropic_claude_api",
             ),
             priority=100,  # Lower priority than SDK plugin
-            description="OpenAI Responses to Anthropic Messages (FormatterRegistry)",
+            description="OpenAI Responses to Anthropic Messages (SimpleFormatAdapter)",
+        ),
+        FormatAdapterSpec(
+            from_format=FORMAT_ANTHROPIC_MESSAGES,
+            to_format=FORMAT_OPENAI_RESPONSES,
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_anthropic_to_openai_responses_request,
+                response=convert_anthropic_to_openai_responses_response,
+                name="anthropic_to_openai_responses_claude_api",
+            ),
+            priority=100,  # Lower priority than SDK plugin
+            description="Anthropic Messages to OpenAI Responses (SimpleFormatAdapter)",
         ),
     ]
 

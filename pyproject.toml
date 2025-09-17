@@ -374,6 +374,7 @@ markers = [
   "integration: Integration tests (< 30s each) that test component interactions",
   "e2e: Integration tests (< 30s each) that test component interactions",
   "slow: Slow tests (> 30s each) - use sparingly",
+  "smoketest: Quick validation tests for core endpoints",
 
   # External dependency markers
   "real_api: Tests that make real API calls to external services (requires API keys)",

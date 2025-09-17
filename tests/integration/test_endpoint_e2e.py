@@ -13,6 +13,7 @@ import pytest
 
 from tests.helpers.e2e_validation import (
     parse_streaming_events,
+    validate_sse_event,
     validate_streaming_response_structure,
 )
 from tests.helpers.test_data import (

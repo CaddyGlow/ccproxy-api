@@ -10,46 +10,36 @@ from ccproxy.core.plugins import (
     FormatAdapterSpec,
     PluginManifest,
 )
-from ccproxy.llms.formatters.base import APIAdapter
-from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
+from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
+from ccproxy.services.adapters.format_registry import FormatRegistry
 
 
-class MockAPIAdapter(APIAdapter):
-    """Mock API adapter for testing."""
-
-    async def adapt_request(self, request_data):
-        return {"adapted": "request"}
-
-    async def adapt_response(self, response_data):
-        return {"adapted": "response"}
-
-    async def adapt_stream(self, stream):
-        async def mock_stream():
-            yield {"adapted": "stream"}
-
-        return mock_stream()
-
-    async def adapt_error(self, error):
-        return {"adapted": "error"}
+def create_mock_adapter():
+    """Create a mock format adapter for testing."""
+    return SimpleFormatAdapter(
+        name="test_adapter",
+        request=lambda data: {"adapted": "request"},
+        response=lambda data: {"adapted": "response"},
+    )
 
 
-class TestFormatAdapterRegistryV2:
+class TestFormatRegistryV2:
     """Enhanced tests for format adapter registry v2."""
 
     @pytest.fixture
     def registry(self):
-        return FormatAdapterRegistry(conflict_mode="fail_fast")
+        return FormatRegistry()
 
     @pytest.fixture
     def priority_registry(self):
-        return FormatAdapterRegistry(conflict_mode="priority")
+        return FormatRegistry()
 
     @pytest.mark.asyncio
     async def test_manifest_registration_with_feature_flag(self, registry):
         """Test registration from plugin manifest."""
 
         def adapter_factory():
-            return MockAPIAdapter()
+            return create_mock_adapter()
 
         spec = FormatAdapterSpec(
             from_format="test_from",
@@ -63,8 +53,8 @@ class TestFormatAdapterRegistryV2:
         )
         await registry.register_from_manifest(manifest, "test_plugin")
 
-        assert "test_plugin" in registry._registered_plugins
-        assert ("test_from", "test_to") in registry._adapter_specs
+        assert ("test_from", "test_to") in registry._registered_plugins
+        assert registry._registered_plugins[("test_from", "test_to")] == "test_plugin"
 
     @pytest.mark.asyncio
     async def test_conflict_resolution_priority_mode(self, priority_registry):
@@ -73,13 +63,13 @@ class TestFormatAdapterRegistryV2:
         high_priority_spec = FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
-            adapter_factory=lambda: MockAPIAdapter(),
+            adapter_factory=lambda: create_mock_adapter(),
             priority=10,  # Higher priority (lower number)
         )
         low_priority_spec = FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
-            adapter_factory=lambda: MockAPIAdapter(),
+            adapter_factory=lambda: create_mock_adapter(),
             priority=50,  # Lower priority
         )
 
@@ -105,7 +95,7 @@ class TestFormatAdapterRegistryV2:
     async def test_requirement_validation(self, registry):
         """Test format adapter requirement validation."""
         # Pre-register a core adapter
-        core_adapter = MockAPIAdapter()
+        core_adapter = create_mock_adapter()
         registry._adapters[("core", "adapter")] = core_adapter
 
         # Create manifest with requirements
@@ -135,7 +125,7 @@ class TestFormatAdapterRegistryV2:
                 FormatAdapterSpec(
                     from_format="openai",
                     to_format="anthropic",
-                    adapter_factory=lambda: MockAPIAdapter(),
+                    adapter_factory=lambda: create_mock_adapter(),
                 )
             ],
         )
@@ -149,7 +139,7 @@ class TestFormatAdapterRegistryV2:
         """Test support for async adapter factories."""
 
         async def async_factory():
-            return MockAPIAdapter()
+            return create_mock_adapter()
 
         spec = FormatAdapterSpec(
             from_format="async", to_format="anthropic", adapter_factory=async_factory
@@ -169,13 +159,13 @@ class TestFormatAdapterRegistryV2:
         spec1 = FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
-            adapter_factory=lambda: MockAPIAdapter(),
+            adapter_factory=lambda: create_mock_adapter(),
             priority=10,
         )
         spec2 = FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
-            adapter_factory=lambda: MockAPIAdapter(),
+            adapter_factory=lambda: create_mock_adapter(),
             priority=20,
         )
 
@@ -204,12 +194,12 @@ class TestFormatAdapterRegistryV2:
         spec1 = FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
-            adapter_factory=lambda: MockAPIAdapter(),
+            adapter_factory=lambda: create_mock_adapter(),
         )
         spec2 = FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
-            adapter_factory=lambda: MockAPIAdapter(),
+            adapter_factory=lambda: create_mock_adapter(),
         )
 
         manifest1 = PluginManifest(
@@ -232,7 +222,7 @@ class TestFormatAdapterRegistryV2:
             FormatAdapterSpec(
                 from_format="",
                 to_format="test",
-                adapter_factory=lambda: MockAPIAdapter(),
+                adapter_factory=lambda: create_mock_adapter(),
             )
 
         # Test same format names
@@ -242,7 +232,7 @@ class TestFormatAdapterRegistryV2:
             FormatAdapterSpec(
                 from_format="same",
                 to_format="same",
-                adapter_factory=lambda: MockAPIAdapter(),
+                adapter_factory=lambda: create_mock_adapter(),
             )
 
     def test_format_pair_property(self):
@@ -250,7 +240,7 @@ class TestFormatAdapterRegistryV2:
         spec = FormatAdapterSpec(
             from_format="from_test",
             to_format="to_test",
-            adapter_factory=lambda: MockAPIAdapter(),
+            adapter_factory=lambda: create_mock_adapter(),
         )
         assert spec.format_pair == ("from_test", "to_test")
 
@@ -281,7 +271,7 @@ class TestFormatAdapterRegistryV2:
             spec = FormatAdapterSpec(
                 from_format=f"from_{i}",
                 to_format=f"to_{i}",
-                adapter_factory=lambda: MockAPIAdapter(),
+                adapter_factory=lambda: create_mock_adapter(),
                 priority=i * 10,
             )
             plugins[f"plugin_{i}"] = PluginManifest(

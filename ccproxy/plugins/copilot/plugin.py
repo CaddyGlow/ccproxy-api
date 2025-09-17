@@ -17,7 +17,16 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.declaration import FormatAdapterSpec, RouterSpec
-from ccproxy.llms.formatters.formatter_adapter import create_formatter_adapter_factory
+from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
+from ccproxy.services.adapters.simple_converters import (
+    convert_anthropic_to_openai_request,
+    convert_anthropic_to_openai_response,
+    convert_anthropic_to_openai_stream,
+    convert_openai_responses_to_anthropic_request,
+    convert_openai_responses_to_openai_chat_request,
+    convert_openai_responses_to_openai_chat_response,
+    convert_openai_responses_to_openai_chat_stream,
+)
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import CopilotAdapter
@@ -147,30 +156,37 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
         FormatAdapterSpec(
             from_format=FORMAT_ANTHROPIC_MESSAGES,
             to_format=FORMAT_OPENAI_CHAT,
-            adapter_factory=create_formatter_adapter_factory(
-                "anthropic.messages", "openai.chat_completions"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_anthropic_to_openai_request,
+                response=convert_anthropic_to_openai_response,
+                stream=convert_anthropic_to_openai_stream,
+                name="anthropic_to_openai_copilot",
             ),
             priority=100,
-            description="Anthropic Messages to OpenAI ChatCompletions (FormatterRegistry)",
+            description="Anthropic Messages to OpenAI ChatCompletions (SimpleFormatAdapter)",
         ),
         FormatAdapterSpec(
             from_format=FORMAT_OPENAI_RESPONSES,
             to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=create_formatter_adapter_factory(
-                "openai.responses", "anthropic.messages"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_openai_responses_to_anthropic_request,
+                name="openai_responses_to_anthropic_copilot",
             ),
             priority=50,  # Medium priority
-            description="OpenAI Responses to Anthropic Messages (FormatterRegistry)",
+            description="OpenAI Responses to Anthropic Messages (SimpleFormatAdapter)",
         ),
         # Add Response API ↔ OpenAI adapter for /v1/responses endpoint
         FormatAdapterSpec(
             from_format=FORMAT_OPENAI_RESPONSES,
             to_format=FORMAT_OPENAI_CHAT,
-            adapter_factory=create_formatter_adapter_factory(
-                "openai.responses", "openai.chat_completions"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_openai_responses_to_openai_chat_request,
+                response=convert_openai_responses_to_openai_chat_response,
+                stream=convert_openai_responses_to_openai_chat_stream,
+                name="openai_responses_to_chat_copilot",
             ),
             priority=90,  # Very high priority for direct conversion
-            description="OpenAI Responses to OpenAI ChatCompletions (FormatterRegistry)",
+            description="OpenAI Responses to OpenAI ChatCompletions (SimpleFormatAdapter)",
         ),
     ]
 

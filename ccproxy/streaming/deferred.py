@@ -599,15 +599,28 @@ class DeferredStreaming(StreamingResponse):
         # Handle both legacy dict-based and new model-based adapters
         if hasattr(adapter, "convert_stream"):
             try:
-                adapted_stream = await adapter.convert_stream(json_stream)  # type: ignore[attr-defined]
+                adapted_stream = adapter.convert_stream(json_stream)  # type: ignore[attr-defined]
             except Exception as e:
-                logger.warning(
-                    "adapter_stream_failed_fallback_to_passthrough",
+                logger.error(
+                    "adapter_stream_conversion_failed",
                     adapter_type=type(adapter).__name__,
                     error=str(e),
                     request_id=request_id,
+                    category="transform",
                 )
-                adapted_stream = json_stream
+                # Return a proper error response instead of malformed passthrough
+                from starlette.responses import JSONResponse
+                error_response = JSONResponse(
+                    status_code=500,
+                    content={
+                        "error": {
+                            "type": "internal_server_error",
+                            "message": "Failed to convert streaming response format",
+                            "details": str(e),
+                        }
+                    }
+                )
+                raise Exception(f"Stream format conversion failed: {e}") from e
         elif hasattr(adapter, "adapt_stream"):
             try:
                 adapted_stream = adapter.adapt_stream(json_stream)
@@ -623,23 +636,25 @@ class DeferredStreaming(StreamingResponse):
                     )
                     raise e
                 else:
-                    logger.warning(
-                        "adapter_stream_failed_fallback_to_passthrough",
+                    logger.error(
+                        "adapter_stream_conversion_failed",
                         adapter_type=type(adapter).__name__,
                         error=str(e),
                         request_id=request_id,
+                        category="transform",
                     )
-                    # Fallback to passthrough for other errors
-                    adapted_stream = json_stream
+                    # Raise error instead of corrupting response with passthrough
+                    raise Exception(f"Stream format conversion failed: {e}") from e
             except Exception as e:
-                logger.warning(
-                    "adapter_stream_failed_fallback_to_passthrough",
+                logger.error(
+                    "adapter_stream_conversion_failed",
                     adapter_type=type(adapter).__name__,
                     error=str(e),
                     request_id=request_id,
+                    category="transform",
                 )
-                # Fallback to passthrough for unexpected errors
-                adapted_stream = json_stream
+                # Raise error instead of corrupting response with passthrough
+                raise Exception(f"Stream format conversion failed: {e}") from e
         else:
             # No adapter, passthrough
             adapted_stream = json_stream

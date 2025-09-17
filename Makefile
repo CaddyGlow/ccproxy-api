@@ -110,6 +110,12 @@ test-unit:
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest -v --import-mode=importlib -m "not real_api and not integration" --tb=short
 
+# Run smoketests for essential endpoint validation
+test-smoke:
+	@echo "Running smoketests for core endpoints..."
+	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
+	$(UV_RUN) pytest -v --import-mode=importlib -m "smoketest" --tb=short tests/smoketest.py
+
 # Run integration tests across all plugins
 test-integration:
 	@echo "Running integration tests across all plugins..."

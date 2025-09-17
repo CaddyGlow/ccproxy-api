@@ -18,7 +18,12 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
-from ccproxy.llms.formatters.formatter_adapter import create_formatter_adapter_factory
+from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
+from ccproxy.services.adapters.simple_converters import (
+    convert_anthropic_to_openai_response,
+    convert_anthropic_to_openai_stream,
+    convert_openai_to_anthropic_request,
+)
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import ClaudeSDKAdapter
@@ -160,11 +165,14 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         FormatAdapterSpec(
             from_format=FORMAT_OPENAI_CHAT,
             to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=create_formatter_adapter_factory(
-                "openai.chat_completions", "anthropic.messages"
+            adapter_factory=lambda: SimpleFormatAdapter(
+                request=convert_openai_to_anthropic_request,
+                response=convert_anthropic_to_openai_response,
+                stream=convert_anthropic_to_openai_stream,
+                name="openai_to_anthropic_claude_sdk",
             ),
             priority=40,  # Higher priority than API plugin
-            description="OpenAI to Anthropic format conversion for Claude SDK (FormatterRegistry)",
+            description="OpenAI to Anthropic format conversion for Claude SDK (SimpleFormatAdapter)",
         )
     ]
 

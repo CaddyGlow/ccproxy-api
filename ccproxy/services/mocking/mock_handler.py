@@ -10,14 +10,8 @@ import structlog
 from fastapi.responses import StreamingResponse
 
 from ccproxy.core.request_context import RequestContext
-from ccproxy.llms.formatters.formatter_adapter import (
-    FormatterGenericModel,
-    FormatterRegistryAdapter,
-)
-from ccproxy.llms.formatters.formatter_registry import (
-    FormatterRegistry,
-    load_builtin_formatter_modules,
-)
+from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
+from ccproxy.services.adapters.simple_converters import convert_anthropic_to_openai_response
 from ccproxy.testing import RealisticMockResponseGenerator
 
 
@@ -30,7 +24,7 @@ class MockResponseHandler:
     def __init__(
         self,
         mock_generator: RealisticMockResponseGenerator,
-        openai_adapter: FormatterRegistryAdapter | None = None,
+        openai_adapter: SimpleFormatAdapter | None = None,
         error_rate: float = 0.05,
         latency_range: tuple[float, float] = (0.5, 2.0),
     ) -> None:
@@ -41,25 +35,9 @@ class MockResponseHandler:
         """
         self.mock_generator = mock_generator
         if openai_adapter is None:
-            formatter_registry = FormatterRegistry()
-            load_builtin_formatter_modules()  # Load global formatters
-            # Populate registry from global static registrations
-            from ccproxy.llms.formatters.formatter_registry import (
-                iter_registered_formatters,
-            )
-
-            for registration in iter_registered_formatters():
-                formatter_registry.register(
-                    source_format=registration.source_format,
-                    target_format=registration.target_format,
-                    operation=registration.operation,
-                    formatter=registration.formatter,
-                    module_name=getattr(registration.formatter, "__module__", None),
-                )
-            openai_adapter = FormatterRegistryAdapter(
-                formatter_registry=formatter_registry,
-                source_format="anthropic.messages",
-                target_format="openai.chat_completions",
+            openai_adapter = SimpleFormatAdapter(
+                response=convert_anthropic_to_openai_response,
+                name="mock_anthropic_to_openai",
             )
         self.openai_adapter = openai_adapter
         self.error_rate = error_rate
@@ -144,12 +122,8 @@ class MockResponseHandler:
 
         # Convert to OpenAI format if needed
         if is_openai_format and message_type != "tool_use":
-            # Wrap in FormatterGenericModel for new adapter interface
-            formatted_response = FormatterGenericModel(**mock_response)
-            converted_response = await self.openai_adapter.adapt_response(
-                formatted_response
-            )
-            mock_response = converted_response.model_dump()
+            # Use dict-based conversion
+            mock_response = await self.openai_adapter.convert_response(mock_response)
 
         # Update context with metrics
         if ctx:

@@ -17,7 +17,8 @@ from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.client import HTTPClientFactory
 from ccproxy.http.pool import HTTPPoolManager
-from ccproxy.llms.formatters.formatter_adapter import FormatterRegistryAdapter
+from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
+from ccproxy.services.adapters.simple_converters import convert_anthropic_to_openai_response
 from ccproxy.llms.formatters.formatter_registry import (
     FormatterRegistry,
     iter_registered_formatters,
@@ -105,22 +106,10 @@ class ConcreteServiceFactory:
         """Create mock handler instance."""
         mock_generator = RealisticMockResponseGenerator()
         settings = self._container.get_service(Settings)
-        # Create formatter adapter for anthropic->openai conversion (for mock responses)
-        formatter_registry = FormatterRegistry()
-        load_builtin_formatter_modules()  # Load global formatters
-        # Populate registry from global static registrations
-        for registration in iter_registered_formatters():
-            formatter_registry.register(
-                source_format=registration.source_format,
-                target_format=registration.target_format,
-                operation=registration.operation,
-                formatter=registration.formatter,
-                module_name=getattr(registration.formatter, "__module__", None),
-            )
-        openai_adapter = FormatterRegistryAdapter(
-            formatter_registry=formatter_registry,
-            source_format="anthropic.messages",
-            target_format="openai.chat_completions",
+        # Create simple format adapter for anthropic->openai conversion (for mock responses)
+        openai_adapter = SimpleFormatAdapter(
+            response=convert_anthropic_to_openai_response,
+            name="mock_anthropic_to_openai",
         )
         # Configure streaming settings if needed
         openai_thinking_xml = getattr(
