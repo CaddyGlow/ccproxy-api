@@ -35,3 +35,4 @@ class LegacyBaseAPIAdapter(ABC):
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         """Adapt error format - optional method."""
         return error
+

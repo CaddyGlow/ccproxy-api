@@ -9,15 +9,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from .legacy_base import LegacyBaseAPIAdapter
 from ..models.openai import AnyStreamEvent
+from ccproxy.llms.adapters.base import BaseAPIAdapter
 
 
-if TYPE_CHECKING:
-    from ccproxy.llms.adapters.base import BaseAPIAdapter
-else:
-    from ccproxy.llms.adapters.base import BaseAPIAdapter
-
-
-class AdapterShim(LegacyBaseAPIAdapter):
+class AdapterShim(BaseAPIAdapter):
     """Shim that wraps typed adapters to provide legacy dict-based interface.
 
     This allows the new strongly-typed adapters from ccproxy.llms.adapters
