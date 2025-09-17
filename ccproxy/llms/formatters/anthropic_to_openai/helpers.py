@@ -166,7 +166,10 @@ async def convert__anthropic_message_to_openai_responses__stream(
             first_logged = True
             try:
                 from structlog import get_logger
-                get_logger(__name__).bind(category="formatter", converter="anthropic_to_responses_stream").debug(
+
+                get_logger(__name__).bind(
+                    category="formatter", converter="anthropic_to_responses_stream"
+                ).debug(
                     "anthropic_stream_first_chunk",
                     typed=isinstance(evt, dict) is False,
                     evt_type=evt_type,
@@ -200,13 +203,21 @@ async def convert__anthropic_message_to_openai_responses__stream(
 
             # Handle pre-filled content like thinking blocks
             for block in content_blocks:
-                btype = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
+                btype = (
+                    block.get("type")
+                    if isinstance(block, dict)
+                    else getattr(block, "type", None)
+                )
                 if btype == "thinking":
                     thinking = (
-                        block.get("thinking") if isinstance(block, dict) else getattr(block, "thinking", None)
+                        block.get("thinking")
+                        if isinstance(block, dict)
+                        else getattr(block, "thinking", None)
                     ) or ""
                     signature = (
-                        block.get("signature") if isinstance(block, dict) else getattr(block, "signature", None)
+                        block.get("signature")
+                        if isinstance(block, dict)
+                        else getattr(block, "signature", None)
                     )
                     sequence_counter += 1
                     sig_attr = f' signature="{signature}"' if signature else ""
@@ -221,10 +232,22 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     )
 
         elif evt_type == "content_block_start":
-            cblock = evt.get("content_block") if isinstance(evt, dict) else getattr(evt, "content_block", None)
-            ctype = cblock.get("type") if isinstance(cblock, dict) else getattr(cblock, "type", None)
+            cblock = (
+                evt.get("content_block")
+                if isinstance(evt, dict)
+                else getattr(evt, "content_block", None)
+            )
+            ctype = (
+                cblock.get("type")
+                if isinstance(cblock, dict)
+                else getattr(cblock, "type", None)
+            )
             if ctype == "tool_use":
-                tool_input = (cblock.get("input") if isinstance(cblock, dict) else getattr(cblock, "input", None)) or {}
+                tool_input = (
+                    cblock.get("input")
+                    if isinstance(cblock, dict)
+                    else getattr(cblock, "input", None)
+                ) or {}
                 try:
                     import json
 
@@ -252,7 +275,10 @@ async def convert__anthropic_message_to_openai_responses__stream(
                 # Debug first few characters to confirm emission
                 try:
                     from structlog import get_logger
-                    get_logger(__name__).bind(category="formatter", converter="anthropic_to_responses_stream").debug(
+
+                    get_logger(__name__).bind(
+                        category="formatter", converter="anthropic_to_responses_stream"
+                    ).debug(
                         "anthropic_delta_emitted",
                         preview=text[:20],
                     )
@@ -284,9 +310,19 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     usage=(
                         cast(
                             openai_models.ResponseUsage,
-                            convert__anthropic_usage_to_openai_responses__usage(evt.get("usage")) if isinstance(evt, dict) else convert__anthropic_usage_to_openai_responses__usage(evt.usage)
+                            convert__anthropic_usage_to_openai_responses__usage(
+                                evt.get("usage")
+                            )
+                            if isinstance(evt, dict)
+                            else convert__anthropic_usage_to_openai_responses__usage(
+                                evt.usage
+                            ),
                         )
-                        if (evt.get("usage") if isinstance(evt, dict) else getattr(evt, "usage", None))
+                        if (
+                            evt.get("usage")
+                            if isinstance(evt, dict)
+                            else getattr(evt, "usage", None)
+                        )
                         else None
                     ),
                 ),
@@ -294,7 +330,9 @@ async def convert__anthropic_message_to_openai_responses__stream(
             stop_reason = None
             if isinstance(evt, dict):
                 delta = evt.get("delta", {})
-                stop_reason = delta.get("stop_reason") if isinstance(delta, dict) else None
+                stop_reason = (
+                    delta.get("stop_reason") if isinstance(delta, dict) else None
+                )
             else:
                 stop_reason = evt.delta.stop_reason if evt.delta else None
             if stop_reason == "refusal":

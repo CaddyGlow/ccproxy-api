@@ -1,3 +1,4 @@
+import contextlib
 import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -79,6 +80,7 @@ async def convert__openai_responses_to_openaichat__request(
     request: openai_models.ResponseRequest,
 ) -> openai_models.ChatCompletionRequest:
     from structlog import get_logger
+
     _log = get_logger(__name__)
     _log = _log.bind(category="formatter", converter="responses_to_chat_request")
     system_message: str | None = request.instructions
@@ -141,21 +143,23 @@ async def convert__openai_responses_to_openaichat__request(
     for entry in messages:
         content = entry.get("content")
         if not isinstance(content, str) or not content.strip():
-            entry["content"] = content.strip() if isinstance(content, str) and content.strip() else "(empty request)"
+            entry["content"] = (
+                content.strip()
+                if isinstance(content, str) and content.strip()
+                else "(empty request)"
+            )
 
     payload: dict[str, Any] = {
         "model": request.model or "gpt-4o-mini",
         "messages": messages,
     }
 
-    try:
+    with contextlib.suppress(Exception):
         _log.debug(
             "responses_to_chat_compiled_messages",
             message_count=len(messages),
             roles=[m.get("role") for m in messages],
         )
-    except Exception:
-        pass
 
     if request.max_output_tokens is not None:
         payload["max_completion_tokens"] = request.max_output_tokens
@@ -349,7 +353,10 @@ def convert__openai_chat_to_openai_responses__stream(
 
     async def generator():
         from structlog import get_logger
-        log = get_logger(__name__).bind(category="formatter", converter="chat_to_responses_stream")
+
+        log = get_logger(__name__).bind(
+            category="formatter", converter="chat_to_responses_stream"
+        )
 
         created_sent = False
         response_id = "chat-to-resp"
@@ -396,7 +403,7 @@ def convert__openai_chat_to_openai_responses__stream(
 
             if not first_logged:
                 first_logged = True
-                try:
+                with contextlib.suppress(Exception):
                     log.debug(
                         "chat_stream_first_chunk",
                         typed=isinstance(chunk, dict) is False,
@@ -404,8 +411,6 @@ def convert__openai_chat_to_openai_responses__stream(
                         has_delta=bool(delta_text),
                         model=model,
                     )
-                except Exception:
-                    pass
 
             # Emit created once we know model (or immediately on first chunk)
             if not created_sent:
@@ -442,7 +447,9 @@ def convert__openai_chat_to_openai_responses__stream(
             if usage_obj and (finish_reason is None):
                 try:
                     usage_model = (
-                        convert__openai_completion_usage_to_openai_responses__usage(usage_obj)
+                        convert__openai_completion_usage_to_openai_responses__usage(
+                            usage_obj
+                        )
                         if not isinstance(usage_obj, dict)
                         else convert__openai_completion_usage_to_openai_responses__usage(
                             openai_models.CompletionUsage.model_validate(usage_obj)

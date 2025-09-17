@@ -417,8 +417,8 @@ class MessageResponse(LlmBaseModel):
             "refusal",
         ]
         | None
-    )
-    stop_sequence: str | None
+    ) = None
+    stop_sequence: str | None = None
     usage: Usage
     container: Container | None = None
 

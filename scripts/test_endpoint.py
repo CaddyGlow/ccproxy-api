@@ -123,7 +123,7 @@ REQUEST_DATA = {
         "max_completion_tokens": 1000,
         "input": MESSAGE_PAYLOADS["response_api"],
         # For Responses API streaming, chunks are SSE events with event+data
-        "model_class": BaseStreamEvent,
+        "model_class": ResponseObject,
         "chunk_model_class": BaseStreamEvent,
     },
     "response_api_non_stream": {

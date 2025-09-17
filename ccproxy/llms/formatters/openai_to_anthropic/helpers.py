@@ -8,6 +8,11 @@ from pydantic import BaseModel
 from ccproxy.core.constants import DEFAULT_MAX_TOKENS
 from ccproxy.llms.formatters.formatter_registry import formatter
 from ccproxy.llms.formatters.shared.constants import OPENAI_TO_ANTHROPIC_ERROR_TYPE
+from ccproxy.llms.formatters.shared.utils import (
+    map_openai_finish_to_anthropic_stop,
+    openai_usage_to_anthropic_usage,
+    strict_parse_tool_arguments,
+)
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
 
@@ -799,11 +804,7 @@ def convert__openai_responses_to_anthropic_message__response(
                         )
                     )
 
-    usage = (
-        convert__openai_responses_usage_to_anthropic__usage(response.usage)
-        if response.usage
-        else anthropic_models.Usage(input_tokens=0, output_tokens=0)
-    )
+    usage = openai_usage_to_anthropic_usage(response.usage)
 
     return anthropic_models.MessageResponse(
         id=response.id or "msg_1",
@@ -1062,6 +1063,8 @@ async def convert__openai_responses_to_anthropic_messages__stream(
             usage=usage,
         )
         yield anthropic_models.MessageStopEvent(type="message_stop")
+
+
 @formatter("openai.chat_completions", "anthropic.messages", "stream")
 def convert__openai_chat_to_anthropic_messages__stream(
     stream: AsyncIterator[openai_models.ChatCompletionChunk],
@@ -1204,6 +1207,7 @@ def convert__openai_chat_to_anthropic_messages__response(
     """Convert OpenAI ChatCompletionResponse to Anthropic MessageResponse."""
     text_content = ""
     finish_reason = None
+    tool_contents: list[anthropic_models.ToolUseBlock] = []
     if response.choices:
         choice = response.choices[0]
         finish_reason = getattr(choice, "finish_reason", None)
@@ -1221,23 +1225,60 @@ def convert__openai_chat_to_anthropic_messages__response(
                             parts.append(t)
                 text_content = "".join(parts)
 
+            # Extract OpenAI Chat tool calls (strict JSON parsing)
+            tool_calls = getattr(msg, "tool_calls", None)
+            if isinstance(tool_calls, list):
+                for i, tc in enumerate(tool_calls):
+                    fn = getattr(tc, "function", None)
+                    if fn is None and isinstance(tc, dict):
+                        fn = tc.get("function")
+                    if not fn:
+                        continue
+                    name = getattr(fn, "name", None)
+                    if name is None and isinstance(fn, dict):
+                        name = fn.get("name")
+                    args_raw = getattr(fn, "arguments", None)
+                    if args_raw is None and isinstance(fn, dict):
+                        args_raw = fn.get("arguments")
+                    args = strict_parse_tool_arguments(args_raw)
+                    tool_id = getattr(tc, "id", None)
+                    if tool_id is None and isinstance(tc, dict):
+                        tool_id = tc.get("id")
+                    tool_contents.append(
+                        anthropic_models.ToolUseBlock(
+                            type="tool_use",
+                            id=tool_id or f"call_{i}",
+                            name=name or "function",
+                            input=args,
+                        )
+                    )
+            # Legacy single function
+            legacy_fn = getattr(msg, "function", None)
+            if legacy_fn:
+                name = getattr(legacy_fn, "name", None)
+                args_raw = getattr(legacy_fn, "arguments", None)
+                args = strict_parse_tool_arguments(args_raw)
+                tool_contents.append(
+                    anthropic_models.ToolUseBlock(
+                        type="tool_use",
+                        id="call_0",
+                        name=name or "function",
+                        input=args,
+                    )
+                )
+
     content_blocks: list[anthropic_models.ResponseContentBlock] = []  # type: ignore[type-arg]
     if text_content:
         content_blocks.append(
             anthropic_models.TextBlock(type="text", text=text_content)
         )
+    # Append tool blocks after text (order matches Responses path patterns)
+    content_blocks.extend(tool_contents)  # type: ignore[arg-type]
 
-    # Map usage
-    if getattr(response, "usage", None):
-        usage = anthropic_models.Usage(
-            input_tokens=getattr(response.usage, "prompt_tokens", 0) or 0,
-            output_tokens=getattr(response.usage, "completion_tokens", 0) or 0,
-        )
-    else:
-        usage = anthropic_models.Usage(input_tokens=0, output_tokens=0)
+    # Map usage via shared utility
+    usage = openai_usage_to_anthropic_usage(getattr(response, "usage", None))
 
-    stop_map = {"stop": "end_turn", "length": "max_tokens"}
-    stop_reason = stop_map.get(finish_reason, None)
+    stop_reason = map_openai_finish_to_anthropic_stop(finish_reason)
 
     return anthropic_models.MessageResponse(
         id=getattr(response, "id", "msg_1") or "msg_1",
