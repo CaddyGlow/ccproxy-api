@@ -1,3 +1,4 @@
+import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
@@ -77,6 +78,9 @@ def convert__openai_completion_usage_to_openai_responses__usage(
 async def convert__openai_responses_to_openaichat__request(
     request: openai_models.ResponseRequest,
 ) -> openai_models.ChatCompletionRequest:
+    from structlog import get_logger
+    _log = get_logger(__name__)
+    _log = _log.bind(category="formatter", converter="responses_to_chat_request")
     system_message: str | None = request.instructions
     messages: list[dict[str, Any]] = []
 
@@ -102,14 +106,27 @@ async def convert__openai_responses_to_openaichat__request(
                         if isinstance(text_value, str):
                             text_parts.append(text_value)
 
+            content_text = " ".join([p for p in text_parts if p]).strip()
+
+            if not content_text:
+                # Fallback to serialized content blocks if no plain text extracted
+                blocks = []
+                for part in content_blocks or []:
+                    if isinstance(part, dict):
+                        blocks.append(part)
+                    elif hasattr(part, "model_dump"):
+                        blocks.append(part.model_dump(mode="json"))
+                if blocks:
+                    content_text = json.dumps(blocks)
+
             if role == "system":
                 # Merge all system content into a single system message
-                system_message = " ".join([p for p in text_parts if p])
+                system_message = content_text or system_message
             else:
                 messages.append(
                     {
                         "role": role,
-                        "content": " ".join([p for p in text_parts if p]) or None,
+                        "content": content_text or "(empty request)",
                     }
                 )
 
@@ -118,12 +135,27 @@ async def convert__openai_responses_to_openaichat__request(
 
     # Provide a default user prompt if none extracted
     if not messages:
-        messages.append({"role": "user", "content": ""})
+        messages.append({"role": "user", "content": "(empty request)"})
+
+    # Ensure all message contents are non-empty strings
+    for entry in messages:
+        content = entry.get("content")
+        if not isinstance(content, str) or not content.strip():
+            entry["content"] = content.strip() if isinstance(content, str) and content.strip() else "(empty request)"
 
     payload: dict[str, Any] = {
         "model": request.model or "gpt-4o-mini",
         "messages": messages,
     }
+
+    try:
+        _log.debug(
+            "responses_to_chat_compiled_messages",
+            message_count=len(messages),
+            roles=[m.get("role") for m in messages],
+        )
+    except Exception:
+        pass
 
     if request.max_output_tokens is not None:
         payload["max_completion_tokens"] = request.max_output_tokens
@@ -299,7 +331,7 @@ def convert__openai_responses_to_openai_chat__stream(
 
 @formatter("openai.chat_completions", "openai.responses", "stream")
 def convert__openai_chat_to_openai_responses__stream(
-    stream: AsyncIterator[openai_models.ChatCompletionChunk],
+    stream: AsyncIterator[openai_models.ChatCompletionChunk | dict[str, Any]],
 ) -> AsyncGenerator[
     openai_models.ResponseCreatedEvent
     | openai_models.ResponseInProgressEvent
@@ -316,6 +348,9 @@ def convert__openai_chat_to_openai_responses__stream(
     """
 
     async def generator():
+        from structlog import get_logger
+        log = get_logger(__name__).bind(category="formatter", converter="chat_to_responses_stream")
+
         created_sent = False
         response_id = "chat-to-resp"
         item_id = "msg_stream"
@@ -323,11 +358,56 @@ def convert__openai_chat_to_openai_responses__stream(
         content_index = 0
         last_model = ""
         sequence_counter = 0
+        first_logged = False
 
         async for chunk in stream:
-            model = getattr(chunk, "model", None) or last_model
+            # Support both typed ChatCompletionChunk and dict-like payloads
+            if isinstance(chunk, dict):
+                model = chunk.get("model") or last_model
+                choices = chunk.get("choices") or []
+                usage_obj = chunk.get("usage")
+                finish_reason = None
+                if choices:
+                    try:
+                        finish_reason = choices[0].get("finish_reason")
+                    except Exception:
+                        finish_reason = None
+                delta_text = None
+                try:
+                    delta = (choices[0] or {}).get("delta") if choices else None
+                    delta_text = (delta or {}).get("content")
+                except Exception:
+                    delta_text = None
+            else:
+                model = getattr(chunk, "model", None) or last_model
+                choices = getattr(chunk, "choices", [])
+                usage_obj = getattr(chunk, "usage", None)
+                finish_reason = None
+                if choices:
+                    first_choice = choices[0]
+                    finish_reason = getattr(first_choice, "finish_reason", None)
+                delta = None
+                if choices:
+                    first_choice = choices[0]
+                    delta = getattr(first_choice, "delta", None)
+                delta_text = getattr(delta, "content", None) if delta else None
+
             last_model = model
 
+            if not first_logged:
+                first_logged = True
+                try:
+                    log.debug(
+                        "chat_stream_first_chunk",
+                        typed=isinstance(chunk, dict) is False,
+                        keys=(list(chunk.keys()) if isinstance(chunk, dict) else None),
+                        has_delta=bool(delta_text),
+                        model=model,
+                    )
+                except Exception:
+                    pass
+
+            # Emit created once we know model (or immediately on first chunk)
             if not created_sent:
                 created_sent = True
                 sequence_counter += 1
@@ -339,50 +419,53 @@ def convert__openai_chat_to_openai_responses__stream(
                         object="response",
                         created_at=0,
                         status="in_progress",
-                        model=model,
+                        model=model or "",
                         output=[],
                         parallel_tool_calls=False,
                     ),
                 )
 
             # Emit deltas for assistant content
-            if chunk.choices:
-                first = chunk.choices[0]
-                delta = getattr(first, "delta", None)
-                text = getattr(delta, "content", None) if delta else None
-                if isinstance(text, str) and text:
-                    sequence_counter += 1
-                    yield openai_models.ResponseOutputTextDeltaEvent(
-                        type="response.output_text.delta",
-                        sequence_number=sequence_counter,
-                        item_id=item_id,
-                        output_index=output_index,
-                        content_index=content_index,
-                        delta=text,
-                    )
-                    content_index += 1
-
-            # If usage arrives in a non-final chunk, surface as in_progress
-            if chunk.usage and (
-                not chunk.choices or chunk.choices[0].finish_reason is None
-            ):
+            if isinstance(delta_text, str) and delta_text:
                 sequence_counter += 1
-                yield openai_models.ResponseInProgressEvent(
-                    type="response.in_progress",
+                yield openai_models.ResponseOutputTextDeltaEvent(
+                    type="response.output_text.delta",
                     sequence_number=sequence_counter,
-                    response=openai_models.ResponseObject(
-                        id=response_id,
-                        object="response",
-                        created_at=0,
-                        status="in_progress",
-                        model=model,
-                        output=[],
-                        parallel_tool_calls=False,
-                        usage=convert__openai_completion_usage_to_openai_responses__usage(
-                            chunk.usage
-                        ),
-                    ),
+                    item_id=item_id,
+                    output_index=output_index,
+                    content_index=content_index,
+                    delta=delta_text,
                 )
+                content_index += 1
+
+            # If usage arrives mid-stream and not finished, surface as in_progress
+            if usage_obj and (finish_reason is None):
+                try:
+                    usage_model = (
+                        convert__openai_completion_usage_to_openai_responses__usage(usage_obj)
+                        if not isinstance(usage_obj, dict)
+                        else convert__openai_completion_usage_to_openai_responses__usage(
+                            openai_models.CompletionUsage.model_validate(usage_obj)
+                        )
+                    )
+                    sequence_counter += 1
+                    yield openai_models.ResponseInProgressEvent(
+                        type="response.in_progress",
+                        sequence_number=sequence_counter,
+                        response=openai_models.ResponseObject(
+                            id=response_id,
+                            object="response",
+                            created_at=0,
+                            status="in_progress",
+                            model=model or "",
+                            output=[],
+                            parallel_tool_calls=False,
+                            usage=usage_model,
+                        ),
+                    )
+                except Exception:
+                    # best-effort; continue stream
+                    pass
 
         # Final completion event
         sequence_counter += 1

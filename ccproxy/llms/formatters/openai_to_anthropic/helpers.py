@@ -818,159 +818,250 @@ def convert__openai_responses_to_anthropic_message__response(
 
 
 @formatter("openai.responses", "anthropic.messages", "stream")
-def convert__openai_responses_to_anthropic_messages__stream(
-    stream: AsyncIterator[openai_models.AnyStreamEvent],
+async def convert__openai_responses_to_anthropic_messages__stream(
+    stream: AsyncIterator[Any],
 ) -> AsyncGenerator[anthropic_models.MessageStreamEvent, None]:
-    async def generator() -> AsyncGenerator[anthropic_models.MessageStreamEvent, None]:
-        message_started = False
-        index = 0
-        func_args_buffer: dict[int, list[str]] = {}
-        tool_info: dict[int, dict[str, str]] = {}
-        reasoning_buffer: list[str] = []
-        text_block_started = False
+    """Translate OpenAI Responses streaming events into Anthropic message events."""
 
-        async for evt_wrapper in stream:
-            if not hasattr(evt_wrapper, "root"):
-                continue
-            evt = evt_wrapper.root
-            if not hasattr(evt, "type"):
-                continue
+    def _event_to_dict(raw: Any) -> dict[str, Any]:
+        if isinstance(raw, dict):
+            return raw
+        if hasattr(raw, "root"):
+            return _event_to_dict(raw.root)
+        if hasattr(raw, "model_dump"):
+            return raw.model_dump(mode="json")  # type: ignore[arg-type]
+        return {}
 
-            if (
-                evt.type in ("response.created", "response.in_progress")
-                and isinstance(evt, openai_models.ResponseCreatedEvent)
-                and hasattr(evt, "response")
-                and evt.response is not None
-                and not message_started
-            ):
-                yield anthropic_models.MessageStartEvent(
-                    type="message_start",
-                    message=anthropic_models.MessageResponse(
-                        id=evt.response.id or "resp_stream",
-                        type="message",
-                        role="assistant",
-                        content=[],
-                        model=evt.response.model or "",
-                        stop_reason=None,
-                        stop_sequence=None,
-                        usage=anthropic_models.Usage(input_tokens=0, output_tokens=0),
-                    ),
-                )
-                message_started = True
-            elif evt.type == "response.output_text.delta":
-                text = evt.delta or ""
-                if text:
-                    if not text_block_started:
-                        yield anthropic_models.ContentBlockStartEvent(
-                            type="content_block_start",
-                            index=index,
-                            content_block=anthropic_models.TextBlock(
-                                type="text", text=""
-                            ),
-                        )
-                        text_block_started = True
-                    yield anthropic_models.ContentBlockDeltaEvent(
-                        type="content_block_delta",
-                        index=index,
-                        delta=anthropic_models.TextBlock(type="text", text=text),
-                    )
-            elif evt.type == "response.reasoning_summary_text.delta":
-                delta = evt.delta or ""
-                if isinstance(delta, str):
-                    reasoning_buffer.append(delta)
-            elif evt.type == "response.reasoning_summary_text.done":
-                if text_block_started:
-                    yield anthropic_models.ContentBlockStopEvent(
-                        type="content_block_stop", index=index
-                    )
-                    text_block_started = False
-                    index += 1
-                summary = "".join(reasoning_buffer)
-                if summary:
+    def _parse_tool_input(text: str) -> dict[str, Any]:
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+            return parsed if isinstance(parsed, dict) else {"arguments": text}
+        except Exception:
+            return {"arguments": text}
+
+    message_started = False
+    text_block_active = False
+    current_index = 0
+    final_stop_reason: str | None = None
+    final_stop_sequence: str | None = None
+    usage = anthropic_models.Usage(input_tokens=0, output_tokens=0)
+    reasoning_buffer: list[str] = []
+    tool_args: dict[int, list[str]] = {}
+    tool_meta: dict[int, dict[str, str]] = {}
+
+    async for raw_event in stream:
+        event = _event_to_dict(raw_event)
+        event_type = event.get("type") or event.get("event")
+        if not event_type:
+            continue
+
+        if event_type == "error":
+            payload = event.get("error") or {}
+            detail = (
+                anthropic_models.ErrorDetail(**payload)
+                if isinstance(payload, dict)
+                else anthropic_models.ErrorDetail(message=str(payload))
+            )
+            yield anthropic_models.ErrorEvent(type="error", error=detail)
+            return
+
+        if not message_started:
+            response_meta = event.get("response") or {}
+            yield anthropic_models.MessageStartEvent(
+                type="message_start",
+                message=anthropic_models.MessageResponse(
+                    id=response_meta.get("id", "resp_stream"),
+                    type="message",
+                    role="assistant",
+                    content=[],
+                    model=response_meta.get("model", ""),
+                    stop_reason=None,
+                    stop_sequence=None,
+                    usage=usage,
+                ),
+            )
+            message_started = True
+
+        if event_type == "response.output_text.delta":
+            delta = event.get("delta")
+            text = ""
+            if isinstance(delta, dict):
+                text = delta.get("text") or ""
+            elif isinstance(delta, str):
+                text = delta
+            if text:
+                if not text_block_active:
                     yield anthropic_models.ContentBlockStartEvent(
                         type="content_block_start",
-                        index=index,
-                        content_block=anthropic_models.ThinkingBlock(
-                            type="thinking",
-                            thinking=summary,
-                            signature="",
-                        ),
+                        index=current_index,
+                        content_block=anthropic_models.TextBlock(type="text", text=""),
                     )
-                    yield anthropic_models.ContentBlockStopEvent(
-                        type="content_block_stop", index=index
-                    )
-                    index += 1
-                reasoning_buffer.clear()
-            elif evt.type == "response.function_call_arguments.delta":
-                output_index = evt.output_index
-                if output_index not in func_args_buffer:
-                    func_args_buffer[output_index] = []
-                    tool_info[output_index] = {
-                        "id": evt.item_id or f"call_{output_index}",
-                        "name": evt.item_id or f"call_{output_index}",
-                    }
-                delta = evt.delta or ""
-                if isinstance(delta, str):
-                    func_args_buffer[output_index].append(delta)
-            elif evt.type == "response.function_call_arguments.done":
-                if text_block_started:
-                    yield anthropic_models.ContentBlockStopEvent(
-                        type="content_block_stop", index=index
-                    )
-                    text_block_started = False
-                    index += 1
-                output_index = evt.output_index
-                args_str = evt.arguments or "".join(
-                    func_args_buffer.get(output_index, [])
+                    text_block_active = True
+                yield anthropic_models.ContentBlockDeltaEvent(
+                    type="content_block_delta",
+                    index=current_index,
+                    delta=anthropic_models.TextBlock(type="text", text=text),
                 )
-                try:
-                    args_obj = json.loads(args_str) if isinstance(args_str, str) else {}
-                except Exception:
-                    args_obj = {}
-
-                info = tool_info.get(
-                    output_index,
-                    {"id": f"call_{output_index}", "name": f"call_{output_index}"},
+        elif event_type == "response.output_text.done":
+            if text_block_active:
+                yield anthropic_models.ContentBlockStopEvent(
+                    type="content_block_stop", index=current_index
                 )
+                text_block_active = False
+                current_index += 1
 
+        elif event_type == "response.reasoning_summary_text.delta":
+            delta = event.get("delta")
+            summary_piece = delta.get("text") if isinstance(delta, dict) else delta
+            if isinstance(summary_piece, str):
+                reasoning_buffer.append(summary_piece)
+
+        elif event_type == "response.reasoning_summary_text.done":
+            if text_block_active:
+                yield anthropic_models.ContentBlockStopEvent(
+                    type="content_block_stop", index=current_index
+                )
+                text_block_active = False
+                current_index += 1
+            summary = "".join(reasoning_buffer)
+            reasoning_buffer.clear()
+            if summary:
                 yield anthropic_models.ContentBlockStartEvent(
                     type="content_block_start",
-                    index=index,
-                    content_block=anthropic_models.ToolUseBlock(
-                        type="tool_use",
-                        id=info["id"],
-                        name=info["name"],
-                        input=args_obj,
+                    index=current_index,
+                    content_block=anthropic_models.ThinkingBlock(
+                        type="thinking",
+                        thinking=summary,
+                        signature="",
                     ),
                 )
                 yield anthropic_models.ContentBlockStopEvent(
-                    type="content_block_stop", index=index
+                    type="content_block_stop", index=current_index
                 )
-                index += 1
-            elif evt.type in {
-                "response.completed",
-                "response.failed",
-                "response.incomplete",
-            } and isinstance(evt, openai_models.ResponseCompletedEvent):
-                if text_block_started:
-                    yield anthropic_models.ContentBlockStopEvent(
-                        type="content_block_stop", index=index
-                    )
-                    text_block_started = False
-                usage = getattr(evt.response, "usage", None)
-                yield anthropic_models.MessageDeltaEvent(
-                    type="message_delta",
-                    delta=anthropic_models.MessageDelta(stop_reason="end_turn"),
-                    usage=convert__openai_responses_usage_to_anthropic__usage(usage)
-                    if usage
-                    else anthropic_models.Usage(input_tokens=0, output_tokens=0),
+                current_index += 1
+
+        elif event_type == "response.function_call_arguments.delta":
+            output_index = event.get("output_index", 0)
+            delta = event.get("delta") or {}
+            delta_text = delta.get("arguments") if isinstance(delta, dict) else delta
+            if isinstance(delta_text, str):
+                tool_args.setdefault(output_index, []).append(delta_text)
+            tool_meta.setdefault(
+                output_index,
+                {
+                    "id": event.get("item_id", f"call_{output_index}"),
+                    "name": event.get("name", "tool"),
+                },
+            )
+
+        elif event_type == "response.function_call_arguments.done":
+            output_index = event.get("output_index", 0)
+            args = "".join(tool_args.pop(output_index, []))
+            meta = tool_meta.pop(
+                output_index,
+                {
+                    "id": event.get("item_id", f"call_{output_index}"),
+                    "name": event.get("name", "tool"),
+                },
+            )
+            if text_block_active:
+                yield anthropic_models.ContentBlockStopEvent(
+                    type="content_block_stop", index=current_index
                 )
-                yield anthropic_models.MessageStopEvent(type="message_stop")
-                break
+                text_block_active = False
+                current_index += 1
+            yield anthropic_models.ContentBlockStartEvent(
+                type="content_block_start",
+                index=current_index,
+                content_block=anthropic_models.ToolUseBlock(
+                    type="tool_use",
+                    id=meta.get("id", f"call_{output_index}"),
+                    name=meta.get("name", "tool"),
+                    input=_parse_tool_input(args),
+                ),
+            )
+            yield anthropic_models.ContentBlockStopEvent(
+                type="content_block_stop", index=current_index
+            )
+            current_index += 1
 
-    return generator()
+        elif event_type == "response.output_item.added":
+            item = event.get("item") or {}
+            item_type = item.get("type")
+            if item_type == "output_tool_call":
+                output_index = item.get("output_index", 0)
+                tool_meta[output_index] = {
+                    "id": item.get("id", f"call_{output_index}"),
+                    "name": item.get("name", "tool"),
+                }
+                tool_args.setdefault(output_index, [])
 
+        elif event_type == "response.output_item.done":
+            item = event.get("item") or {}
+            item_type = item.get("type")
+            if item_type == "output_text" and text_block_active:
+                yield anthropic_models.ContentBlockStopEvent(
+                    type="content_block_stop", index=current_index
+                )
+                text_block_active = False
+                current_index += 1
+            elif item_type == "output_tool_call":
+                output_index = item.get("output_index", 0)
+                args = "".join(tool_args.pop(output_index, []))
+                meta = tool_meta.pop(
+                    output_index,
+                    {
+                        "id": item.get("id", f"call_{output_index}"),
+                        "name": item.get("name", "tool"),
+                    },
+                )
+                yield anthropic_models.ContentBlockStartEvent(
+                    type="content_block_start",
+                    index=current_index,
+                    content_block=anthropic_models.ToolUseBlock(
+                        type="tool_use",
+                        id=meta.get("id", f"call_{output_index}"),
+                        name=meta.get("name", "tool"),
+                        input=_parse_tool_input(args),
+                    ),
+                )
+                yield anthropic_models.ContentBlockStopEvent(
+                    type="content_block_stop", index=current_index
+                )
+                current_index += 1
 
+        elif event_type == "response.completed":
+            response = event.get("response") or {}
+            usage_data = response.get("usage") or {}
+            try:
+                usage = anthropic_models.Usage.model_validate(usage_data)
+            except Exception:
+                usage = anthropic_models.Usage(
+                    input_tokens=usage_data.get("input_tokens", 0),
+                    output_tokens=usage_data.get("output_tokens", 0),
+                )
+            final_stop_reason = response.get("stop_reason")
+            final_stop_sequence = response.get("stop_sequence")
+            break
+
+    if text_block_active:
+        yield anthropic_models.ContentBlockStopEvent(
+            type="content_block_stop", index=current_index
+        )
+
+    if message_started:
+        yield anthropic_models.MessageDeltaEvent(
+            type="message_delta",
+            delta=anthropic_models.MessageDelta(
+                stop_reason=final_stop_reason,
+                stop_sequence=final_stop_sequence,
+            ),
+            index=0,
+            usage=usage,
+        )
+        yield anthropic_models.MessageStopEvent(type="message_stop")
 @formatter("openai.chat_completions", "anthropic.messages", "stream")
 def convert__openai_chat_to_anthropic_messages__stream(
     stream: AsyncIterator[openai_models.ChatCompletionChunk],

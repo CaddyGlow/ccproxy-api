@@ -1,4 +1,3 @@
-#!/usr/bin/env pyth`on3
 """Test endpoint script converted from test_endpoint.sh with response validation."""
 
 import argparse
@@ -180,11 +179,19 @@ ENDPOINT_TESTS = [
         description="Copilot responses streaming",
     ),
     EndpointTest(
-        name="copilot_responses_stream",
+        name="copilot_responses",
         endpoint="/copilot/v1/responses",
         stream=False,
         request="response_api_non_stream",
         model="gpt-4o",
+        description="Copilot responses non-streaming",
+    ),
+    EndpointTest(
+        name="copilot_anthropic",
+        endpoint="/copilot/v1/messages",
+        stream=False,
+        request="anthropic_non_stream",
+        model="claude-sonnet-4-20250514",
         description="Copilot responses non-streaming",
     ),
     EndpointTest(
@@ -740,7 +747,7 @@ Test selection examples:
         logger.info("Tests interrupted by user")
         sys.exit(1)
     except Exception as e:
-        logger.error("Test execution failed", error=str(e))
+        logger.error("Test execution failed", error=str(e), exc_info=e)
         sys.exit(1)
 
 

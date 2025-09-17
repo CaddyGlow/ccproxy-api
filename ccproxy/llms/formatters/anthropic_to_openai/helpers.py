@@ -141,7 +141,7 @@ def convert__anthropic_to_openai__error(error: BaseModel) -> BaseModel:
 
 @formatter("anthropic.messages", "openai.responses", "stream")
 async def convert__anthropic_message_to_openai_responses__stream(
-    stream: AsyncIterator[anthropic_models.MessageStreamEvent],
+    stream: AsyncIterator[anthropic_models.MessageStreamEvent | dict[str, Any]],
 ) -> AsyncGenerator[ResponseStreamEvent, None]:
     item_id = "msg_stream"
     output_index = 0
@@ -150,15 +150,40 @@ async def convert__anthropic_message_to_openai_responses__stream(
     response_id = ""
     sequence_counter = 0
 
+    first_logged = False
     async for evt in stream:
-        if not hasattr(evt, "type"):
+        evt_type = None
+        if isinstance(evt, dict):
+            evt_type = evt.get("type")
+        else:
+            evt_type = getattr(evt, "type", None)
+        if not evt_type:
             continue
 
         sequence_counter += 1
 
-        if evt.type == "message_start":
-            model_id = evt.message.model or ""
-            response_id = evt.message.id or ""
+        if not first_logged:
+            first_logged = True
+            try:
+                from structlog import get_logger
+                get_logger(__name__).bind(category="formatter", converter="anthropic_to_responses_stream").debug(
+                    "anthropic_stream_first_chunk",
+                    typed=isinstance(evt, dict) is False,
+                    evt_type=evt_type,
+                )
+            except Exception:
+                pass
+
+        if evt_type == "message_start":
+            if isinstance(evt, dict):
+                msg = evt.get("message", {})
+                model_id = msg.get("model") or ""
+                response_id = msg.get("id") or ""
+                content_blocks = msg.get("content") or []
+            else:
+                model_id = evt.message.model or ""
+                response_id = evt.message.id or ""
+                content_blocks = evt.message.content or []
             yield openai_models.ResponseCreatedEvent(
                 type="response.created",
                 sequence_number=sequence_counter,
@@ -174,11 +199,16 @@ async def convert__anthropic_message_to_openai_responses__stream(
             )
 
             # Handle pre-filled content like thinking blocks
-            for block in evt.message.content:
-                if block.type == "thinking":
+            for block in content_blocks:
+                btype = block.get("type") if isinstance(block, dict) else getattr(block, "type", None)
+                if btype == "thinking":
+                    thinking = (
+                        block.get("thinking") if isinstance(block, dict) else getattr(block, "thinking", None)
+                    ) or ""
+                    signature = (
+                        block.get("signature") if isinstance(block, dict) else getattr(block, "signature", None)
+                    )
                     sequence_counter += 1
-                    thinking = block.thinking or ""
-                    signature = block.signature
                     sig_attr = f' signature="{signature}"' if signature else ""
                     thinking_xml = f"<thinking{sig_attr}>{thinking}</thinking>"
                     yield openai_models.ResponseOutputTextDeltaEvent(
@@ -190,9 +220,11 @@ async def convert__anthropic_message_to_openai_responses__stream(
                         delta=thinking_xml,
                     )
 
-        elif evt.type == "content_block_start":
-            if evt.content_block.type == "tool_use":
-                tool_input = evt.content_block.input or {}
+        elif evt_type == "content_block_start":
+            cblock = evt.get("content_block") if isinstance(evt, dict) else getattr(evt, "content_block", None)
+            ctype = cblock.get("type") if isinstance(cblock, dict) else getattr(cblock, "type", None)
+            if ctype == "tool_use":
+                tool_input = (cblock.get("input") if isinstance(cblock, dict) else getattr(cblock, "input", None)) or {}
                 try:
                     import json
 
@@ -209,8 +241,12 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     arguments=args_str,
                 )
 
-        elif evt.type == "content_block_delta":
-            text = evt.delta.text
+        elif evt_type == "content_block_delta":
+            if isinstance(evt, dict):
+                delta = evt.get("delta", {})
+                text = delta.get("text") if isinstance(delta, dict) else None
+            else:
+                text = evt.delta.text
             if text:
                 sequence_counter += 1
                 yield openai_models.ResponseOutputTextDeltaEvent(
@@ -222,7 +258,7 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     delta=text,
                 )
 
-        elif evt.type == "message_delta":
+        elif evt_type == "message_delta":
             sequence_counter += 1
             yield openai_models.ResponseInProgressEvent(
                 type="response.in_progress",
@@ -235,13 +271,23 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     model=model_id,
                     output=[],
                     parallel_tool_calls=False,
-                    usage=cast(
-                        openai_models.ResponseUsage,
-                        convert__anthropic_usage_to_openai_responses__usage(evt.usage),
+                    usage=(
+                        cast(
+                            openai_models.ResponseUsage,
+                            convert__anthropic_usage_to_openai_responses__usage(evt.get("usage")) if isinstance(evt, dict) else convert__anthropic_usage_to_openai_responses__usage(evt.usage)
+                        )
+                        if (evt.get("usage") if isinstance(evt, dict) else getattr(evt, "usage", None))
+                        else None
                     ),
                 ),
             )
-            if evt.delta.stop_reason == "refusal":
+            stop_reason = None
+            if isinstance(evt, dict):
+                delta = evt.get("delta", {})
+                stop_reason = delta.get("stop_reason") if isinstance(delta, dict) else None
+            else:
+                stop_reason = evt.delta.stop_reason if evt.delta else None
+            if stop_reason == "refusal":
                 sequence_counter += 1
                 yield openai_models.ResponseRefusalDoneEvent(
                     type="response.refusal.done",
@@ -252,7 +298,7 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     refusal="refused",
                 )
 
-        elif evt.type == "message_stop":
+        elif evt_type == "message_stop":
             sequence_counter += 1
             yield openai_models.ResponseCompletedEvent(
                 type="response.completed",

@@ -138,6 +138,12 @@ class BaseHTTPAdapter(BaseAdapter):
                 )
 
             try:
+                logger.debug(
+                    "format_chain_request_about_to_convert",
+                    chain=ctx.format_chain,
+                    endpoint=endpoint,
+                    category="transform",
+                )
                 request_payload = await self._apply_format_chain(
                     data=request_payload,
                     format_chain=ctx.format_chain,

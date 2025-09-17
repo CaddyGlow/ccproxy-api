@@ -110,6 +110,31 @@ async def create_responses_message(
     """Create a message using Response API with OpenAI provider."""
     # Ensure format chain is present in context even if decorator injection is bypassed
     request.state.context.metadata["endpoint"] = "/chat/completions"
+    # Explicitly set format_chain so BaseHTTPAdapter applies request conversion
+    try:
+        prev_chain = getattr(request.state.context, "format_chain", None)
+        new_chain = [FORMAT_OPENAI_RESPONSES, FORMAT_OPENAI_CHAT]
+        request.state.context.format_chain = new_chain
+        logger.debug(
+            "copilot_responses_route_enter",
+            prev_chain=prev_chain,
+            applied_chain=new_chain,
+            category="format",
+        )
+        # Peek at incoming body keys for debugging
+        try:
+            body_json = await request.json()
+            stream_flag = body_json.get("stream") if isinstance(body_json, dict) else None
+            logger.debug(
+                "copilot_responses_request_body_inspect",
+                keys=list(body_json.keys()) if isinstance(body_json, dict) else None,
+                stream=stream_flag,
+                category="format",
+            )
+        except Exception as exc:  # best-effort logging only
+            logger.debug("copilot_responses_request_body_parse_failed", error=str(exc))
+    except Exception as exc:  # defensive
+        logger.debug("copilot_responses_set_chain_failed", error=str(exc))
     return await _handle_adapter_request(request, adapter)
 
 
