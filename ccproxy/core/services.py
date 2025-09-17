@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from ccproxy.http.pool import HTTPPoolManager
     from ccproxy.llms.formatters.formatter_registry import FormatterRegistry
     from ccproxy.scheduler.core import Scheduler
-    from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
+    from ccproxy.services.adapters.format_registry import FormatRegistry
 
 
 class CoreServices:
@@ -25,7 +25,7 @@ class CoreServices:
         settings: Settings,
         scheduler: "Scheduler | None" = None,
         plugin_registry: "PluginRegistry | None" = None,
-        format_registry: "FormatAdapterRegistry | None" = None,
+        format_registry: "FormatRegistry | None" = None,
         formatter_registry: "FormatterRegistry | None" = None,
     ):
         """Initialize core services.
@@ -122,11 +122,11 @@ class CoreServices:
 
         return config
 
-    def get_format_registry(self) -> "FormatAdapterRegistry":
+    def get_format_registry(self) -> "FormatRegistry":
         """Get format adapter registry service instance.
 
         Returns:
-            FormatAdapterRegistry: The format adapter registry service
+            FormatRegistry: The format adapter registry service
 
         Raises:
             RuntimeError: If format registry is not available

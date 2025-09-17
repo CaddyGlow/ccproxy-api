@@ -727,9 +727,7 @@ class PluginRegistry:
                 )
                 # Continue with other plugins
 
-        # Finalize format registry after plugin initialization
-        format_registry = core_services.get_format_registry()
-        await format_registry.resolve_conflicts_and_finalize(enable_priority_mode=True)
+        # Registry entries are available immediately; no finalize pass required
 
     async def shutdown_all(self) -> None:
         """Shutdown all plugin runtimes in reverse initialization order."""

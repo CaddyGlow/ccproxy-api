@@ -8,7 +8,7 @@ rather than runtime (lifespan).
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Awaitable, Protocol, TypeVar
 
 import httpx
 import structlog
@@ -16,10 +16,7 @@ from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from ccproxy.llms.formatters.base import BaseAPIAdapter
-
-# Import adapter types for format adapter specifications
-from ccproxy.llms.formatters.base import BaseAPIAdapter as APIAdapter
+from ccproxy.services.adapters.format_adapter import FormatAdapterProtocol
 
 
 if TYPE_CHECKING:
@@ -53,8 +50,8 @@ class FormatAdapterSpec:
     from_format: str
     to_format: str
     adapter_factory: Callable[
-        [], APIAdapter | BaseAPIAdapter
-    ]  # Returns format adapter instance
+        [], FormatAdapterProtocol | Awaitable[FormatAdapterProtocol]
+    ]
     priority: int = 100  # Lower = higher priority for conflict resolution
     description: str = ""
 

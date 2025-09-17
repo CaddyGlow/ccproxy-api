@@ -1,6 +1,10 @@
-"""Service adapter components."""
+"""Adapter subpackage exports."""
 
-from ccproxy.services.adapters.base import BaseAdapter
+from .format_adapter import FormatAdapterProtocol, SimpleFormatAdapter
+from .format_registry import FormatRegistry
 
-
-__all__ = ["BaseAdapter"]
+__all__ = [
+    "FormatAdapterProtocol",
+    "SimpleFormatAdapter",
+    "FormatRegistry",
+]

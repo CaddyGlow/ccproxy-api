@@ -1,7 +1,7 @@
 import contextlib
 import json
 from abc import abstractmethod
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 from fastapi import Request
@@ -113,13 +113,46 @@ class BaseHTTPAdapter(BaseAdapter):
                 )
 
         # Step 3: Execute format chain if specified (non-streaming)
+        request_payload: dict[str, Any] | None = None
         if ctx.format_chain and len(ctx.format_chain) > 1:
             try:
-                body = await self._execute_format_chain(
-                    body, ctx.format_chain, ctx, mode="request"
+                request_payload = self._decode_json_body(body, context="request")
+            except ValueError as exc:
+                logger.error(
+                    "format_chain_request_parse_failed",
+                    error=str(exc),
+                    endpoint=endpoint,
+                    category="transform",
+                )
+                from starlette.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "Failed to parse request body for format conversion",
+                            "details": str(exc),
+                        }
+                    },
+                )
+
+            try:
+                request_payload = await self._apply_format_chain(
+                    data=request_payload,
+                    format_chain=ctx.format_chain,
+                    stage="request",
+                )
+                body = self._encode_json_body(request_payload)
+                logger.trace(
+                    "format_chain_request_converted",
+                    from_format=ctx.format_chain[0],
+                    to_format=ctx.format_chain[-1],
+                    keys=list(request_payload.keys()),
+                    size_bytes=len(body),
+                    category="transform",
                 )
             except Exception as e:
-                # Treat format conversion failures as fatal to avoid silent corruption
                 logger.error(
                     "format_chain_request_failed",
                     error=str(e),
@@ -138,24 +171,6 @@ class BaseHTTPAdapter(BaseAdapter):
                             "details": str(e),
                         }
                     },
-                )
-            try:
-                preview_len = len(body or b"")
-                parsed = json.loads(body.decode()) if body else {}
-                logger.trace(
-                    "format_chain_request_converted",
-                    from_format=ctx.format_chain[0],
-                    to_format=ctx.format_chain[-1],
-                    keys=list(parsed.keys())
-                    if isinstance(parsed, dict)
-                    else "non_dict",
-                    size_bytes=preview_len,
-                    category="transform",
-                )
-            except Exception:
-                logger.trace(
-                    "format_chain_request_conversion_preview_failed",
-                    category="transform",
                 )
         # Step 4: Provider-specific preparation
         prepared_body, prepared_headers = await self.prepare_provider_request(
@@ -202,41 +217,50 @@ class BaseHTTPAdapter(BaseAdapter):
         elif isinstance(response, Response):
             logger.debug("process_provider_response")
             if ctx.format_chain and len(ctx.format_chain) > 1:
-                if provider_response.status_code >= 400:
-                    # Error response; use error format chain if specified
-                    body_response = await self._execute_format_chain(
-                        cast(bytes, response.body),
-                        ctx.format_chain,
-                        ctx,
-                        mode="error",
+                stage: Literal["response", "error"] = (
+                    "error" if provider_response.status_code >= 400 else "response"
+                )
+                try:
+                    payload = self._decode_json_body(
+                        cast(bytes, response.body), context=stage
                     )
+                except ValueError as exc:
+                    logger.error(
+                        "format_chain_response_parse_failed",
+                        error=str(exc),
+                        endpoint=endpoint,
+                        stage=stage,
+                        category="transform",
+                    )
+                    return response
+
+                try:
+                    payload = await self._apply_format_chain(
+                        data=payload,
+                        format_chain=ctx.format_chain,
+                        stage=stage,
+                    )
+                    body_bytes = self._encode_json_body(payload)
                     if "content-length" in response.headers:
-                        response.headers["content-length"] = str(len(body_response))
+                        response.headers["content-length"] = str(len(body_bytes))
                     return Response(
-                        content=body_response,
+                        content=body_bytes,
                         status_code=provider_response.status_code,
                         headers=headers,
                         media_type=provider_response.headers.get(
                             "content-type", "application/json"
                         ),
                     )
-                else:
-                    body_response = await self._execute_format_chain(
-                        cast(bytes, response.body),
-                        ctx.format_chain,
-                        ctx,
-                        mode="response",
+                except Exception as e:
+                    logger.error(
+                        "format_chain_response_failed",
+                        error=str(e),
+                        endpoint=endpoint,
+                        stage=stage,
+                        exc_info=e,
+                        category="transform",
                     )
-                    if "content-length" in response.headers:
-                        response.headers["content-length"] = str(len(body_response))
-                    return Response(
-                        content=body_response,
-                        status_code=provider_response.status_code,
-                        headers=headers,
-                        media_type=provider_response.headers.get(
-                            "content-type", "application/json"
-                        ),
-                    )
+                    return response
             else:
                 logger.debug("format_chain_skipped", reason="no forward chain")
                 return response
@@ -281,27 +305,21 @@ class BaseHTTPAdapter(BaseAdapter):
         # Step 1: Execute request-side format chain if specified (streaming)
         if ctx.format_chain and len(ctx.format_chain) > 1:
             try:
-                body = await self._execute_format_chain(
-                    body, ctx.format_chain, ctx, mode="request"
+                stream_payload = self._decode_json_body(body, context="stream_request")
+                stream_payload = await self._apply_format_chain(
+                    data=stream_payload,
+                    format_chain=ctx.format_chain,
+                    stage="request",
                 )
-                try:
-                    preview_len = len(body or b"")
-                    parsed = json.loads(body.decode()) if body else {}
-                    logger.trace(
-                        "format_chain_stream_request_converted",
-                        from_format=ctx.format_chain[0],
-                        to_format=ctx.format_chain[-1],
-                        keys=list(parsed.keys())
-                        if isinstance(parsed, dict)
-                        else "non_dict",
-                        size_bytes=preview_len,
-                        category="transform",
-                    )
-                except Exception:
-                    logger.trace(
-                        "format_chain_stream_request_conversion_preview_failed",
-                        category="transform",
-                    )
+                body = self._encode_json_body(stream_payload)
+                logger.trace(
+                    "format_chain_stream_request_converted",
+                    from_format=ctx.format_chain[0],
+                    to_format=ctx.format_chain[-1],
+                    keys=list(stream_payload.keys()),
+                    size_bytes=len(body),
+                    category="transform",
+                )
             except Exception as e:
                 logger.error(
                     "format_chain_stream_request_failed",
@@ -384,78 +402,6 @@ class BaseHTTPAdapter(BaseAdapter):
             client=await self.http_pool_manager.get_client(base_url=base_url),
         )
 
-    async def _execute_format_chain(
-        self, body: bytes, format_chain: list[str], ctx: Any, mode: str = "response"
-    ) -> bytes:
-        """Execute format conversion chain."""
-        import json
-
-        if not self.format_registry:
-            logger.debug("format_chain_skipped", reason="no_registry")
-            return body
-
-        # Parse body as JSON for format conversion
-        try:
-            current_data = json.loads(body.decode()) if body else {}
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.debug("format_chain_parse_failed", error=str(e))
-            raise ValueError(
-                f"Format chain requires JSON body but parsing failed: {str(e)}"
-            )
-
-        # For requests: apply chain left→right (as declared)
-        # For responses: apply chain right→left (reversed) to convert back to original format
-        if mode == "response":
-            # Reverse the format chain for response processing
-            pairs: list[tuple[str, str]] = [
-                (format_chain[i + 1], format_chain[i])
-                for i in range(len(format_chain) - 1)
-            ]
-            pairs.reverse()  # Apply in reverse order: right→left
-        else:
-            # For requests and errors, use left→right as before
-            pairs: list[tuple[str, str]] = [
-                (format_chain[i], format_chain[i + 1])
-                for i in range(len(format_chain) - 1)
-            ]
-
-        for step_index, (from_format, to_format) in enumerate(pairs, start=1):
-            try:
-                adapter = self.format_registry.get(from_format, to_format)
-                if not adapter:
-                    raise ValueError(
-                        f"No adapter found for {from_format} -> {to_format}"
-                    )
-                if mode == "request":
-                    current_data = await adapter.adapt_request(current_data)
-                elif mode == "response":
-                    current_data = await adapter.adapt_response(current_data)
-                elif mode == "error":
-                    current_data = await adapter.adapt_error(current_data)
-                else:
-                    raise ValueError(f"Invalid mode for format chain: {mode}")
-
-                logger.debug(
-                    "format_chain_step_completed",
-                    from_format=from_format,
-                    to_format=to_format,
-                    mode=mode,
-                    step=step_index,
-                )
-
-            except Exception as e:
-                logger.debug(
-                    "format_chain_step_failed",
-                    from_format=from_format,
-                    to_format=to_format,
-                    step=step_index,
-                    error=str(e),
-                )
-                raise
-
-        # Convert back to bytes
-        return json.dumps(current_data).encode()
-
     async def _convert_streaming_response(
         self, response: StreamingResponse, format_chain: list[str], ctx: Any
     ) -> StreamingResponse:
@@ -488,6 +434,102 @@ class BaseHTTPAdapter(BaseAdapter):
     async def get_target_url(self, endpoint: str) -> str:
         """Get target URL for this provider."""
         pass
+
+    async def _apply_format_chain(
+        self,
+        *,
+        data: dict[str, Any],
+        format_chain: list[str],
+        stage: Literal["request", "response", "error"],
+    ) -> dict[str, Any]:
+        if not self.format_registry:
+            raise RuntimeError("Format registry is not configured")
+
+        pairs = self._build_chain_pairs(format_chain, stage)
+        current = data
+        for step_index, (from_format, to_format) in enumerate(pairs, start=1):
+            adapter = self.format_registry.get(from_format, to_format)
+            logger.debug(
+                "format_chain_step_start",
+                from_format=from_format,
+                to_format=to_format,
+                stage=stage,
+                step=step_index,
+            )
+
+            if stage == "request":
+                current = await adapter.convert_request(current)
+            elif stage == "response":
+                current = await adapter.convert_response(current)
+            elif stage == "error":
+                current = await adapter.convert_error(current)
+            else:  # pragma: no cover - defensive
+                raise ValueError(f"Unsupported format chain stage: {stage}")
+
+            logger.debug(
+                "format_chain_step_completed",
+                from_format=from_format,
+                to_format=to_format,
+                stage=stage,
+                step=step_index,
+            )
+
+        return current
+
+    def _build_chain_pairs(
+        self, format_chain: list[str], stage: Literal["request", "response", "error"]
+    ) -> list[tuple[str, str]]:
+        if len(format_chain) < 2:
+            return []
+
+        if stage == "response":
+            pairs = [
+                (format_chain[i + 1], format_chain[i])
+                for i in range(len(format_chain) - 1)
+            ]
+            pairs.reverse()
+            return pairs
+
+        return [
+            (format_chain[i], format_chain[i + 1])
+            for i in range(len(format_chain) - 1)
+        ]
+
+    def _decode_json_body(self, body: bytes, *, context: str) -> dict[str, Any]:
+        if not body:
+            return {}
+
+        try:
+            parsed = json.loads(body.decode())
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:  # pragma: no cover
+            raise ValueError(f"{context} body is not valid JSON: {exc}") from exc
+
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"{context} body must be a JSON object, got {type(parsed).__name__}"
+            )
+
+        return parsed
+
+    def _encode_json_body(self, data: dict[str, Any]) -> bytes:
+        try:
+            return json.dumps(data).encode()
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise ValueError(f"Failed to serialize format chain output: {exc}") from exc
+
+    async def _convert_streaming_response(
+        self,
+        response: StreamingResponse,
+        format_chain: list[str],
+        ctx: Any,
+    ) -> StreamingResponse:
+        logger.debug(
+            "streaming_format_chain_passthrough",
+            reason="conversion handled by streaming handler",
+            format_chain=format_chain,
+        )
+        return response
+    
 
     async def _execute_http_request(
         self, method: str, url: str, headers: dict[str, str], body: bytes

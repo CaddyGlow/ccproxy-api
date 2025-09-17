@@ -9,7 +9,7 @@ from ccproxy.services.adapters.format_context import FormatContext
 
 
 if TYPE_CHECKING:
-    from ccproxy.llms.formatters.base import BaseAPIAdapter as APIAdapter
+    from ccproxy.services.adapters.format_adapter import FormatAdapterProtocol
 
 
 @runtime_checkable
@@ -54,8 +54,8 @@ class HandlerConfig:
     """
 
     # Format conversion (e.g., OpenAI ↔ Anthropic)
-    request_adapter: APIAdapter | None = None
-    response_adapter: APIAdapter | None = None
+    request_adapter: FormatAdapterProtocol | None = None
+    response_adapter: FormatAdapterProtocol | None = None
 
     # Header/body transformation
     request_transformer: PluginTransformerProtocol | None = None

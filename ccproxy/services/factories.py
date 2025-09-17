@@ -6,7 +6,7 @@ create and configure service instances according to their interfaces.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
@@ -24,7 +24,7 @@ from ccproxy.llms.formatters.formatter_registry import (
     load_builtin_formatter_modules,
 )
 from ccproxy.scheduler.registry import TaskRegistry
-from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
+from ccproxy.services.adapters.format_registry import FormatRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
@@ -75,7 +75,7 @@ class ConcreteServiceFactory:
         )
 
         self._container.register_service(
-            FormatAdapterRegistry, factory=self.create_format_registry
+            FormatRegistry, factory=self.create_format_registry
         )
         self._container.register_service(
             FormatterRegistry, factory=self.create_formatter_registry
@@ -190,7 +190,7 @@ class ConcreteServiceFactory:
         settings = self._container.get_service(Settings)
         return BinaryResolver.from_settings(settings)
 
-    def create_format_registry(self) -> FormatAdapterRegistry:
+    def create_format_registry(self) -> FormatRegistry:
         """Create format adapter registry with core adapters pre-registered.
 
         Pre-registers common format conversions to prevent plugin conflicts.
@@ -199,15 +199,13 @@ class ConcreteServiceFactory:
         settings = self._container.get_service(Settings)
 
         # Always use priority mode (latest behavior)
-        conflict_mode: Literal["fail_fast", "priority"] = "priority"
-        registry = FormatAdapterRegistry(conflict_mode=conflict_mode)
+        registry = FormatRegistry()
 
         # Pre-register core format adapters
         self._register_core_format_adapters(registry, settings)
 
         logger.debug(
             "format_registry_created",
-            conflict_mode=conflict_mode,
             category="format",
         )
 
@@ -262,7 +260,7 @@ class ConcreteServiceFactory:
         return TaskRegistry()
 
     def _register_core_format_adapters(
-        self, registry: FormatAdapterRegistry, settings: Settings | None = None
+        self, registry: FormatRegistry, settings: Settings | None = None
     ) -> None:
         pass
 

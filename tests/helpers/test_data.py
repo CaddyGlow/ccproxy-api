@@ -179,6 +179,90 @@ CODEX_RESPONSE_FIELDS = {
     "usage",
 }
 
+# E2E Endpoint Test Data
+E2E_ENDPOINT_CONFIGURATIONS = [
+    {
+        "name": "copilot_chat_completions_stream",
+        "endpoint": "/copilot/v1/chat/completions",
+        "stream": True,
+        "model": "gpt-4o",
+        "format": "openai",
+        "description": "Copilot chat completions streaming",
+    },
+    {
+        "name": "copilot_chat_completions",
+        "endpoint": "/copilot/v1/chat/completions",
+        "stream": False,
+        "model": "gpt-4o",
+        "format": "openai",
+        "description": "Copilot chat completions non-streaming",
+    },
+    {
+        "name": "copilot_responses_stream",
+        "endpoint": "/copilot/v1/responses",
+        "stream": True,
+        "model": "gpt-4o",
+        "format": "response_api",
+        "description": "Copilot responses streaming",
+    },
+    {
+        "name": "copilot_responses",
+        "endpoint": "/copilot/v1/responses",
+        "stream": False,
+        "model": "gpt-4o",
+        "format": "response_api",
+        "description": "Copilot responses non-streaming",
+    },
+    {
+        "name": "anthropic_api_openai_stream",
+        "endpoint": "/api/v1/chat/completions",
+        "stream": True,
+        "model": "claude-sonnet-4-20250514",
+        "format": "openai",
+        "description": "Claude API OpenAI format streaming",
+    },
+    {
+        "name": "anthropic_api_openai",
+        "endpoint": "/api/v1/chat/completions",
+        "stream": False,
+        "model": "claude-sonnet-4-20250514",
+        "format": "openai",
+        "description": "Claude API OpenAI format non-streaming",
+    },
+    {
+        "name": "anthropic_api_responses_stream",
+        "endpoint": "/api/v1/responses",
+        "stream": True,
+        "model": "claude-sonnet-4-20250514",
+        "format": "response_api",
+        "description": "Claude API Response format streaming",
+    },
+    {
+        "name": "anthropic_api_responses",
+        "endpoint": "/api/v1/responses",
+        "stream": False,
+        "model": "claude-sonnet-4-20250514",
+        "format": "response_api",
+        "description": "Claude API Response format non-streaming",
+    },
+    {
+        "name": "codex_chat_completions_stream",
+        "endpoint": "/api/codex/v1/chat/completions",
+        "stream": True,
+        "model": "gpt-5",
+        "format": "openai",
+        "description": "Codex chat completions streaming",
+    },
+    {
+        "name": "codex_chat_completions",
+        "endpoint": "/api/codex/v1/chat/completions",
+        "stream": False,
+        "model": "gpt-5",
+        "format": "openai",
+        "description": "Codex chat completions non-streaming",
+    },
+]
+
 
 def create_openai_request(
     content: str = "Hello",
@@ -232,3 +316,76 @@ def create_codex_request(
     }
     request.update(kwargs)
     return request
+
+
+def create_response_api_request(
+    content: str = "Hello",
+    model: str = CLAUDE_SONNET_MODEL,
+    max_completion_tokens: int = 1000,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Create a customizable Response API request."""
+    request = {
+        "model": model,
+        "max_completion_tokens": max_completion_tokens,
+        "input": [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": content}],
+            }
+        ],
+    }
+    request.update(kwargs)
+    return request
+
+
+def create_e2e_request_for_format(
+    format_type: str,
+    model: str,
+    content: str = "Hello",
+    stream: bool = False,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Create a request for E2E testing based on format type."""
+    if format_type == "openai":
+        return create_openai_request(
+            content=content,
+            model=model,
+            stream=stream,
+            **kwargs,
+        )
+    elif format_type == "anthropic":
+        return create_anthropic_request(
+            content=content,
+            model=model,
+            stream=stream,
+            **kwargs,
+        )
+    elif format_type == "response_api":
+        return create_response_api_request(
+            content=content,
+            model=model,
+            stream=stream,
+            **kwargs,
+        )
+    elif format_type == "codex":
+        return create_codex_request(
+            content=content,
+            model=model,
+            stream=stream,
+            **kwargs,
+        )
+    else:
+        raise ValueError(f"Unknown format type: {format_type}")
+
+
+def get_expected_response_fields(format_type: str) -> set[str]:
+    """Get expected response fields for a given format type."""
+    field_map = {
+        "openai": OPENAI_RESPONSE_FIELDS,
+        "anthropic": ANTHROPIC_RESPONSE_FIELDS,
+        "response_api": CODEX_RESPONSE_FIELDS,  # Similar structure to OpenAI
+        "codex": CODEX_RESPONSE_FIELDS,
+    }
+    return field_map.get(format_type, set())

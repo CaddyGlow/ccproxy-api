@@ -597,7 +597,18 @@ class DeferredStreaming(StreamingResponse):
         )
 
         # Handle both legacy dict-based and new model-based adapters
-        if hasattr(adapter, "adapt_stream"):
+        if hasattr(adapter, "convert_stream"):
+            try:
+                adapted_stream = await adapter.convert_stream(json_stream)  # type: ignore[attr-defined]
+            except Exception as e:
+                logger.warning(
+                    "adapter_stream_failed_fallback_to_passthrough",
+                    adapter_type=type(adapter).__name__,
+                    error=str(e),
+                    request_id=request_id,
+                )
+                adapted_stream = json_stream
+        elif hasattr(adapter, "adapt_stream"):
             try:
                 adapted_stream = adapter.adapt_stream(json_stream)
             except ValueError as e:

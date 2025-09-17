@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ccproxy.llms.formatters.base import BaseAPIAdapter
 from ccproxy.llms.formatters.formatter_registry import FormatterRegistry
+from ccproxy.services.adapters.format_adapter import FormatAdapterProtocol
 
 
 class FormatterGenericModel(BaseModel):
@@ -18,7 +19,8 @@ class FormatterGenericModel(BaseModel):
 
 
 class FormatterRegistryAdapter(
-    BaseAPIAdapter[FormatterGenericModel, FormatterGenericModel, FormatterGenericModel]
+    BaseAPIAdapter[FormatterGenericModel, FormatterGenericModel, FormatterGenericModel],
+    FormatAdapterProtocol,
 ):
     """Adapter that uses FormatterRegistry for format conversions.
 
@@ -250,6 +252,36 @@ class FormatterRegistryAdapter(
             return FormatterGenericModel(**result)
         return result  # type: ignore[no-any-return]
 
+    async def convert_request(self, data: dict[str, Any]) -> dict[str, Any]:
+        model = FormatterGenericModel(**data)
+        converted = await self.adapt_request(model)
+        return self._to_dict(converted)
+
+    async def convert_response(self, data: dict[str, Any]) -> dict[str, Any]:
+        model = FormatterGenericModel(**data)
+        converted = await self.adapt_response(model)
+        return self._to_dict(converted)
+
+    async def convert_error(self, data: dict[str, Any]) -> dict[str, Any]:
+        model = FormatterGenericModel(**data)
+        converted = await self.adapt_error(model)
+        return self._to_dict(converted)
+
+    async def convert_stream(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncIterator[dict[str, Any]]:
+        async def model_stream() -> AsyncIterator[FormatterGenericModel]:
+            async for chunk in stream:
+                yield FormatterGenericModel(**chunk)
+
+        converted_stream = self.adapt_stream(model_stream())
+
+        async def dict_stream() -> AsyncGenerator[dict[str, Any], None]:
+            async for item in converted_stream:
+                yield self._to_dict(item)
+
+        return dict_stream()
+
     # Additional convenience methods (not abstract)
     def convert_usage(self, usage: Any) -> Any:
         """Convert usage using registry formatter if available."""
@@ -342,6 +374,17 @@ class FormatterRegistryAdapter(
 
         # Fallback to FormatterGenericModel for unknown types
         return FormatterGenericModel(**data)
+
+    def _to_dict(self, model: BaseModel | dict[str, Any]) -> dict[str, Any]:
+        if isinstance(model, FormatterGenericModel):
+            return model.model_dump()
+        if isinstance(model, BaseModel):
+            return model.model_dump(mode="json", exclude_unset=True)
+        if isinstance(model, dict):
+            return model
+        raise TypeError(
+            f"FormatterRegistryAdapter produced unsupported result type {type(model).__name__}"
+        )
 
     def __repr__(self) -> str:
         return f"FormatterRegistryAdapter({self.source_format} -> {self.target_format})"

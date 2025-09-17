@@ -372,6 +372,7 @@ markers = [
   # Primary test categories
   "unit: Fast unit tests (< 1s each) that don't require external dependencies",
   "integration: Integration tests (< 30s each) that test component interactions",
+  "e2e: Integration tests (< 30s each) that test component interactions",
   "slow: Slow tests (> 30s each) - use sparingly",
 
   # External dependency markers

@@ -17,7 +17,7 @@ from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManage
 from ccproxy.http.pool import HTTPPoolManager
 from ccproxy.llms.formatters.formatter_registry import FormatterRegistry
 from ccproxy.scheduler.registry import TaskRegistry
-from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
+from ccproxy.services.adapters.format_registry import FormatRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
@@ -127,9 +127,9 @@ class ServiceContainer:
 
     # Use HTTPPoolManager for pooling
 
-    def get_format_registry(self) -> FormatAdapterRegistry:
+    def get_format_registry(self) -> FormatRegistry:
         """Get format adapter registry service instance."""
-        return self.get_service(FormatAdapterRegistry)
+        return self.get_service(FormatRegistry)
 
     def get_formatter_registry(self) -> FormatterRegistry:
         """Get formatter registry service instance."""
