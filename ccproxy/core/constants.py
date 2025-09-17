@@ -1,5 +1,10 @@
 """Core constants used across the CCProxy API."""
 
+# Format identifiers
+FORMAT_OPENAI_CHAT = "openai.chat_completions"
+FORMAT_OPENAI_RESPONSES = "openai.responses"
+FORMAT_ANTHROPIC_MESSAGES = "anthropic.messages"
+
 # HTTP headers
 REQUEST_ID_HEADER = "X-Request-ID"
 AUTH_HEADER = "Authorization"

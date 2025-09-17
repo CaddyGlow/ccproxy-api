@@ -11,6 +11,7 @@ import pytest
 from tests.helpers.test_data import (
     E2E_ENDPOINT_CONFIGURATIONS,
     create_e2e_request_for_format,
+    normalize_format,
 )
 
 
@@ -27,6 +28,7 @@ async def test_endpoint_basic_structure(config: dict[str, Any]) -> None:
     model = config["model"]
     format_type = config["format"]
     stream = config["stream"]
+    normalized = normalize_format(format_type)
 
     # Create appropriate request for format
     request_data = create_e2e_request_for_format(
@@ -42,18 +44,18 @@ async def test_endpoint_basic_structure(config: dict[str, Any]) -> None:
     assert request_data["model"] == model
 
     # Format-specific structure validation
-    if format_type == "openai":
+    if normalized == "openai":
         assert "messages" in request_data
         assert isinstance(request_data["messages"], list)
         assert len(request_data["messages"]) > 0
         assert "role" in request_data["messages"][0]
         assert "content" in request_data["messages"][0]
 
-    elif format_type == "anthropic":
+    elif normalized == "anthropic":
         assert "messages" in request_data
         assert "max_tokens" in request_data
 
-    elif format_type == "response_api":
+    elif normalized == "response_api":
         assert "input" in request_data
         assert isinstance(request_data["input"], list)
 
@@ -154,7 +156,12 @@ async def test_e2e_configuration_data() -> None:
         assert config["endpoint"].startswith("/")
 
         # Format should be one of expected values
-        assert config["format"] in ["openai", "anthropic", "response_api", "codex"]
+        assert normalize_format(config["format"]) in [
+            "openai",
+            "anthropic",
+            "response_api",
+            "codex",
+        ]
 
 
 @pytest.mark.asyncio
@@ -231,5 +238,10 @@ async def test_conversion_completed_successfully() -> None:
             for key in ["name", "endpoint", "stream", "model", "format", "description"]
         )
         assert config["endpoint"].startswith("/")
-        assert config["format"] in ["openai", "anthropic", "response_api", "codex"]
+        assert normalize_format(config["format"]) in [
+            "openai",
+            "anthropic",
+            "response_api",
+            "codex",
+        ]
         assert isinstance(config["stream"], bool)

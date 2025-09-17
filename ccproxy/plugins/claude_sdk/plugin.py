@@ -2,6 +2,11 @@
 
 from typing import Any
 
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
     BaseProviderPluginFactory,
@@ -153,8 +158,8 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
 
     format_adapters = [
         FormatAdapterSpec(
-            from_format="openai",
-            to_format="anthropic",
+            from_format=FORMAT_OPENAI_CHAT,
+            to_format=FORMAT_ANTHROPIC_MESSAGES,
             adapter_factory=create_formatter_adapter_factory(
                 "openai.chat_completions", "anthropic.messages"
             ),
@@ -163,9 +168,9 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         )
     ]
 
-    # Dependencies: anthropic -> response_api handled by core
+    # Dependencies: anthropic.messages -> openai.responses handled by core
     requires_format_adapters: list[FormatPair] = [
-        ("anthropic", "response_api"),
+        (FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_RESPONSES),
     ]
 
     tasks = [

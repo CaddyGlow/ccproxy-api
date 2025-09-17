@@ -9,6 +9,12 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
+
 
 # Lazy import functions to avoid circular import issues
 def _get_model_class(model_name: str) -> type[BaseModel] | None:
@@ -128,16 +134,7 @@ def parse_streaming_events(content: str) -> list[dict[str, Any]]:
 def validate_streaming_response_structure(
     content: str, format_type: str, chunk_model_class: type[BaseModel] | None = None
 ) -> tuple[bool, list[str]]:
-    """Validate the structure of a streaming response.
-
-    Args:
-        content: Raw SSE response content
-        format_type: Expected format (openai, anthropic, response_api)
-        chunk_model_class: Optional model class for chunk validation
-
-    Returns:
-        Tuple of (is_valid, list_of_errors)
-    """
+    """Validate the structure of a streaming response."""
     errors = []
 
     # Basic SSE format check
@@ -158,12 +155,14 @@ def validate_streaming_response_structure(
             if not is_valid:
                 errors.append(f"Event {i} validation failed: {error}")
 
+    normalized = _normalize_format(format_type)
+
     # Format-specific validations
-    if format_type == "openai":
+    if normalized == "openai":
         _validate_openai_streaming_events(events, errors)
-    elif format_type == "anthropic":
+    elif normalized == "anthropic":
         _validate_anthropic_streaming_events(events, errors)
-    elif format_type == "response_api":
+    elif normalized == "response_api":
         _validate_response_api_streaming_events(events, errors)
 
     return len(errors) == 0, errors
@@ -259,6 +258,8 @@ def get_validation_model_for_format(
     Returns:
         Model class for validation or None if not available
     """
+    normalized = _normalize_format(format_type)
+
     if is_streaming:
         model_name_map = {
             "openai": "ChatCompletionChunk",
@@ -274,7 +275,21 @@ def get_validation_model_for_format(
             "codex": "ChatCompletionResponse",
         }
 
-    model_name = model_name_map.get(format_type)
+    model_name = model_name_map.get(normalized)
     if model_name:
         return _get_model_class(model_name)
     return None
+
+
+# Format normalization helper
+def _normalize_format(format_type: str) -> str:
+    alias_map = {
+        FORMAT_OPENAI_CHAT: "openai",
+        FORMAT_OPENAI_RESPONSES: "response_api",
+        FORMAT_ANTHROPIC_MESSAGES: "anthropic",
+        "openai": "openai",
+        "response_api": "response_api",
+        "anthropic": "anthropic",
+        "codex": "codex",
+    }
+    return alias_map.get(format_type, format_type)

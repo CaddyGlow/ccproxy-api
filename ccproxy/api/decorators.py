@@ -11,11 +11,13 @@ def format_chain(
     """Decorator to set the format chain for a route.
 
     Args:
-        chain: Format chain list (e.g., ["openai"], ["openai", "anthropic"])
+        chain: Format chain list using canonical identifiers
+            (e.g., ["openai.chat_completions"],
+            ["openai.chat_completions", "anthropic.messages"])
 
     Usage:
         @router.post("/v1/chat/completions")
-        @format_chain(["openai"])
+        @format_chain(["openai.chat_completions"])
         async def chat_completions(request: Request, ...):
             ...
     """
@@ -39,7 +41,8 @@ def base_format(format_name: str) -> Callable[[Callable[..., Any]], Callable[...
     """Decorator to set the base format for a route (shorthand for single format).
 
     Args:
-        format_name: Base format name (e.g., "openai", "anthropic", "response_api")
+        format_name: Base format name (e.g., "openai.chat_completions",
+            "anthropic.messages", "openai.responses")
 
     Usage:
         @router.post("/v1/messages")

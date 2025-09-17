@@ -2,6 +2,11 @@
 
 from typing import Any
 
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
     AuthProviderPluginFactory,
@@ -76,7 +81,7 @@ class CopilotPluginRuntime(ProviderPluginRuntime, AuthProviderPluginRuntime):
         """Format registry setup - using core Anthropic ↔ OpenAI adapters."""
         logger.debug(
             "copilot_using_core_format_adapters",
-            required_adapters=["anthropic->openai"],
+            required_adapters=[f"{FORMAT_ANTHROPIC_MESSAGES}->{FORMAT_OPENAI_CHAT}"],
         )
 
     async def cleanup(self) -> None:
@@ -140,8 +145,8 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
     format_adapters = [
         # Normalize provider's raw OpenAI-like stream to canonical OpenAI
         FormatAdapterSpec(
-            from_format="anthropic",
-            to_format="openai",
+            from_format=FORMAT_ANTHROPIC_MESSAGES,
+            to_format=FORMAT_OPENAI_CHAT,
             adapter_factory=create_formatter_adapter_factory(
                 "anthropic.messages", "openai.chat_completions"
             ),
@@ -149,8 +154,8 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             description="Anthropic Messages to OpenAI ChatCompletions (FormatterRegistry)",
         ),
         FormatAdapterSpec(
-            from_format="response_api",
-            to_format="anthropic",
+            from_format=FORMAT_OPENAI_RESPONSES,
+            to_format=FORMAT_ANTHROPIC_MESSAGES,
             adapter_factory=create_formatter_adapter_factory(
                 "openai.responses", "anthropic.messages"
             ),
@@ -159,8 +164,8 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
         ),
         # Add Response API ↔ OpenAI adapter for /v1/responses endpoint
         FormatAdapterSpec(
-            from_format="response_api",
-            to_format="openai",
+            from_format=FORMAT_OPENAI_RESPONSES,
+            to_format=FORMAT_OPENAI_CHAT,
             adapter_factory=create_formatter_adapter_factory(
                 "openai.responses", "openai.chat_completions"
             ),

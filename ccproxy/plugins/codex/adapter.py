@@ -7,6 +7,10 @@ import httpx
 from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
+from ccproxy.core.constants import (
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.streaming import DeferredStreaming, StreamingBufferService
@@ -342,14 +346,14 @@ class CodexAdapter(BaseHTTPAdapter):
 
     def _get_response_format_conversion(self, endpoint: str) -> tuple[str, str]:
         """Deprecated: conversion direction decided by format chain upstream."""
-        return ("response_api", "openai")
+        return (FORMAT_OPENAI_RESPONSES, FORMAT_OPENAI_CHAT)
 
     async def handle_streaming(
         self, request: Request, endpoint: str, **kwargs: Any
     ) -> StreamingResponse | DeferredStreaming:
         """Handle streaming with request conversion for Codex.
 
-        Applies request format conversion (e.g., anthropic->response_api) before
+        Applies request format conversion (e.g., anthropic.messages -> openai.responses) before
         preparing the provider request, then delegates to StreamingHandler with
         a streaming response adapter for reverse conversion as needed.
         """

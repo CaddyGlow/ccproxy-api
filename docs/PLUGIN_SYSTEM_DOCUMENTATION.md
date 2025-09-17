@@ -700,7 +700,7 @@ class MyProviderFactory(BaseProviderPluginFactory):
 
     # Define format adapter dependencies
     requires_format_adapters: list[FormatPair] = [
-        ("anthropic", "response_api"),  # Provided by core
+        ("anthropic.messages", "openai.responses"),  # Provided by core
     ]
 ```
 

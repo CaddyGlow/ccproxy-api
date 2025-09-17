@@ -4,6 +4,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.models.provider import ProviderConfig
 
 
@@ -85,7 +90,11 @@ class CodexSettings(ProviderConfig):
     )
 
     supported_input_formats: list[str] = Field(
-        default_factory=lambda: ["response_api", "openai", "anthropic"],
+        default_factory=lambda: [
+            FORMAT_OPENAI_RESPONSES,
+            FORMAT_OPENAI_CHAT,
+            FORMAT_ANTHROPIC_MESSAGES,
+        ],
         description="List of supported input formats",
     )
     preferred_upstream_mode: Literal["streaming", "non_streaming"] = Field(

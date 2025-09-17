@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from ccproxy.llms.formatters.base import BaseAPIAdapter
 from ccproxy.llms.formatters.formatter_registry import FormatterRegistry
@@ -211,20 +211,22 @@ class FormatterRegistryAdapter(
             )
 
         # Convert FormatterGenericModel stream to dict stream for formatter
-        async def dict_stream() -> AsyncIterator[dict[str, Any]]:
+        async def typed_stream() -> AsyncIterator[Any]:
             async for chunk in stream:
-                yield chunk.model_dump()
+                data = chunk.model_dump()
+                yield self._to_stream_model(data, self.source_format)
 
         converter = self.formatters["stream"]
 
-        # Get the converted stream and wrap results in FormatterGenericModel
         async def converted_stream() -> AsyncGenerator[BaseModel, None]:
-            converted = converter(dict_stream())
+            converted = converter(typed_stream())
             async for result in converted:
-                if isinstance(result, dict):
+                if isinstance(result, BaseModel):
+                    yield result
+                elif isinstance(result, dict):
                     yield FormatterGenericModel(**result)
                 else:
-                    yield result
+                    yield FormatterGenericModel(data=result)
 
         return converted_stream()
 
@@ -375,6 +377,38 @@ class FormatterRegistryAdapter(
         # Fallback to FormatterGenericModel for unknown types
         return FormatterGenericModel(**data)
 
+    def _to_stream_model(self, data: dict[str, Any], format_name: str) -> BaseModel:
+        try:
+            if format_name == "anthropic.messages":
+                from ccproxy.llms.models import anthropic as anthropic_models
+
+                adapter = TypeAdapter(anthropic_models.MessageStreamEvent)
+                return adapter.validate_python(data)
+            if format_name == "openai.responses":
+                from ccproxy.llms.models import openai as openai_models
+
+                adapter = TypeAdapter(openai_models.AnyStreamEvent)
+                result = adapter.validate_python(data)
+                return getattr(result, "root", result)
+            if format_name == "openai.chat_completions":
+                from ccproxy.llms.models import openai as openai_models
+
+                return openai_models.ChatCompletionChunk.model_validate(data)
+        except Exception as exc:  # pragma: no cover - best effort logging
+            try:
+                from structlog import get_logger
+
+                get_logger(__name__).debug(
+                    "stream_chunk_type_adapter_failed",
+                    source_format=format_name,
+                    error=str(exc),
+                    keys=list(data.keys()),
+                )
+            except Exception:
+                pass
+
+        return FormatterGenericModel(**data)
+
     def _to_dict(self, model: BaseModel | dict[str, Any]) -> dict[str, Any]:
         if isinstance(model, FormatterGenericModel):
             return model.model_dump()
@@ -408,8 +442,8 @@ def create_formatter_adapter_factory(
     Example:
         format_adapters = [
             FormatAdapterSpec(
-                from_format="anthropic",
-                to_format="openai",
+                from_format="anthropic.messages",
+                to_format="openai.chat_completions",
                 adapter_factory=create_formatter_adapter_factory(
                     "anthropic.messages", "openai.chat_completions"
                 ),

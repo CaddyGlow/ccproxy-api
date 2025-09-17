@@ -6,10 +6,32 @@ and ensure consistency in test scenarios.
 
 from typing import Any
 
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
+
 
 # Standard model names used across tests
 CLAUDE_SONNET_MODEL = "claude-3-5-sonnet-20241022"
 INVALID_MODEL_NAME = "invalid-model"
+
+
+def normalize_format(format_type: str) -> str:
+    """Map canonical format identifiers to simplified categories for tests."""
+
+    alias_map = {
+        FORMAT_OPENAI_CHAT: "openai",
+        FORMAT_OPENAI_RESPONSES: "response_api",
+        FORMAT_ANTHROPIC_MESSAGES: "anthropic",
+        "openai": "openai",
+        "response_api": "response_api",
+        "anthropic": "anthropic",
+        "codex": "codex",
+    }
+    return alias_map.get(format_type, format_type)
+
 
 # Common request data structures
 STANDARD_OPENAI_REQUEST: dict[str, Any] = {
@@ -186,7 +208,7 @@ E2E_ENDPOINT_CONFIGURATIONS = [
         "endpoint": "/copilot/v1/chat/completions",
         "stream": True,
         "model": "gpt-4o",
-        "format": "openai",
+        "format": FORMAT_OPENAI_CHAT,
         "description": "Copilot chat completions streaming",
     },
     {
@@ -194,7 +216,7 @@ E2E_ENDPOINT_CONFIGURATIONS = [
         "endpoint": "/copilot/v1/chat/completions",
         "stream": False,
         "model": "gpt-4o",
-        "format": "openai",
+        "format": FORMAT_OPENAI_CHAT,
         "description": "Copilot chat completions non-streaming",
     },
     {
@@ -202,7 +224,7 @@ E2E_ENDPOINT_CONFIGURATIONS = [
         "endpoint": "/copilot/v1/responses",
         "stream": True,
         "model": "gpt-4o",
-        "format": "response_api",
+        "format": FORMAT_OPENAI_RESPONSES,
         "description": "Copilot responses streaming",
     },
     {
@@ -210,7 +232,7 @@ E2E_ENDPOINT_CONFIGURATIONS = [
         "endpoint": "/copilot/v1/responses",
         "stream": False,
         "model": "gpt-4o",
-        "format": "response_api",
+        "format": FORMAT_OPENAI_RESPONSES,
         "description": "Copilot responses non-streaming",
     },
     {
@@ -218,7 +240,7 @@ E2E_ENDPOINT_CONFIGURATIONS = [
         "endpoint": "/api/v1/chat/completions",
         "stream": True,
         "model": "claude-sonnet-4-20250514",
-        "format": "openai",
+        "format": FORMAT_OPENAI_CHAT,
         "description": "Claude API OpenAI format streaming",
     },
     {
@@ -226,7 +248,7 @@ E2E_ENDPOINT_CONFIGURATIONS = [
         "endpoint": "/api/v1/chat/completions",
         "stream": False,
         "model": "claude-sonnet-4-20250514",
-        "format": "openai",
+        "format": FORMAT_OPENAI_CHAT,
         "description": "Claude API OpenAI format non-streaming",
     },
     {
@@ -234,7 +256,7 @@ E2E_ENDPOINT_CONFIGURATIONS = [
         "endpoint": "/api/v1/responses",
         "stream": True,
         "model": "claude-sonnet-4-20250514",
-        "format": "response_api",
+        "format": FORMAT_OPENAI_RESPONSES,
         "description": "Claude API Response format streaming",
     },
     {
@@ -242,7 +264,7 @@ E2E_ENDPOINT_CONFIGURATIONS = [
         "endpoint": "/api/v1/responses",
         "stream": False,
         "model": "claude-sonnet-4-20250514",
-        "format": "response_api",
+        "format": FORMAT_OPENAI_RESPONSES,
         "description": "Claude API Response format non-streaming",
     },
     {
@@ -348,28 +370,30 @@ def create_e2e_request_for_format(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Create a request for E2E testing based on format type."""
-    if format_type == "openai":
+    normalized = normalize_format(format_type)
+
+    if normalized == "openai":
         return create_openai_request(
             content=content,
             model=model,
             stream=stream,
             **kwargs,
         )
-    elif format_type == "anthropic":
+    elif normalized == "anthropic":
         return create_anthropic_request(
             content=content,
             model=model,
             stream=stream,
             **kwargs,
         )
-    elif format_type == "response_api":
+    elif normalized == "response_api":
         return create_response_api_request(
             content=content,
             model=model,
             stream=stream,
             **kwargs,
         )
-    elif format_type == "codex":
+    elif normalized == "codex":
         return create_codex_request(
             content=content,
             model=model,
@@ -382,10 +406,11 @@ def create_e2e_request_for_format(
 
 def get_expected_response_fields(format_type: str) -> set[str]:
     """Get expected response fields for a given format type."""
+    normalized = normalize_format(format_type)
     field_map = {
         "openai": OPENAI_RESPONSE_FIELDS,
         "anthropic": ANTHROPIC_RESPONSE_FIELDS,
         "response_api": CODEX_RESPONSE_FIELDS,  # Similar structure to OpenAI
         "codex": CODEX_RESPONSE_FIELDS,
     }
-    return field_map.get(format_type, set())
+    return field_map.get(normalized, set())

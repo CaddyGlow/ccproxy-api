@@ -8,6 +8,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.core.errors import (
     AuthenticationError,
     ClaudeProxyError,
@@ -44,11 +49,11 @@ def _detect_format_from_path(path: str) -> str | None:
         Detected format or None if cannot determine
     """
     if "/chat/completions" in path:
-        return "openai"
+        return FORMAT_OPENAI_CHAT
     elif "/messages" in path:
-        return "anthropic"
+        return FORMAT_ANTHROPIC_MESSAGES
     elif "/responses" in path:
-        return "response_api"
+        return FORMAT_OPENAI_RESPONSES
     return None
 
 
@@ -61,7 +66,7 @@ def _get_format_aware_error_content(
         error_type: Type of error for logging
         message: Error message
         status_code: HTTP status code
-        base_format: Base format from format_chain[0] (e.g., "openai", "anthropic")
+        base_format: Base format from format_chain[0]
 
     Returns:
         Formatted error response content using proper models
@@ -75,31 +80,25 @@ def _get_format_aware_error_content(
     }
 
     try:
-        if base_format == "openai":
+        if base_format in {FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES}:
             # Use OpenAI error model
             error_detail = openai_models.ErrorDetail(
-                message=message, type=error_type, code=str(status_code), param=None
+                message=message,
+                type=error_type,
+                code=error_type
+                if base_format == FORMAT_OPENAI_RESPONSES
+                else str(status_code),
+                param=None,
             )
             error_response = openai_models.ErrorResponse(error=error_detail)
             return error_response.model_dump()
 
-        elif base_format == "anthropic":
+        elif base_format == FORMAT_ANTHROPIC_MESSAGES:
             # Use Anthropic error model
             # APIError has a fixed type field, so create a generic ErrorDetail instead
             api_error = anthropic_models.ErrorDetail(message=message)
             # Anthropic error format has 'type': 'error' at top level
             return {"type": "error", "error": api_error.model_dump()}
-
-        elif base_format == "response_api":
-            # Use OpenAI-style error for Response API (same format but different context)
-            error_detail = openai_models.ErrorDetail(
-                message=message,
-                type=error_type,
-                code=error_type,  # Use error_type as code for Response API
-                param=None,
-            )
-            error_response = openai_models.ErrorResponse(error=error_detail)
-            return error_response.model_dump()
 
     except Exception as e:
         # Log the error but don't fail - fallback to default format

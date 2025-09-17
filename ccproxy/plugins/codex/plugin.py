@@ -2,6 +2,11 @@
 
 from typing import TYPE_CHECKING, Any
 
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
     BaseProviderPluginFactory,
@@ -338,8 +343,8 @@ class CodexFactory(BaseProviderPluginFactory):
 
     format_adapters = [
         FormatAdapterSpec(
-            from_format="openai",
-            to_format="response_api",
+            from_format=FORMAT_OPENAI_CHAT,
+            to_format=FORMAT_OPENAI_RESPONSES,
             adapter_factory=create_formatter_adapter_factory(
                 "openai.chat_completions", "openai.responses"
             ),
@@ -347,8 +352,8 @@ class CodexFactory(BaseProviderPluginFactory):
             description="OpenAI ChatCompletions to OpenAI Responses (FormatterRegistry)",
         ),
         FormatAdapterSpec(
-            from_format="response_api",
-            to_format="openai",
+            from_format=FORMAT_OPENAI_RESPONSES,
+            to_format=FORMAT_OPENAI_CHAT,
             adapter_factory=create_formatter_adapter_factory(
                 "openai.responses", "openai.chat_completions"
             ),
@@ -356,8 +361,8 @@ class CodexFactory(BaseProviderPluginFactory):
             description="OpenAI Responses to OpenAI ChatCompletions (FormatterRegistry)",
         ),
         FormatAdapterSpec(
-            from_format="anthropic",
-            to_format="response_api",
+            from_format=FORMAT_ANTHROPIC_MESSAGES,
+            to_format=FORMAT_OPENAI_RESPONSES,
             adapter_factory=create_formatter_adapter_factory(
                 "anthropic.messages", "openai.responses"
             ),
@@ -365,8 +370,8 @@ class CodexFactory(BaseProviderPluginFactory):
             description="Anthropic Messages to OpenAI Responses (FormatterRegistry)",
         ),
         FormatAdapterSpec(
-            from_format="response_api",
-            to_format="anthropic",
+            from_format=FORMAT_OPENAI_RESPONSES,
+            to_format=FORMAT_ANTHROPIC_MESSAGES,
             adapter_factory=create_formatter_adapter_factory(
                 "openai.responses", "anthropic.messages"
             ),

@@ -7,6 +7,11 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.api.decorators import format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
@@ -79,7 +84,7 @@ async def create_openai_chat_completion(
     response_model=anthropic_models.MessageResponse,
 )
 @format_chain(
-    ["anthropic", "openai"]
+    [FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_CHAT]
 )  # Client expects Anthropic, provider speaks OpenAI
 async def create_anthropic_message(
     request: Request,
@@ -90,7 +95,9 @@ async def create_anthropic_message(
     return await _handle_adapter_request(request, adapter)
 
 
-@format_chain(["response_api", "openai"])  # Single-hop flow: Response API -> OpenAI
+@format_chain(
+    [FORMAT_OPENAI_RESPONSES, FORMAT_OPENAI_CHAT]
+)  # Single-hop flow: Response API -> OpenAI
 @router_v1.post(
     "/responses",
     response_model=anthropic_models.MessageResponse,

@@ -355,7 +355,9 @@ class BaseHTTPAdapter(BaseAdapter):
             # Request: client_format → provider_format
             # Stream Response: provider_format → client_format
             from_format = ctx.format_chain[-1]  # provider format (e.g., "anthropic")
-            to_format = ctx.format_chain[0]  # client format (e.g., "openai")
+            to_format = ctx.format_chain[
+                0
+            ]  # client format (e.g., "openai.chat_completions")
             streaming_format_adapter = self.format_registry.get_if_exists(
                 from_format, to_format
             )

@@ -8,6 +8,10 @@ from starlette.responses import Response, StreamingResponse
 from ccproxy.api.decorators import base_format
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+)
 from ccproxy.streaming import DeferredStreaming
 
 
@@ -29,7 +33,7 @@ async def _handle_claude_sdk_request(
 
 
 @router.post("/v1/messages", response_model=None)
-@base_format("anthropic")
+@base_format(FORMAT_ANTHROPIC_MESSAGES)
 async def claude_sdk_messages(
     request: Request,
     auth: ConditionalAuthDep,
@@ -39,7 +43,7 @@ async def claude_sdk_messages(
 
 
 @router.post("/v1/chat/completions", response_model=None)
-@base_format("openai")
+@base_format(FORMAT_OPENAI_CHAT)
 async def claude_sdk_chat_completions(
     request: Request,
     auth: ConditionalAuthDep,
@@ -49,7 +53,7 @@ async def claude_sdk_chat_completions(
 
 
 @router.post("/{session_id}/v1/messages", response_model=None)
-@base_format("anthropic")
+@base_format(FORMAT_ANTHROPIC_MESSAGES)
 async def claude_sdk_messages_with_session(
     request: Request,
     session_id: str,
@@ -63,7 +67,7 @@ async def claude_sdk_messages_with_session(
 
 
 @router.post("/{session_id}/v1/chat/completions", response_model=None)
-@base_format("openai")
+@base_format(FORMAT_OPENAI_CHAT)
 async def claude_sdk_chat_completions_with_session(
     request: Request,
     session_id: str,

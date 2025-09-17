@@ -8,6 +8,11 @@ from starlette.responses import Response, StreamingResponse
 
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.streaming import DeferredStreaming
 
 
@@ -54,7 +59,7 @@ async def codex_responses(
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     # Set format chain for native responses format
-    request.state.context.format_chain = ["response_api"]
+    request.state.context.format_chain = [FORMAT_OPENAI_RESPONSES]
     request.state.context.metadata["endpoint"] = "/responses"
     return await handle_codex_request(request, adapter, "/responses")
 
@@ -67,7 +72,7 @@ async def codex_responses_with_session(
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     # Set format chain for native responses format
-    request.state.context.format_chain = ["response_api"]
+    request.state.context.format_chain = [FORMAT_OPENAI_RESPONSES]
     request.state.context.metadata["endpoint"] = "/{session_id}/responses"
     return await handle_codex_request(
         request, adapter, "/{session_id}/responses", session_id
@@ -81,7 +86,7 @@ async def codex_chat_completions(
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     # Set format chain for OpenAI→Response API conversion
-    request.state.context.format_chain = ["openai", "response_api"]
+    request.state.context.format_chain = [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES]
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await handle_codex_request(request, adapter, "/chat/completions")
 
@@ -94,7 +99,7 @@ async def codex_chat_completions_with_session(
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     # Set format chain for OpenAI→Response API conversion
-    request.state.context.format_chain = ["openai", "response_api"]
+    request.state.context.format_chain = [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES]
     request.state.context.metadata["endpoint"] = "/{session_id}/chat/completions"
     return await handle_codex_request(
         request, adapter, "/{session_id}/chat/completions", session_id
@@ -108,7 +113,7 @@ async def codex_v1_chat_completions(
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     # Set format chain for OpenAI→Response API conversion
-    request.state.context.format_chain = ["openai", "response_api"]
+    request.state.context.format_chain = [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES]
     request.state.context.metadata["endpoint"] = "/v1/chat/completions"
     return await handle_codex_request(request, adapter, "/chat/completions")
 
@@ -149,7 +154,10 @@ async def codex_v1_messages(
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     # Set format chain for Anthropic→Response API conversion
-    request.state.context.format_chain = ["anthropic", "response_api"]
+    request.state.context.format_chain = [
+        FORMAT_ANTHROPIC_MESSAGES,
+        FORMAT_OPENAI_RESPONSES,
+    ]
     request.state.context.metadata["endpoint"] = "/v1/messages"
     return await handle_codex_request(request, adapter, "/v1/messages")
 
@@ -162,7 +170,10 @@ async def codex_v1_messages_with_session(
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     # Set format chain for Anthropic→Response API conversion
-    request.state.context.format_chain = ["anthropic", "response_api"]
+    request.state.context.format_chain = [
+        FORMAT_ANTHROPIC_MESSAGES,
+        FORMAT_OPENAI_RESPONSES,
+    ]
     request.state.context.metadata["endpoint"] = "/{session_id}/v1/messages"
     return await handle_codex_request(
         request, adapter, "/{session_id}/v1/messages", session_id
