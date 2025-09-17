@@ -4,11 +4,9 @@ This is a simplified version that avoids problematic fixtures
 and focuses on basic functionality testing.
 """
 
-import json
 from typing import Any
 
 import pytest
-from httpx import AsyncClient
 
 from tests.helpers.test_data import (
     E2E_ENDPOINT_CONFIGURATIONS,
@@ -211,12 +209,12 @@ async def test_mock_response_structure() -> None:
 async def test_conversion_completed_successfully() -> None:
     """Verify that the endpoint script was successfully converted to pytest."""
     # Verify all key components exist
-    from tests.helpers.test_data import E2E_ENDPOINT_CONFIGURATIONS
     from tests.helpers.e2e_validation import (
-        validate_sse_event,
         parse_streaming_events,
+        validate_sse_event,
         validate_streaming_response_structure,
     )
+    from tests.helpers.test_data import E2E_ENDPOINT_CONFIGURATIONS
 
     # Should have endpoint configurations
     assert len(E2E_ENDPOINT_CONFIGURATIONS) > 0
@@ -228,7 +226,10 @@ async def test_conversion_completed_successfully() -> None:
 
     # Test data should be properly structured
     for config in E2E_ENDPOINT_CONFIGURATIONS:
-        assert all(key in config for key in ["name", "endpoint", "stream", "model", "format", "description"])
+        assert all(
+            key in config
+            for key in ["name", "endpoint", "stream", "model", "format", "description"]
+        )
         assert config["endpoint"].startswith("/")
         assert config["format"] in ["openai", "anthropic", "response_api", "codex"]
         assert isinstance(config["stream"], bool)

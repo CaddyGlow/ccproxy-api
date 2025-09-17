@@ -5,10 +5,10 @@ to specify their requirements and capabilities at declaration time (app creation
 rather than runtime (lifespan).
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Awaitable, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 import httpx
 import structlog

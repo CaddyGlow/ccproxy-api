@@ -491,8 +491,7 @@ class BaseHTTPAdapter(BaseAdapter):
             return pairs
 
         return [
-            (format_chain[i], format_chain[i + 1])
-            for i in range(len(format_chain) - 1)
+            (format_chain[i], format_chain[i + 1]) for i in range(len(format_chain) - 1)
         ]
 
     def _decode_json_body(self, body: bytes, *, context: str) -> dict[str, Any]:
@@ -529,7 +528,6 @@ class BaseHTTPAdapter(BaseAdapter):
             format_chain=format_chain,
         )
         return response
-    
 
     async def _execute_http_request(
         self, method: str, url: str, headers: dict[str, str], body: bytes

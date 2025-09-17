@@ -278,4 +278,3 @@ def get_validation_model_for_format(
     if model_name:
         return _get_model_class(model_name)
     return None
-

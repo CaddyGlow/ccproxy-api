@@ -86,9 +86,15 @@ class CodexAdapter(BaseHTTPAdapter):
             # Apply request format conversion if specified
             if ctx.format_chain and len(ctx.format_chain) > 1:
                 try:
-                    body = await self._execute_format_chain(
-                        body, ctx.format_chain, ctx, mode="request"
+                    request_payload = self._decode_json_body(
+                        body, context="codex_request"
                     )
+                    request_payload = await self._apply_format_chain(
+                        data=request_payload,
+                        format_chain=ctx.format_chain,
+                        stage="request",
+                    )
+                    body = self._encode_json_body(request_payload)
                 except Exception as e:
                     from starlette.responses import JSONResponse
 
@@ -175,9 +181,15 @@ class CodexAdapter(BaseHTTPAdapter):
             if ctx.format_chain and len(ctx.format_chain) > 1:
                 mode = "error" if buffered_response.status_code >= 400 else "response"
                 try:
-                    converted_body = await self._execute_format_chain(
-                        buffered_response.body, ctx.format_chain, ctx, mode=mode
+                    response_payload = self._decode_json_body(
+                        buffered_response.body, context=f"codex_{mode}"
                     )
+                    response_payload = await self._apply_format_chain(
+                        data=response_payload,
+                        format_chain=ctx.format_chain,
+                        stage=mode,  # type: ignore[arg-type]
+                    )
+                    converted_body = self._encode_json_body(response_payload)
                 except Exception as e:
                     logger.error(
                         "codex_format_chain_response_failed",
@@ -355,9 +367,15 @@ class CodexAdapter(BaseHTTPAdapter):
         # Apply request format conversion if a chain is defined
         if ctx.format_chain and len(ctx.format_chain) > 1:
             try:
-                body = await self._execute_format_chain(
-                    body, ctx.format_chain, ctx, mode="request"
+                request_payload = self._decode_json_body(
+                    body, context="codex_stream_request"
                 )
+                request_payload = await self._apply_format_chain(
+                    data=request_payload,
+                    format_chain=ctx.format_chain,
+                    stage="request",
+                )
+                body = self._encode_json_body(request_payload)
             except Exception as e:
                 from starlette.responses import JSONResponse
 

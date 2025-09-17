@@ -190,7 +190,9 @@ class TestEndpointE2E:
         response = await e2e_client.post(endpoint, json=request_data, headers=headers)
 
         # Basic response validation
-        error_text = response.text if isinstance(response.text, str) else str(response.content)
+        error_text = (
+            response.text if isinstance(response.text, str) else str(response.content)
+        )
         assert response.status_code == 200, (
             f"Endpoint {endpoint} failed with {response.status_code}: {error_text}"
         )
@@ -201,7 +203,11 @@ class TestEndpointE2E:
                 "text/event-stream"
             )
             # Handle async response.text
-            content = response.text if isinstance(response.text, str) else await response.aread()
+            content = (
+                response.text
+                if isinstance(response.text, str)
+                else await response.aread()
+            )
             if isinstance(content, bytes):
                 content = content.decode()
             assert "data: " in content
@@ -324,7 +330,9 @@ class TestEndpointE2E:
 
         # Parse and validate streaming content
         # Handle async response.text
-        content = response.text if isinstance(response.text, str) else await response.aread()
+        content = (
+            response.text if isinstance(response.text, str) else await response.aread()
+        )
         if isinstance(content, bytes):
             content = content.decode()
 
@@ -387,4 +395,3 @@ async def test_session_fixture_reuse(e2e_client: AsyncClient) -> None:
     response = await e2e_client.get("/")
     # We expect either a 200 (root handler) or 404 (no root handler), not a connection error
     assert response.status_code in [200, 404, 405]  # 405 for method not allowed
-

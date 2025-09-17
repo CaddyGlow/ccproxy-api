@@ -328,10 +328,10 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
             from_format="response_api",
             to_format="anthropic",
             adapter_factory=create_formatter_adapter_factory(
-                "anthropic.messages", "openai.chat_completions"
+                "openai.responses", "anthropic.messages"
             ),
             priority=100,  # Lower priority than SDK plugin
-            description="Anthropic Messages to OpenAI ChatCompletions (FormatterRegistry)",
+            description="OpenAI Responses to Anthropic Messages (FormatterRegistry)",
         ),
     ]
 

@@ -7,9 +7,9 @@ import structlog
 
 from ccproxy.services.adapters.format_adapter import FormatAdapterProtocol
 
+
 if TYPE_CHECKING:
     from ccproxy.core.plugins import (
-        FormatAdapterSpec,
         PluginManifest,
     )
 
@@ -71,7 +71,9 @@ class FormatRegistry:
             )
         return adapter
 
-    def get_if_exists(self, from_format: str, to_format: str) -> FormatAdapterProtocol | None:
+    def get_if_exists(
+        self, from_format: str, to_format: str
+    ) -> FormatAdapterProtocol | None:
         if not from_format or not to_format:
             raise ValueError("Format names cannot be empty")
         return self._adapters.get((from_format, to_format))
@@ -95,12 +97,7 @@ class FormatRegistry:
                 adapter = await adapter
             if not isinstance(adapter, FormatAdapterProtocol):
                 raise TypeError(
-                    "Adapter factory for %s->%s returned invalid type %r"
-                    % (
-                        spec.from_format,
-                        spec.to_format,
-                        adapter,
-                    )
+                    f"Adapter factory for {spec.from_format}->{spec.to_format} returned invalid type {adapter!r}"
                 )
 
             self.register(
