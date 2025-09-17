@@ -9,8 +9,8 @@ from ccproxy.llms.adapters.shared.constants import (
     ANTHROPIC_TO_OPENAI_ERROR_TYPE,
     ANTHROPIC_TO_OPENAI_FINISH_REASON,
 )
-from ccproxy.llms.anthropic import models as anthropic_models
-from ccproxy.llms.openai import models as openai_models
+from ccproxy.llms.models import anthropic as anthropic_models
+from ccproxy.llms.models import openai as openai_models
 
 
 FinishReason = Literal["stop", "length", "tool_calls"]
@@ -86,9 +86,9 @@ def convert__anthropic_usage_to_openai_responses__usage(
 @formatter("anthropic.error", "openai.error", "error")
 def convert__anthropic_to_openai__error(error: BaseModel) -> BaseModel:
     """Convert an Anthropic error payload to the OpenAI envelope."""
-    from ccproxy.llms.anthropic.models import ErrorResponse as AnthropicErrorResponse
-    from ccproxy.llms.openai.models import ErrorDetail
-    from ccproxy.llms.openai.models import ErrorResponse as OpenAIErrorResponse
+    from ccproxy.llms.models.anthropic import ErrorResponse as AnthropicErrorResponse
+    from ccproxy.llms.models.openai import ErrorDetail
+    from ccproxy.llms.models.openai import ErrorResponse as OpenAIErrorResponse
 
     if isinstance(error, AnthropicErrorResponse):
         anthropic_error = error.error

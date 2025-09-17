@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from ccproxy.core.constants import DEFAULT_MAX_TOKENS
 from ccproxy.llms.adapters.formatter_registry import formatter
 from ccproxy.llms.adapters.shared.constants import OPENAI_TO_ANTHROPIC_ERROR_TYPE
-from ccproxy.llms.anthropic import models as anthropic_models
-from ccproxy.llms.openai import models as openai_models
+from ccproxy.llms.models import anthropic as anthropic_models
+from ccproxy.llms.models import openai as openai_models
 
 
 @formatter("openai.error", "anthropic.error", "error")
@@ -659,13 +659,13 @@ def derive_thinking_config(
 def convert__openai_responses_to_anthropic_message__response(
     response: openai_models.ResponseObject,
 ) -> anthropic_models.MessageResponse:
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         TextBlock as AnthropicTextBlock,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         ThinkingBlock as AnthropicThinkingBlock,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         ToolUseBlock as AnthropicToolUseBlock,
     )
 

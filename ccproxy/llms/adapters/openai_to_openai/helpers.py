@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.llms.adapters.formatter_registry import formatter
-from ccproxy.llms.openai import models as openai_models
+from ccproxy.llms.models import openai as openai_models
 
 
 @formatter("openai.responses", "openai.completions", "usage")

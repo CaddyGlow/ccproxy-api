@@ -9,22 +9,22 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     CreateMessageRequest,
     ImageBlock,
     ImageSource,
     Message,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     MessageResponse as AnthropicMessageResponse,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     TextBlock as AnthropicTextBlock,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     Usage as AnthropicUsage,
 )
-from ccproxy.llms.openai.models import VALID_INCLUDE_VALUES, ResponseRequest
+from ccproxy.llms.models.openai import VALID_INCLUDE_VALUES, ResponseRequest
 
 
 class TestOpenAIModelsTypeSafety:

@@ -8,7 +8,7 @@ from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.llms.openai.models import ResponseObject
+from ccproxy.llms.models.openai import ResponseObject
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.streaming import DeferredStreaming
 from ccproxy.utils.headers import (

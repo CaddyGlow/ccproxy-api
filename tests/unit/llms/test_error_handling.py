@@ -7,22 +7,22 @@ from the test coverage.
 import pytest
 from pydantic import ValidationError
 
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     CreateMessageRequest as AnthropicCreateMessageRequest,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     Message as AnthropicMessage,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     MessageResponse as AnthropicMessageResponse,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     ChatCompletionRequest as OpenAIChatRequest,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     ChatMessage as OpenAIChatMessage,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     ResponseRequest as OpenAIResponseRequest,
 )
 
@@ -183,7 +183,7 @@ class TestAdapterErrorHandling:
 
         async def valid_event_stream():
             """Stream with valid events."""
-            from ccproxy.llms.anthropic.models import (
+            from ccproxy.llms.models.anthropic import (
                 ContentBlockDeltaEvent,
                 MessageResponse,
                 MessageStartEvent,
@@ -231,7 +231,7 @@ class TestEdgeCases:
 
     def test_openai_responses_request_all_include_values(self) -> None:
         """Test ResponseRequest with all valid include values."""
-        from ccproxy.llms.openai.models import VALID_INCLUDE_VALUES
+        from ccproxy.llms.models.openai import VALID_INCLUDE_VALUES
 
         request = OpenAIResponseRequest(
             model="gpt-4o",

@@ -1,6 +1,7 @@
 """Shared base model for all LLM API models."""
 
 from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -23,7 +24,7 @@ class LlmBaseModel(BaseModel):
         # Filter out empty collections (lists, dicts, sets)
         filtered_data = {}
         for key, value in data.items():
-            if isinstance(value, (list, dict, set)) and len(value) == 0:
+            if isinstance(value, list | dict | set) and len(value) == 0:
                 # Skip empty collections
                 continue
             filtered_data[key] = value

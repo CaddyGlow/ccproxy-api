@@ -13,11 +13,11 @@ import httpx
 import structlog
 
 # Import typed models from ccproxy/llms/
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     MessageResponse,
     MessageStartEvent,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     BaseStreamEvent,
     ChatCompletionChunk,
     ChatCompletionResponse,

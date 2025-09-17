@@ -405,13 +405,15 @@ class BaseHTTPAdapter(BaseAdapter):
         if mode == "response":
             # Reverse the format chain for response processing
             pairs: list[tuple[str, str]] = [
-                (format_chain[i + 1], format_chain[i]) for i in range(len(format_chain) - 1)
+                (format_chain[i + 1], format_chain[i])
+                for i in range(len(format_chain) - 1)
             ]
             pairs.reverse()  # Apply in reverse order: right→left
         else:
             # For requests and errors, use left→right as before
             pairs: list[tuple[str, str]] = [
-                (format_chain[i], format_chain[i + 1]) for i in range(len(format_chain) - 1)
+                (format_chain[i], format_chain[i + 1])
+                for i in range(len(format_chain) - 1)
             ]
 
         for step_index, (from_format, to_format) in enumerate(pairs, start=1):

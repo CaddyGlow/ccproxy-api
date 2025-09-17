@@ -13,7 +13,7 @@ The models are defined using modern Python 3.11 type hints and Pydantic V2 best 
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, RootModel, field_validator
+from pydantic import Field, RootModel, field_validator
 
 from ccproxy.llms.adapters.shared import LlmBaseModel
 

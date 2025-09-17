@@ -1,7 +1,10 @@
 """LLM format adapters with typed interfaces."""
 
 from .base import APIAdapter, BaseAPIAdapter
-from .formatter_adapter import FormatterRegistryAdapter, create_formatter_adapter_factory
+from .formatter_adapter import (
+    FormatterRegistryAdapter,
+    create_formatter_adapter_factory,
+)
 from .formatter_registry import (
     FormatterRegistration,
     FormatterRegistry,

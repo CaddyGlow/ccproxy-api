@@ -17,7 +17,9 @@ class FormatterGenericModel(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
-class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGenericModel, FormatterGenericModel]):
+class FormatterRegistryAdapter(
+    BaseAPIAdapter[FormatterGenericModel, FormatterGenericModel, FormatterGenericModel]
+):
     """Adapter that uses FormatterRegistry for format conversions.
 
     This adapter wraps formatter functions from the registry to provide
@@ -68,16 +70,21 @@ class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGe
 
         # We need to convert the dict to the appropriate input model for the formatter
         # Based on the format pair, determine the correct input model type
-        typed_request = self._dict_to_input_model(request_dict, self.source_format, "request")
+        typed_request = self._dict_to_input_model(
+            request_dict, self.source_format, "request"
+        )
 
         import inspect
+
         if inspect.iscoroutinefunction(converter):
             result = await converter(typed_request)
         else:
             result = converter(typed_request)
 
         # Convert result to FormatterGenericModel for compatibility
-        if isinstance(result, BaseModel) and not isinstance(result, FormatterGenericModel):
+        if isinstance(result, BaseModel) and not isinstance(
+            result, FormatterGenericModel
+        ):
             # Convert typed model to dict then to FormatterGenericModel
             result_dict = result.model_dump()
             return FormatterGenericModel(**result_dict)
@@ -85,7 +92,11 @@ class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGe
             return FormatterGenericModel(**result)
         else:
             # Return as-is if it's already FormatterGenericModel or handle unexpected types
-            return result if isinstance(result, FormatterGenericModel) else FormatterGenericModel(data=result)
+            return (
+                result
+                if isinstance(result, FormatterGenericModel)
+                else FormatterGenericModel(data=result)
+            )
 
     async def adapt_response(self, response: FormatterGenericModel) -> BaseModel:
         """Convert response using registry formatter."""
@@ -102,8 +113,11 @@ class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGe
 
         # Debug logging
         import logging
+
         logger = logging.getLogger(__name__)
-        logger.info(f"FormatterAdapter: source_format={self.source_format}, target_format={self.target_format}, detected_format={detected_format}")
+        logger.info(
+            f"FormatterAdapter: source_format={self.source_format}, target_format={self.target_format}, detected_format={detected_format}"
+        )
 
         # If the detected format doesn't match our source format, we need to use the reverse formatter
         if detected_format != self.source_format and detected_format:
@@ -119,25 +133,36 @@ class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGe
                 load_builtin_formatter_modules()
                 all_formatters = dict(iter_registered_formatters())
 
-                reverse_formatter = all_formatters.get((detected_format, self.target_format, "response"))
+                reverse_formatter = all_formatters.get(
+                    (detected_format, self.target_format, "response")
+                )
                 if reverse_formatter:
                     # Use the reverse formatter with correct input type
-                    typed_response = self._dict_to_input_model(response_dict, detected_format, "response")
+                    typed_response = self._dict_to_input_model(
+                        response_dict, detected_format, "response"
+                    )
 
                     import inspect
+
                     if inspect.iscoroutinefunction(reverse_formatter):
                         result = await reverse_formatter(typed_response)
                     else:
                         result = reverse_formatter(typed_response)
 
                     # Convert result to FormatterGenericModel for compatibility
-                    if isinstance(result, BaseModel) and not isinstance(result, FormatterGenericModel):
+                    if isinstance(result, BaseModel) and not isinstance(
+                        result, FormatterGenericModel
+                    ):
                         result_dict = result.model_dump()
                         return FormatterGenericModel(**result_dict)
                     elif isinstance(result, dict):
                         return FormatterGenericModel(**result)
                     else:
-                        return result if isinstance(result, FormatterGenericModel) else FormatterGenericModel(data=result)
+                        return (
+                            result
+                            if isinstance(result, FormatterGenericModel)
+                            else FormatterGenericModel(data=result)
+                        )
             except Exception:
                 # Fall back to original approach if reverse formatter lookup fails
                 pass
@@ -146,16 +171,21 @@ class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGe
         converter = self.formatters["response"]
 
         # Convert dict to appropriate input model for the formatter
-        typed_response = self._dict_to_input_model(response_dict, self.source_format, "response")
+        typed_response = self._dict_to_input_model(
+            response_dict, self.source_format, "response"
+        )
 
         import inspect
+
         if inspect.iscoroutinefunction(converter):
             result = await converter(typed_response)
         else:
             result = converter(typed_response)
 
         # Convert result to FormatterGenericModel for compatibility
-        if isinstance(result, BaseModel) and not isinstance(result, FormatterGenericModel):
+        if isinstance(result, BaseModel) and not isinstance(
+            result, FormatterGenericModel
+        ):
             # Convert typed model to dict then to FormatterGenericModel
             result_dict = result.model_dump()
             return FormatterGenericModel(**result_dict)
@@ -163,9 +193,15 @@ class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGe
             return FormatterGenericModel(**result)
         else:
             # Return as-is if it's already FormatterGenericModel or handle unexpected types
-            return result if isinstance(result, FormatterGenericModel) else FormatterGenericModel(data=result)
+            return (
+                result
+                if isinstance(result, FormatterGenericModel)
+                else FormatterGenericModel(data=result)
+            )
 
-    def adapt_stream(self, stream: AsyncIterator[FormatterGenericModel]) -> AsyncGenerator[BaseModel, None]:
+    def adapt_stream(
+        self, stream: AsyncIterator[FormatterGenericModel]
+    ) -> AsyncGenerator[BaseModel, None]:
         """Convert stream using registry formatter."""
         if "stream" not in self.formatters:
             raise ValueError(
@@ -197,7 +233,7 @@ class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGe
             return error
 
         # Extract dict from the model for formatter (error can be any BaseModel type)
-        if hasattr(error, 'model_dump'):
+        if hasattr(error, "model_dump"):
             error_dict = error.model_dump()
         else:
             # Fallback for other BaseModel types
@@ -236,49 +272,72 @@ class FormatterRegistryAdapter(BaseAPIAdapter[FormatterGenericModel, FormatterGe
             return "anthropic.messages"
 
         # Detect OpenAI ChatCompletion format
-        if "choices" in data and "object" in data and data.get("object") == "chat.completion":
+        if (
+            "choices" in data
+            and "object" in data
+            and data.get("object") == "chat.completion"
+        ):
             return "openai.chat_completions"
 
         # Detect Response API format
-        if "output" in data and "status" in data and "object" in data and data.get("object") == "response":
+        if (
+            "output" in data
+            and "status" in data
+            and "object" in data
+            and data.get("object") == "response"
+        ):
             return "openai.responses"
 
         # Default fallback - return empty to indicate unknown
         return ""
 
-    def _dict_to_input_model(self, data: dict[str, Any], format_name: str, operation: str) -> BaseModel:
+    def _dict_to_input_model(
+        self, data: dict[str, Any], format_name: str, operation: str
+    ) -> BaseModel:
         """Convert dict to appropriate input model based on format and operation."""
         # Map format names to their corresponding model types for requests
         if operation == "request":
             if format_name == "openai.chat_completions":
-                from ccproxy.llms.openai import models as openai_models
+                from ccproxy.llms.models import openai as openai_models
+
                 return openai_models.ChatCompletionRequest.model_validate(data)
             elif format_name == "openai.responses":
-                from ccproxy.llms.openai.models import ResponseRequest
+                from ccproxy.llms.models.openai import ResponseRequest
+
                 return ResponseRequest.model_validate(data)
             elif format_name == "anthropic.messages":
-                from ccproxy.llms.anthropic import models as anthropic_models
+                from ccproxy.llms.models import anthropic as anthropic_models
+
                 return anthropic_models.CreateMessageRequest.model_validate(data)
         elif operation == "response":
             if format_name == "openai.chat_completions":
-                from ccproxy.llms.openai import models as openai_models
+                from ccproxy.llms.models import openai as openai_models
+
                 return openai_models.ChatCompletionResponse.model_validate(data)
             elif format_name == "openai.responses":
                 # For Response API format, check the actual data structure to determine the correct model
                 # If data has "choices" field, it's OpenAI ChatCompletion format
                 if "choices" in data:
-                    from ccproxy.llms.openai import models as openai_models
+                    from ccproxy.llms.models import openai as openai_models
+
                     return openai_models.ChatCompletionResponse.model_validate(data)
                 # If data has "content" and "type" fields, it's Anthropic MessageResponse format
-                elif "content" in data and "type" in data and data.get("type") == "message":
-                    from ccproxy.llms.anthropic import models as anthropic_models
+                elif (
+                    "content" in data
+                    and "type" in data
+                    and data.get("type") == "message"
+                ):
+                    from ccproxy.llms.models import anthropic as anthropic_models
+
                     return anthropic_models.MessageResponse.model_validate(data)
                 else:
                     # Otherwise, it's true Response API format
-                    from ccproxy.llms.openai.models import ResponseObject
+                    from ccproxy.llms.models.openai import ResponseObject
+
                     return ResponseObject.model_validate(data)
             elif format_name == "anthropic.messages":
-                from ccproxy.llms.anthropic import models as anthropic_models
+                from ccproxy.llms.models import anthropic as anthropic_models
+
                 return anthropic_models.MessageResponse.model_validate(data)
 
         # Fallback to FormatterGenericModel for unknown types
@@ -322,7 +381,6 @@ def create_formatter_adapter_factory(
             iter_registered_formatters,
             load_builtin_formatter_modules,
         )
-        from ccproxy.services.container import ServiceContainer
 
         # Load formatter modules and create registry
         load_builtin_formatter_modules()

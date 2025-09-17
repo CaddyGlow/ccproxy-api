@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from ccproxy.llms.openai.models import ResponseObject
+from ccproxy.llms.models.openai import ResponseObject
 from ccproxy.plugins.copilot.adapter import CopilotAdapter
 from ccproxy.plugins.copilot.config import CopilotConfig
 

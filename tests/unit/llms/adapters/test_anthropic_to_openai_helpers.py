@@ -5,8 +5,8 @@ from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
     convert__anthropic_message_to_openai_responses__request,
     convert__anthropic_message_to_openai_responses__stream,
 )
-from ccproxy.llms.anthropic import models as anthropic_models
-from ccproxy.llms.openai import models as openai_models
+from ccproxy.llms.models import anthropic as anthropic_models
+from ccproxy.llms.models import openai as openai_models
 
 
 @pytest.mark.asyncio

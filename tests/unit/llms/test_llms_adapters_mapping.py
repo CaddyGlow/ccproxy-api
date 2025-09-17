@@ -1,45 +1,45 @@
 import pytest
 
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     CreateMessageRequest as AnthropicCreateMessageRequest,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     MessageResponse as AnthropicMessageResponse,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     TextBlock as AnthropicTextBlock,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     ThinkingBlock as AnthropicThinkingBlock,
 )
-from ccproxy.llms.anthropic.models import (
+from ccproxy.llms.models.anthropic import (
     Usage as AnthropicUsage,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     ChatCompletionRequest as OpenAIChatRequest,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     ChatCompletionResponse as OpenAIChatResponse,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     InputTokensDetails as OpenAIInputTokensDetails,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     MessageOutput as OpenAIResponseMessage,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     OutputTextContent as OpenAIOutputTextContent,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     OutputTokensDetails as OpenAIOutputTokensDetails,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     ResponseObject as OpenAIResponseObject,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     ResponseRequest as OpenAIResponseRequest,
 )
-from ccproxy.llms.openai.models import (
+from ccproxy.llms.models.openai import (
     ResponseUsage as OpenAIResponseUsage,
 )
 
@@ -414,34 +414,34 @@ async def test_openai_responses_request_stream_maps_refusal_done_event():
     from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         ContentBlockDeltaEvent as AnthCBDelta,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         ContentBlockStartEvent as AnthCBStart,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         ContentBlockStopEvent as AnthCBStop,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         MessageDelta as AnthDelta,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         MessageDeltaEvent as AnthMsgDelta,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         MessageResponse as AnthMessage,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         MessageStartEvent as AnthMsgStart,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         MessageStopEvent as AnthMsgStop,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         TextBlock as AnthText,
     )
-    from ccproxy.llms.anthropic.models import (
+    from ccproxy.llms.models.anthropic import (
         Usage as AnthUsage,
     )
 
