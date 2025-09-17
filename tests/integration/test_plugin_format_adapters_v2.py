@@ -6,9 +6,9 @@ with actual plugins and the service container.
 
 import pytest
 
-from ccproxy.adapters.base import APIAdapter
 from ccproxy.config.settings import Settings
 from ccproxy.core.plugins import FormatAdapterSpec, PluginManifest, PluginRegistry
+from ccproxy.llms.formatters.base import APIAdapter
 from ccproxy.services.container import ServiceContainer
 
 

@@ -5,8 +5,8 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 
-from ccproxy.adapters.base import APIAdapter
 from ccproxy.auth.manager import AuthManager
+from ccproxy.llms.formatters.base import APIAdapter
 from ccproxy.services.handler_config import HandlerConfig
 
 

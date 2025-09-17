@@ -1,6 +1,6 @@
 import pytest
 
-from ccproxy.adapters.openai.streaming import OpenAIStreamProcessor
+from ccproxy.llms.streaming.processors import OpenAIStreamProcessor
 
 
 async def _gen_chunks():

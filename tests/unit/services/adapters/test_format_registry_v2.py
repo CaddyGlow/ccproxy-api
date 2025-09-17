@@ -6,11 +6,11 @@ including manifest registration and conflict resolution.
 
 import pytest
 
-from ccproxy.adapters.base import APIAdapter
 from ccproxy.core.plugins import (
     FormatAdapterSpec,
     PluginManifest,
 )
+from ccproxy.llms.formatters.base import APIAdapter
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
 
