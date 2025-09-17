@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Any, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ccproxy.adapters.base import BaseAPIAdapter as LegacyBaseAPIAdapter
+from .legacy_base import LegacyBaseAPIAdapter
+from ..models.openai import AnyStreamEvent
 
 
 if TYPE_CHECKING:

@@ -760,3 +760,10 @@ AnyStreamEvent = RootModel[
     | CodeInterpreterCallCodeDoneEvent
     | ErrorEvent
 ]
+
+
+# Utility functions
+def generate_responses_id() -> str:
+    """Generate an OpenAI-compatible response ID."""
+    import uuid
+    return f"chatcmpl-{uuid.uuid4().hex[:29]}"

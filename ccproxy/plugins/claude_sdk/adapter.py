@@ -285,9 +285,7 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
                     try:
                         if needs_conversion:
                             # Use OpenAIStreamProcessor to convert Claude SSE to OpenAI SSE format
-                            from ccproxy.adapters.openai.streaming import (
-                                OpenAIStreamProcessor,
-                            )
+                            from ccproxy.llms.streaming import OpenAIStreamProcessor
 
                             # Create processor with SSE output format
                             processor = OpenAIStreamProcessor(

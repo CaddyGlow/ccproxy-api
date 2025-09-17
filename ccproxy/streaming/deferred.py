@@ -679,7 +679,7 @@ class DeferredStreaming(StreamingResponse):
         Args:
             json_stream: Stream of JSON objects after format conversion
         """
-        from ccproxy.adapters.openai.streaming import AnthropicSSEFormatter
+        from ccproxy.llms.streaming import AnthropicSSEFormatter
 
         formatter = AnthropicSSEFormatter()
         request_id = None
