@@ -9,7 +9,8 @@ from typing import Any
 import structlog
 from fastapi.responses import StreamingResponse
 
-from ccproxy.adapters.openai.adapter import OpenAIAdapter
+from ccproxy.llms.adapters.formatter_adapter import FormatterRegistryAdapter, FormatterGenericModel
+from ccproxy.llms.adapters.formatter_registry import FormatterRegistry, load_builtin_formatter_modules
 from ccproxy.core.request_context import RequestContext
 from ccproxy.testing import RealisticMockResponseGenerator
 
@@ -23,7 +24,7 @@ class MockResponseHandler:
     def __init__(
         self,
         mock_generator: RealisticMockResponseGenerator,
-        openai_adapter: OpenAIAdapter | None = None,
+        openai_adapter: FormatterRegistryAdapter | None = None,
         error_rate: float = 0.05,
         latency_range: tuple[float, float] = (0.5, 2.0),
     ) -> None:
@@ -33,7 +34,25 @@ class MockResponseHandler:
         - Supports both Anthropic and OpenAI formats
         """
         self.mock_generator = mock_generator
-        self.openai_adapter = openai_adapter or OpenAIAdapter()
+        if openai_adapter is None:
+            formatter_registry = FormatterRegistry()
+            load_builtin_formatter_modules()  # Load global formatters
+            # Populate registry from global static registrations
+            from ccproxy.llms.adapters.formatter_registry import iter_registered_formatters
+            for registration in iter_registered_formatters():
+                formatter_registry.register(
+                    source_format=registration.source_format,
+                    target_format=registration.target_format,
+                    operation=registration.operation,
+                    formatter=registration.formatter,
+                    module_name=getattr(registration.formatter, '__module__', None)
+                )
+            openai_adapter = FormatterRegistryAdapter(
+                formatter_registry=formatter_registry,
+                source_format="anthropic.messages",
+                target_format="openai.chat_completions"
+            )
+        self.openai_adapter = openai_adapter
         self.error_rate = error_rate
         self.latency_range = latency_range
 
@@ -116,7 +135,10 @@ class MockResponseHandler:
 
         # Convert to OpenAI format if needed
         if is_openai_format and message_type != "tool_use":
-            mock_response = await self.openai_adapter.adapt_response(mock_response)
+            # Wrap in FormatterGenericModel for new adapter interface
+            formatted_response = FormatterGenericModel(**mock_response)
+            converted_response = await self.openai_adapter.adapt_response(formatted_response)
+            mock_response = converted_response.model_dump()
 
         # Update context with metrics
         if ctx:

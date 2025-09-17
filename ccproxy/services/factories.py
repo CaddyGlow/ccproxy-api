@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 import structlog
 
-from ccproxy.adapters.openai.adapter import OpenAIAdapter
+from ccproxy.llms.adapters.formatter_adapter import FormatterRegistryAdapter
 from ccproxy.config.settings import Settings
 from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.core.plugins.hooks.registry import HookRegistry
@@ -105,11 +105,29 @@ class ConcreteServiceFactory:
         """Create mock handler instance."""
         mock_generator = RealisticMockResponseGenerator()
         settings = self._container.get_service(Settings)
-        openai_adapter = OpenAIAdapter(
-            openai_thinking_xml=getattr(
-                getattr(settings, "llm", object()), "openai_thinking_xml", True
+        # Create formatter adapter for anthropic->openai conversion (for mock responses)
+        formatter_registry = FormatterRegistry()
+        load_builtin_formatter_modules()  # Load global formatters
+        # Populate registry from global static registrations
+        for registration in iter_registered_formatters():
+            formatter_registry.register(
+                source_format=registration.source_format,
+                target_format=registration.target_format,
+                operation=registration.operation,
+                formatter=registration.formatter,
+                module_name=getattr(registration.formatter, '__module__', None)
             )
+        openai_adapter = FormatterRegistryAdapter(
+            formatter_registry=formatter_registry,
+            source_format="anthropic.messages",
+            target_format="openai.chat_completions"
         )
+        # Configure streaming settings if needed
+        openai_thinking_xml = getattr(
+            getattr(settings, "llm", object()), "openai_thinking_xml", True
+        )
+        if hasattr(openai_adapter, "configure_streaming"):
+            openai_adapter.configure_streaming(openai_thinking_xml=openai_thinking_xml)
 
         handler = MockResponseHandler(
             mock_generator=mock_generator,
