@@ -36,9 +36,10 @@ _STATIC_REGISTRATIONS: list[FormatterRegistration] = []
 
 # Built-in helper modules that register formatters on import
 _BUILTIN_HELPER_MODULES: tuple[str, ...] = (
-    "ccproxy.llms.adapters.anthropic_to_openai.helpers",
-    "ccproxy.llms.adapters.openai_to_anthropic.helpers",
-    "ccproxy.llms.adapters.openai_to_openai.helpers",
+    "ccproxy.llms.formatters.anthropic_to_openai.helpers",
+    "ccproxy.llms.formatters.openai_to_anthropic.helpers",
+    "ccproxy.llms.formatters.openai_to_openai.helpers",
+    "ccproxy.llms.formatters.response_api.helpers",
 )
 
 

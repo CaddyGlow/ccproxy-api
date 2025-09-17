@@ -374,7 +374,9 @@ class MessageResponse(BaseModel):
         str | None,
         Field(description="The stop sequence that triggered stopping (if applicable)"),
     ] = None
-    usage: Annotated[anthropic_models.Usage, Field(description="Token usage information")]
+    usage: Annotated[
+        anthropic_models.Usage, Field(description="Token usage information")
+    ]
     container: Annotated[
         dict[str, Any] | None,
         Field(description="Information about container used in the request"),

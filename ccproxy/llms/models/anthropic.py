@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import Field
 
-from ccproxy.llms.adapters.shared import LlmBaseModel
+from ccproxy.llms.formatters.shared import LlmBaseModel
 
 
 # ===================================================================

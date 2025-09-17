@@ -2,7 +2,7 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-from ccproxy.llms.adapters.formatter_registry import formatter
+from ccproxy.llms.formatters.formatter_registry import formatter
 from ccproxy.llms.models import openai as openai_models
 
 

@@ -17,9 +17,8 @@ from claude_code_sdk import (
     ToolUseBlock,
 )
 
-from ccproxy.adapters.anthropic.models.messages import MessageResponse, TextContentBlock
-from ccproxy.adapters.anthropic.models.requests import Usage
 from ccproxy.core.errors import ClaudeProxyError
+from ccproxy.llms.models.anthropic import MessageResponse, TextBlock, Usage
 
 
 @pytest.fixture
@@ -43,7 +42,7 @@ def mock_internal_claude_sdk_service() -> AsyncMock:
             )
 
         # Create content block
-        content_block = TextContentBlock(type="text", text="Hello! How can I help you?")
+        content_block = TextBlock(type="text", text="Hello! How can I help you?")
 
         # Create usage object
         usage = Usage(input_tokens=10, output_tokens=8)
@@ -159,9 +158,7 @@ def mock_internal_claude_sdk_service_streaming() -> AsyncMock:
             return mock_streaming_response()
         else:
             # Return proper MessageResponse object for non-streaming
-            content_block = TextContentBlock(
-                type="text", text="Hello! How can I help you?"
-            )
+            content_block = TextBlock(type="text", text="Hello! How can I help you?")
 
             usage = Usage(input_tokens=10, output_tokens=8)
 

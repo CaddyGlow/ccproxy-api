@@ -13,7 +13,7 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
-from ccproxy.llms.adapters.formatter_adapter import create_formatter_adapter_factory
+from ccproxy.llms.formatters.formatter_adapter import create_formatter_adapter_factory
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import ClaudeSDKAdapter

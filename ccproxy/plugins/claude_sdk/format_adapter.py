@@ -8,7 +8,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.llms.adapters.formatter_adapter import FormatterRegistryAdapter
+from ccproxy.llms.formatters.formatter_adapter import FormatterRegistryAdapter
 
 
 logger = get_plugin_logger()
@@ -26,7 +26,7 @@ class ClaudeSDKFormatAdapter:
         """Initialize the format adapter."""
         self.logger = logger
         # Create FormatterRegistryAdapter with registry
-        from ccproxy.llms.adapters.formatter_registry import (
+        from ccproxy.llms.formatters.formatter_registry import (
             FormatterRegistry,
             iter_registered_formatters,
             load_builtin_formatter_modules,
@@ -45,7 +45,7 @@ class ClaudeSDKFormatAdapter:
         self.formatter_adapter = FormatterRegistryAdapter(
             formatter_registry=registry,
             source_format="openai",
-            target_format="anthropic"
+            target_format="anthropic",
         )
 
     async def adapt_request(self, request_data: dict[str, Any]) -> dict[str, Any]:
@@ -68,9 +68,10 @@ class ClaudeSDKFormatAdapter:
                 if "role" in first_msg and isinstance(first_msg.get("content"), str):
                     # This looks like OpenAI format, convert it
                     self.logger.debug("converting_openai_format_to_anthropic_format")
-                    from ccproxy.llms.adapters.formatter_adapter import (
+                    from ccproxy.llms.formatters.formatter_adapter import (
                         FormatterGenericModel,
                     )
+
                     generic_request = FormatterGenericModel(**request_data)
                     result = await self.formatter_adapter.adapt_request(generic_request)
                     return result.model_dump()

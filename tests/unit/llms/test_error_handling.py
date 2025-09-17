@@ -99,7 +99,7 @@ class TestAdapterErrorHandling:
     @pytest.mark.asyncio
     async def test_adapter_handles_empty_request(self) -> None:
         """Test that adapters raise ValidationError for empty/invalid requests."""
-        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
+        from ccproxy.llms.formatters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -118,7 +118,7 @@ class TestAdapterErrorHandling:
     @pytest.mark.asyncio
     async def test_adapter_handles_malformed_content(self) -> None:
         """Test that adapters handle malformed content gracefully."""
-        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
+        from ccproxy.llms.formatters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -143,7 +143,7 @@ class TestAdapterErrorHandling:
     @pytest.mark.asyncio
     async def test_adapter_validates_required_fields(self) -> None:
         """Test that adapters validate required fields properly."""
-        from ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses import (
+        from ccproxy.llms.formatters.anthropic_to_openai.messages_to_responses import (
             AnthropicMessagesToOpenAIResponsesAdapter,
         )
 
@@ -161,7 +161,7 @@ class TestAdapterErrorHandling:
     @pytest.mark.asyncio
     async def test_adapter_validates_response_structure(self) -> None:
         """Test that adapters validate response structures properly."""
-        from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
+        from ccproxy.llms.formatters.anthropic_to_openai.messages_to_chat import (
             AnthropicMessagesToOpenAIChatAdapter,
         )
 
@@ -175,7 +175,7 @@ class TestAdapterErrorHandling:
     @pytest.mark.asyncio
     async def test_adapter_stream_processes_valid_events(self) -> None:
         """Test that streaming adapters process valid events correctly."""
-        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
+        from ccproxy.llms.formatters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 

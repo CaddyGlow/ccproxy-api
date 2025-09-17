@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
+from ccproxy.llms.formatters.anthropic_to_openai.helpers import (
     convert__anthropic_message_to_openai_responses__request,
 )
-from ccproxy.llms.adapters.formatter_registry import (
+from ccproxy.llms.formatters.formatter_registry import (
     FormatterRegistry,
     iter_registered_formatters,
     load_builtin_formatter_modules,

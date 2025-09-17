@@ -733,7 +733,7 @@ CCProxy includes a compatibility shim system that enables seamless integration b
 
 #### AdapterShim Overview
 
-The `AdapterShim` class provides a compatibility layer that wraps strongly-typed adapters from `ccproxy.llms.adapters` to work with existing code that expects `dict[str, Any]` interfaces.
+The `AdapterShim` class provides a compatibility layer that wraps strongly-typed adapters from `ccproxy.llms.formatters` to work with existing code that expects `dict[str, Any]` interfaces.
 
 **Key Features:**
 - **Automatic Type Conversion**: Seamlessly converts between dict and BaseModel formats
@@ -766,8 +766,8 @@ The shim sits between legacy code expecting dict-based interfaces and modern typ
 ##### Manual Shim Creation
 
 ```python
-from ccproxy.llms.adapters.shim import AdapterShim
-from ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses import (
+from ccproxy.llms.formatters.shim import AdapterShim
+from ccproxy.llms.formatters.anthropic_to_openai.messages_to_responses import (
     AnthropicMessagesToOpenAIResponsesAdapter
 )
 

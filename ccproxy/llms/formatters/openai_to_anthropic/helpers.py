@@ -6,8 +6,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from ccproxy.core.constants import DEFAULT_MAX_TOKENS
-from ccproxy.llms.adapters.formatter_registry import formatter
-from ccproxy.llms.adapters.shared.constants import OPENAI_TO_ANTHROPIC_ERROR_TYPE
+from ccproxy.llms.formatters.formatter_registry import formatter
+from ccproxy.llms.formatters.shared.constants import OPENAI_TO_ANTHROPIC_ERROR_TYPE
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
 
@@ -310,7 +310,33 @@ async def convert__openai_chat_to_anthropic_message__request(
                 system_value = inject
 
     if system_value is not None:
-        payload_data["system"] = system_value
+        # Ensure system value is a string, not a complex object
+        if isinstance(system_value, str):
+            payload_data["system"] = system_value
+        else:
+            # If system_value is not a string, try to extract text content
+            try:
+                if isinstance(system_value, list):
+                    # Handle list format: [{"type": "text", "text": "...", "cache_control": {...}}]
+                    text_parts = []
+                    for part in system_value:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            text_content = part.get("text")
+                            if isinstance(text_content, str):
+                                text_parts.append(text_content)
+                    if text_parts:
+                        payload_data["system"] = " ".join(text_parts)
+                elif (
+                    isinstance(system_value, dict)
+                    and system_value.get("type") == "text"
+                ):
+                    # Handle single dict format: {"type": "text", "text": "...", "cache_control": {...}}
+                    text_content = system_value.get("text")
+                    if isinstance(text_content, str):
+                        payload_data["system"] = text_content
+            except Exception:
+                # Fallback: convert to string representation
+                payload_data["system"] = str(system_value)
     if request.stream is not None:
         payload_data["stream"] = request.stream
 
@@ -938,6 +964,141 @@ def convert__openai_responses_to_anthropic_messages__stream(
                     usage=convert__openai_responses_usage_to_anthropic__usage(usage)
                     if usage
                     else anthropic_models.Usage(input_tokens=0, output_tokens=0),
+                )
+                yield anthropic_models.MessageStopEvent(type="message_stop")
+                break
+
+    return generator()
+
+
+@formatter("openai.chat_completions", "anthropic.messages", "stream")
+def convert__openai_chat_to_anthropic_messages__stream(
+    stream: AsyncIterator[openai_models.ChatCompletionChunk],
+) -> AsyncGenerator[anthropic_models.MessageStreamEvent, None]:
+    """Convert OpenAI ChatCompletion stream to Anthropic MessageStreamEvent stream."""
+
+    async def generator() -> AsyncGenerator[anthropic_models.MessageStreamEvent, None]:
+        message_started = False
+        text_block_started = False
+        accumulated_content = ""
+        model_id = ""
+
+        async for chunk in stream:
+            # Handle both dict and typed model inputs
+            if isinstance(chunk, dict):
+                if not chunk.get("choices"):
+                    continue
+                choices = chunk["choices"]
+                if not choices:
+                    continue
+                choice = choices[0]
+                model_id = chunk.get("model", model_id)
+            else:
+                if not chunk.choices:
+                    continue
+                choice = chunk.choices[0]
+                model_id = chunk.model or model_id
+
+            # Start message if not started
+            if not message_started:
+                chunk_id = (
+                    chunk.get("id", "msg_stream")
+                    if isinstance(chunk, dict)
+                    else (chunk.id or "msg_stream")
+                )
+                yield anthropic_models.MessageStartEvent(
+                    type="message_start",
+                    message=anthropic_models.MessageResponse(
+                        id=chunk_id,
+                        type="message",
+                        role="assistant",
+                        content=[],
+                        model=model_id,
+                        stop_reason=None,
+                        stop_sequence=None,
+                        usage=anthropic_models.Usage(input_tokens=0, output_tokens=0),
+                    ),
+                )
+                message_started = True
+
+            # Handle content delta - support both dict and typed formats
+            content = None
+            finish_reason = None
+
+            if isinstance(chunk, dict):
+                if choice.get("delta") and choice["delta"].get("content"):
+                    content = choice["delta"]["content"]
+                finish_reason = choice.get("finish_reason")
+            else:
+                if choice.delta and choice.delta.content:
+                    content = choice.delta.content
+                finish_reason = choice.finish_reason
+
+            if content:
+                accumulated_content += content
+
+                # Start content block if not started
+                if not text_block_started:
+                    yield anthropic_models.ContentBlockStartEvent(
+                        type="content_block_start",
+                        index=0,
+                        content_block=anthropic_models.TextBlock(type="text", text=""),
+                    )
+                    text_block_started = True
+
+                # Emit content delta
+                yield anthropic_models.ContentBlockDeltaEvent(
+                    type="content_block_delta",
+                    index=0,
+                    delta=anthropic_models.TextBlock(type="text", text=content),
+                )
+
+            # Handle finish reason
+            if finish_reason:
+                # Stop content block if started
+                if text_block_started:
+                    yield anthropic_models.ContentBlockStopEvent(
+                        type="content_block_stop", index=0
+                    )
+                    text_block_started = False
+
+                # Map OpenAI finish reason to Anthropic stop reason
+                stop_reason_map = {
+                    "stop": "end_turn",
+                    "length": "max_tokens",
+                    "function_call": "tool_use",
+                    "content_filter": "stop_sequence",
+                    "null": "end_turn",
+                }
+                stop_reason = stop_reason_map.get(finish_reason, "end_turn")
+
+                # Get usage if available
+                if isinstance(chunk, dict):
+                    usage = chunk.get("usage")
+                    anthropic_usage = (
+                        anthropic_models.Usage(
+                            input_tokens=usage.get("prompt_tokens", 0),
+                            output_tokens=usage.get("completion_tokens", 0),
+                        )
+                        if usage
+                        else anthropic_models.Usage(input_tokens=0, output_tokens=0)
+                    )
+                else:
+                    usage = getattr(chunk, "usage", None)
+                    anthropic_usage = (
+                        anthropic_models.Usage(
+                            input_tokens=usage.prompt_tokens,
+                            output_tokens=usage.completion_tokens,
+                        )
+                        if usage
+                        else anthropic_models.Usage(input_tokens=0, output_tokens=0)
+                    )
+
+                # Emit message delta and stop
+                yield anthropic_models.MessageDeltaEvent(
+                    type="message_delta",
+                    delta=anthropic_models.MessageDelta(stop_reason=stop_reason),
+                    usage=anthropic_usage,
                 )
                 yield anthropic_models.MessageStopEvent(type="message_stop")
                 break

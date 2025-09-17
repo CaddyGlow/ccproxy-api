@@ -18,7 +18,6 @@ from ccproxy.core.plugins.hooks.base import HookContext
 
 
 if TYPE_CHECKING:
-    from ccproxy.llms.adapters.base import BaseAPIAdapter as APIAdapter
     from ccproxy.core.request_context import RequestContext
     from ccproxy.services.handler_config import HandlerConfig
 
@@ -598,9 +597,29 @@ class DeferredStreaming(StreamingResponse):
         )
 
         # Handle both legacy dict-based and new model-based adapters
-        if hasattr(adapter, 'adapt_stream'):
+        if hasattr(adapter, "adapt_stream"):
             try:
                 adapted_stream = adapter.adapt_stream(json_stream)
+            except ValueError as e:
+                # Fail fast for missing formatters - don't silently fall back
+                if "No stream formatter available" in str(e):
+                    logger.error(
+                        "streaming_formatter_missing_failing_fast",
+                        adapter_type=type(adapter).__name__,
+                        error=str(e),
+                        request_id=request_id,
+                        category="streaming_conversion",
+                    )
+                    raise e
+                else:
+                    logger.warning(
+                        "adapter_stream_failed_fallback_to_passthrough",
+                        adapter_type=type(adapter).__name__,
+                        error=str(e),
+                        request_id=request_id,
+                    )
+                    # Fallback to passthrough for other errors
+                    adapted_stream = json_stream
             except Exception as e:
                 logger.warning(
                     "adapter_stream_failed_fallback_to_passthrough",
@@ -608,7 +627,7 @@ class DeferredStreaming(StreamingResponse):
                     error=str(e),
                     request_id=request_id,
                 )
-                # Fallback to passthrough if adapter fails
+                # Fallback to passthrough for unexpected errors
                 adapted_stream = json_stream
         else:
             # No adapter, passthrough
@@ -708,7 +727,7 @@ class DeferredStreaming(StreamingResponse):
             chunk_count += 1
 
             # Convert model to dict if needed
-            if hasattr(json_obj, 'model_dump'):
+            if hasattr(json_obj, "model_dump"):
                 json_obj = json_obj.model_dump()
             elif not isinstance(json_obj, dict):
                 # Skip non-dict, non-model objects

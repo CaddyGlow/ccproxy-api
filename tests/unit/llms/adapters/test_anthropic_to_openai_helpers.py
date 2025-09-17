@@ -1,6 +1,6 @@
 import pytest
 
-from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
+from ccproxy.llms.formatters.anthropic_to_openai.helpers import (
     convert__anthropic_message_to_openai_chat__response,
     convert__anthropic_message_to_openai_responses__request,
     convert__anthropic_message_to_openai_responses__stream,

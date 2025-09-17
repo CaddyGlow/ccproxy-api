@@ -15,7 +15,7 @@ from ccproxy.config.settings import Settings
 from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.pool import HTTPPoolManager
-from ccproxy.llms.adapters.formatter_registry import FormatterRegistry
+from ccproxy.llms.formatters.formatter_registry import FormatterRegistry
 from ccproxy.scheduler.registry import TaskRegistry
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache

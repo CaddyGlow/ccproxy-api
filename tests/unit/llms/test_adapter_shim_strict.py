@@ -2,13 +2,13 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
+from ccproxy.llms.formatters.openai_to_openai.chat_to_responses import (
     OpenAIChatToOpenAIResponsesAdapter,
 )
-from ccproxy.llms.adapters.openai_to_openai.responses_to_chat import (
+from ccproxy.llms.formatters.openai_to_openai.responses_to_chat import (
     OpenAIResponsesToOpenAIChatAdapter,
 )
-from ccproxy.llms.adapters.shim import AdapterShim
+from ccproxy.llms.formatters.shim import AdapterShim
 
 
 @pytest.mark.asyncio

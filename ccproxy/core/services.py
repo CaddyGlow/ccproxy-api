@@ -10,7 +10,7 @@ from ccproxy.config.settings import Settings
 if TYPE_CHECKING:
     from ccproxy.core.plugins import PluginRegistry
     from ccproxy.http.pool import HTTPPoolManager
-    from ccproxy.llms.adapters.formatter_registry import FormatterRegistry
+    from ccproxy.llms.formatters.formatter_registry import FormatterRegistry
     from ccproxy.scheduler.core import Scheduler
     from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 

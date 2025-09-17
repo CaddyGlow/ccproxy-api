@@ -7,8 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.formatter_registry import FormatterRegistry
+from ccproxy.llms.formatters.base import BaseAPIAdapter
+from ccproxy.llms.formatters.formatter_registry import FormatterRegistry
 
 
 class FormatterGenericModel(BaseModel):
@@ -124,7 +124,7 @@ class FormatterRegistryAdapter(
             # Try to get the reverse formatter
             reverse_formatter_key = f"{detected_format}_to_{self.target_format}"
             try:
-                from ccproxy.llms.adapters.formatter_registry import (
+                from ccproxy.llms.formatters.formatter_registry import (
                     iter_registered_formatters,
                     load_builtin_formatter_modules,
                 )
@@ -377,7 +377,7 @@ def create_formatter_adapter_factory(
 
     def factory() -> FormatterRegistryAdapter:
         # Import here to avoid circular imports during module loading
-        from ccproxy.llms.adapters.formatter_registry import (
+        from ccproxy.llms.formatters.formatter_registry import (
             iter_registered_formatters,
             load_builtin_formatter_modules,
         )

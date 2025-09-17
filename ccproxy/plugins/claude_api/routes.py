@@ -42,7 +42,10 @@ async def _handle_adapter_request(
     return _cast_result(result)
 
 
-@router.post("/v1/messages", response_model=anthropic_models.MessageResponse | anthropic_models.APIError)
+@router.post(
+    "/v1/messages",
+    response_model=anthropic_models.MessageResponse | anthropic_models.APIError,
+)
 @base_format("anthropic")
 async def create_anthropic_message(
     request: Request,

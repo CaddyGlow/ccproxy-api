@@ -158,7 +158,9 @@ class CodexResponse(BaseModel):
     finish_reason: Annotated[
         str | None, Field(description="Reason the response finished")
     ] = None
-    usage: Annotated[anthropic_models.Usage | None, Field(description="Token usage information")] = None
+    usage: Annotated[
+        anthropic_models.Usage | None, Field(description="Token usage information")
+    ] = None
 
     model_config = ConfigDict(
         extra="allow"

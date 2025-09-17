@@ -4,8 +4,8 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
-from ccproxy.llms.adapters.formatter_registry import formatter
-from ccproxy.llms.adapters.shared.constants import (
+from ccproxy.llms.formatters.formatter_registry import formatter
+from ccproxy.llms.formatters.shared.constants import (
     ANTHROPIC_TO_OPENAI_ERROR_TYPE,
     ANTHROPIC_TO_OPENAI_FINISH_REASON,
 )
@@ -80,7 +80,7 @@ def convert__anthropic_usage_to_openai_responses__usage(
     )
 
 
-# Error helpers migrated from ccproxy.llms.adapters.shared.errors
+# Error helpers migrated from ccproxy.llms.formatters.shared.errors
 
 
 @formatter("anthropic.error", "openai.error", "error")
@@ -379,7 +379,7 @@ def convert__anthropic_message_to_openai_responses__request(
 
 
 @formatter("anthropic.messages", "openai.chat_completions", "stream")
-async def convert__anthropic_message_to_openai_chat__stream(
+def convert__anthropic_message_to_openai_chat__stream(
     stream: AsyncIterator[anthropic_models.MessageStreamEvent],
 ) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
     """Convert Anthropic stream to OpenAI stream using typed models."""
@@ -391,13 +391,48 @@ async def convert__anthropic_message_to_openai_chat__stream(
         usage_completion = 0
 
         async for evt in stream:
-            if not hasattr(evt, "type"):
-                continue
+            # Handle both dict and typed model inputs
+            evt_type = None
+            if isinstance(evt, dict):
+                evt_type = evt.get("type")
+                if not evt_type:
+                    continue
+            else:
+                if not hasattr(evt, "type"):
+                    continue
+                evt_type = evt.type
 
-            if evt.type == "message_start":
-                model_id = evt.message.model or ""
-            elif evt.type == "content_block_delta":
-                text = evt.delta.text
+            if evt_type == "message_start":
+                if isinstance(evt, dict):
+                    message = evt.get("message", {})
+                    model_id = message.get("model", "") if message else ""
+                else:
+                    model_id = evt.message.model or ""
+            elif evt_type == "content_block_start":
+                # OpenAI doesn't have equivalent, but we can emit an empty delta to start the stream
+                yield openai_models.ChatCompletionChunk(
+                    id="chatcmpl-stream",
+                    object="chat.completion.chunk",
+                    created=0,
+                    model=model_id,
+                    choices=[
+                        openai_models.StreamingChoice(
+                            index=0,
+                            delta=openai_models.DeltaMessage(
+                                role="assistant", content=""
+                            ),
+                            finish_reason=None,
+                        )
+                    ],
+                )
+            elif evt_type == "content_block_delta":
+                text = None
+                if isinstance(evt, dict):
+                    delta = evt.get("delta", {})
+                    text = delta.get("text") if delta else None
+                else:
+                    text = evt.delta.text if evt.delta else None
+
                 if text:
                     yield openai_models.ChatCompletionChunk(
                         id="chatcmpl-stream",
@@ -414,17 +449,30 @@ async def convert__anthropic_message_to_openai_chat__stream(
                             )
                         ],
                     )
-            elif evt.type == "message_delta":
-                if evt.delta.stop_reason:
+            elif evt_type == "message_delta":
+                if isinstance(evt, dict):
+                    delta = evt.get("delta", {})
+                    stop_reason = delta.get("stop_reason") if delta else None
+                    usage = evt.get("usage", {})
+                    usage_prompt = usage.get("input_tokens", 0) if usage else 0
+                    usage_completion = usage.get("output_tokens", 0) if usage else 0
+                else:
+                    stop_reason = evt.delta.stop_reason if evt.delta else None
+                    usage_prompt = evt.usage.input_tokens if evt.usage else 0
+                    usage_completion = evt.usage.output_tokens if evt.usage else 0
+
+                if stop_reason:
                     finish_reason = cast(
                         FinishReason,
-                        ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
-                            evt.delta.stop_reason, "stop"
-                        ),
+                        ANTHROPIC_TO_OPENAI_FINISH_REASON.get(stop_reason, "stop"),
                     )
-                usage_prompt = evt.usage.input_tokens
-                usage_completion = evt.usage.output_tokens
-            elif evt.type == "message_stop":
+            elif evt_type == "content_block_stop":
+                # Content block has stopped, but we don't need to emit anything special for OpenAI
+                pass
+            elif evt_type == "ping":
+                # Ping events don't need to be converted to OpenAI format
+                pass
+            elif evt_type == "message_stop":
                 usage = None
                 if usage_prompt or usage_completion:
                     usage = openai_models.CompletionUsage(

@@ -13,17 +13,11 @@ from .formatter_registry import (
     load_builtin_formatter_modules,
     register_formatter,
 )
-from .registry import (
-    AdapterRegistration,
-    get_registered_adapter_map,
-    iter_adapter_registrations,
-)
 from .shim import AdapterShim
 
 
 __all__ = [
     "APIAdapter",
-    "AdapterRegistration",
     "FormatterRegistration",
     "FormatterRegistry",
     "FormatterRegistryAdapter",
@@ -32,8 +26,6 @@ __all__ = [
     "create_formatter_adapter_factory",
     "formatter",
     "iter_registered_formatters",
-    "get_registered_adapter_map",
-    "iter_adapter_registrations",
     "load_builtin_formatter_modules",
     "register_formatter",
 ]

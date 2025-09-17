@@ -8,8 +8,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ccproxy.llms.models import anthropic as anthropic_models
-from ccproxy.llms.models import openai as openai_models
 from ccproxy.core.errors import (
     AuthenticationError,
     ClaudeProxyError,
@@ -29,6 +27,8 @@ from ccproxy.core.errors import (
     ValidationError,
 )
 from ccproxy.core.logging import get_logger
+from ccproxy.llms.models import anthropic as anthropic_models
+from ccproxy.llms.models import openai as openai_models
 
 
 logger = get_logger(__name__)
@@ -96,7 +96,7 @@ def _get_format_aware_error_content(
                 message=message,
                 type=error_type,
                 code=error_type,  # Use error_type as code for Response API
-                param=None
+                param=None,
             )
             error_response = openai_models.ErrorResponse(error=error_detail)
             return error_response.model_dump()

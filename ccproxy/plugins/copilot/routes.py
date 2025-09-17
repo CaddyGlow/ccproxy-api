@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 from fastapi import APIRouter, Body, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from ccproxy.llms.models import anthropic as anthropic_models
-from ccproxy.llms.models import openai as openai_models
 from ccproxy.api.decorators import format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.llms.models import anthropic as anthropic_models
+from ccproxy.llms.models import openai as openai_models
 from ccproxy.streaming import DeferredStreaming
 
 from .models import (
@@ -86,24 +86,6 @@ async def create_anthropic_message(
     _: anthropic_models.CreateMessageRequest,
     adapter: CopilotAdapterDep,
 ) -> anthropic_models.MessageResponse | OpenAIResponse:
-    """Create a message using Copilot with native Anthropic format."""
-    # Ensure format chain present for request/response conversion
-    if not getattr(request.state, "context", None) or not getattr(
-        request.state.context, "format_chain", None
-    ):
-        import time
-        import uuid
-
-        from ccproxy.core.request_context import RequestContext
-
-        if not getattr(request.state, "context", None):
-            request.state.context = RequestContext(
-                request_id=str(uuid.uuid4()),
-                start_time=time.perf_counter(),
-                logger=get_plugin_logger(),
-            )
-        request.state.context.format_chain = ["anthropic", "openai"]
-
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await _handle_adapter_request(request, adapter)
 
@@ -118,31 +100,8 @@ async def create_responses_message(
     _: openai_models.ResponseRequest,
     adapter: CopilotAdapterDep,
 ) -> anthropic_models.MessageResponse | OpenAIResponse:
-    """Create a message using Response API with OpenAI provider.
-
-    Request conversion: Response API -> Anthropic -> OpenAI.
-    Response conversion: OpenAI -> Anthropic.
-    """
+    """Create a message using Response API with OpenAI provider."""
     # Ensure format chain is present in context even if decorator injection is bypassed
-    if not getattr(request.state, "context", None) or not getattr(
-        request.state.context, "format_chain", None
-    ):
-        # Lazily create minimal context if missing (mirrors middleware behavior)
-        import time
-        import uuid
-
-        from ccproxy.core.request_context import RequestContext
-
-        if not getattr(request.state, "context", None):
-            request.state.context = RequestContext(
-                request_id=str(uuid.uuid4()),
-                start_time=time.perf_counter(),
-                logger=get_plugin_logger(),
-            )
-        request.state.context.format_chain = [
-            "response_api",
-            "openai",
-        ]
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await _handle_adapter_request(request, adapter)
 

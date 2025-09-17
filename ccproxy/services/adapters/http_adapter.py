@@ -333,8 +333,11 @@ class BaseHTTPAdapter(BaseAdapter):
         # declared flow and handle response/streaming internally.
         streaming_format_adapter = None
         if ctx.format_chain and self.format_registry:
-            from_format = ctx.format_chain[0]
-            to_format = ctx.format_chain[-1]
+            # For streaming responses, we need to reverse the format chain direction
+            # Request: client_format → provider_format
+            # Stream Response: provider_format → client_format
+            from_format = ctx.format_chain[-1]  # provider format (e.g., "anthropic")
+            to_format = ctx.format_chain[0]  # client format (e.g., "openai")
             streaming_format_adapter = self.format_registry.get_if_exists(
                 from_format, to_format
             )

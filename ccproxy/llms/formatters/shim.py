@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import TYPE_CHECKING, Any, get_args, get_origin
+from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from .legacy_base import LegacyBaseAPIAdapter
+from ccproxy.llms.formatters.base import BaseAPIAdapter
+
 from ..models.openai import AnyStreamEvent
-from ccproxy.llms.adapters.base import BaseAPIAdapter
 
 
 class AdapterShim(BaseAPIAdapter):
     """Shim that wraps typed adapters to provide legacy dict-based interface.
 
-    This allows the new strongly-typed adapters from ccproxy.llms.adapters
+    This allows the new strongly-typed adapters from ccproxy.llms.formatters
     to work with existing code that expects dict[str, Any] interfaces.
 
     The shim automatically converts between dict and BaseModel formats:
@@ -243,7 +243,9 @@ class AdapterShim(BaseAPIAdapter):
             Dictionary representation of the model
         """
         try:
-            return model.model_dump(mode="json", exclude_none=True, exclude_unset=True)
+            # Don't pass exclude_none here as LlmBaseModel handles it internally
+            # to avoid "multiple values for keyword argument 'exclude_none'" error
+            return model.model_dump(mode="json", exclude_unset=True)
         except Exception as e:
             raise ValueError(f"Failed to convert BaseModel to dict: {e}") from e
 

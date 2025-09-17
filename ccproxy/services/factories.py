@@ -11,14 +11,14 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 import structlog
 
-from ccproxy.llms.adapters.formatter_adapter import FormatterRegistryAdapter
 from ccproxy.config.settings import Settings
 from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.client import HTTPClientFactory
 from ccproxy.http.pool import HTTPPoolManager
-from ccproxy.llms.adapters.formatter_registry import (
+from ccproxy.llms.formatters.formatter_adapter import FormatterRegistryAdapter
+from ccproxy.llms.formatters.formatter_registry import (
     FormatterRegistry,
     iter_registered_formatters,
     load_builtin_formatter_modules,
@@ -115,12 +115,12 @@ class ConcreteServiceFactory:
                 target_format=registration.target_format,
                 operation=registration.operation,
                 formatter=registration.formatter,
-                module_name=getattr(registration.formatter, '__module__', None)
+                module_name=getattr(registration.formatter, "__module__", None),
             )
         openai_adapter = FormatterRegistryAdapter(
             formatter_registry=formatter_registry,
             source_format="anthropic.messages",
-            target_format="openai.chat_completions"
+            target_format="openai.chat_completions",
         )
         # Configure streaming settings if needed
         openai_thinking_xml = getattr(

@@ -7,13 +7,13 @@ and error conversion utilities that remain shared.
 
 from __future__ import annotations
 
-from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
+from ccproxy.llms.formatters.anthropic_to_openai.helpers import (
     convert__anthropic_to_openai__error,
 )
-from ccproxy.llms.adapters.openai_to_anthropic.helpers import (
+from ccproxy.llms.formatters.openai_to_anthropic.helpers import (
     convert__openai_to_anthropic__error,
 )
-from ccproxy.llms.adapters.shared import (
+from ccproxy.llms.formatters.shared import (
     ANTHROPIC_TO_OPENAI_ERROR_TYPE,
     ANTHROPIC_TO_OPENAI_FINISH_REASON,
     DEFAULT_MAX_TOKENS,

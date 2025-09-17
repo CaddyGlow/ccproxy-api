@@ -16,9 +16,10 @@ from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from ccproxy.llms.formatters.base import BaseAPIAdapter
+
 # Import adapter types for format adapter specifications
-from ccproxy.llms.adapters.base import BaseAPIAdapter as APIAdapter
-from ccproxy.llms.adapters.base import BaseAPIAdapter
+from ccproxy.llms.formatters.base import BaseAPIAdapter as APIAdapter
 
 
 if TYPE_CHECKING:

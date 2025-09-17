@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from pydantic import Field, RootModel, field_validator
 
-from ccproxy.llms.adapters.shared import LlmBaseModel
+from ccproxy.llms.formatters.shared import LlmBaseModel
 
 
 # ==============================================================================
@@ -766,4 +766,5 @@ AnyStreamEvent = RootModel[
 def generate_responses_id() -> str:
     """Generate an OpenAI-compatible response ID."""
     import uuid
+
     return f"chatcmpl-{uuid.uuid4().hex[:29]}"

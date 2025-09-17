@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 from .auth import NoOpAuthManager
 from .config import ClaudeSDKSettings
-from .format_adapter import ClaudeSDKFormatAdapter
 from .handler import ClaudeSDKHandler
 from .manager import SessionManager
 from .transformers.request import ClaudeSDKRequestTransformer

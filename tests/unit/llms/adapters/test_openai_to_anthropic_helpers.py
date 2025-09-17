@@ -1,6 +1,6 @@
 import pytest
 
-from ccproxy.llms.adapters.openai_to_anthropic.helpers import (
+from ccproxy.llms.formatters.openai_to_anthropic.helpers import (
     convert__openai_chat_to_anthropic_message__request,
     convert__openai_responses_to_anthropic_message__request,
 )
@@ -35,7 +35,7 @@ async def test_openai_chat_request_to_anthropic_messages_basic() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_chat_tools_and_choice_mapping() -> None:
-    from ccproxy.llms.adapters.openai_to_anthropic.helpers import (
+    from ccproxy.llms.formatters.openai_to_anthropic.helpers import (
         convert__openai_chat_to_anthropic_message__request,
     )
 
