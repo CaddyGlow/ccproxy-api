@@ -242,12 +242,22 @@ async def convert__anthropic_message_to_openai_responses__stream(
                 )
 
         elif evt_type == "content_block_delta":
+            # Some SDKs may yield dict-like events. Support both.
             if isinstance(evt, dict):
                 delta = evt.get("delta", {})
                 text = delta.get("text") if isinstance(delta, dict) else None
             else:
-                text = evt.delta.text
+                text = getattr(getattr(evt, "delta", None), "text", None)
             if text:
+                # Debug first few characters to confirm emission
+                try:
+                    from structlog import get_logger
+                    get_logger(__name__).bind(category="formatter", converter="anthropic_to_responses_stream").debug(
+                        "anthropic_delta_emitted",
+                        preview=text[:20],
+                    )
+                except Exception:
+                    pass
                 sequence_counter += 1
                 yield openai_models.ResponseOutputTextDeltaEvent(
                     type="response.output_text.delta",

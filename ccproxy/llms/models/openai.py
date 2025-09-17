@@ -259,7 +259,7 @@ class ResponseMessage(LlmBaseModel):
 
 class Choice(LlmBaseModel):
     finish_reason: Literal["stop", "length", "tool_calls", "content_filter"]
-    index: int
+    index: int | None = None
     message: ResponseMessage
     logprobs: dict[str, Any] | None = None
 

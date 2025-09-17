@@ -1195,3 +1195,57 @@ def convert__openai_chat_to_anthropic_messages__stream(
                 break
 
     return generator()
+
+
+@formatter("openai.chat_completions", "anthropic.messages", "response")
+def convert__openai_chat_to_anthropic_messages__response(
+    response: openai_models.ChatCompletionResponse,
+) -> anthropic_models.MessageResponse:
+    """Convert OpenAI ChatCompletionResponse to Anthropic MessageResponse."""
+    text_content = ""
+    finish_reason = None
+    if response.choices:
+        choice = response.choices[0]
+        finish_reason = getattr(choice, "finish_reason", None)
+        msg = getattr(choice, "message", None)
+        if msg is not None:
+            content_val = getattr(msg, "content", None)
+            if isinstance(content_val, str):
+                text_content = content_val
+            elif isinstance(content_val, list):
+                parts: list[str] = []
+                for part in content_val:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        t = part.get("text")
+                        if isinstance(t, str):
+                            parts.append(t)
+                text_content = "".join(parts)
+
+    content_blocks: list[anthropic_models.ResponseContentBlock] = []  # type: ignore[type-arg]
+    if text_content:
+        content_blocks.append(
+            anthropic_models.TextBlock(type="text", text=text_content)
+        )
+
+    # Map usage
+    if getattr(response, "usage", None):
+        usage = anthropic_models.Usage(
+            input_tokens=getattr(response.usage, "prompt_tokens", 0) or 0,
+            output_tokens=getattr(response.usage, "completion_tokens", 0) or 0,
+        )
+    else:
+        usage = anthropic_models.Usage(input_tokens=0, output_tokens=0)
+
+    stop_map = {"stop": "end_turn", "length": "max_tokens"}
+    stop_reason = stop_map.get(finish_reason, None)
+
+    return anthropic_models.MessageResponse(
+        id=getattr(response, "id", "msg_1") or "msg_1",
+        type="message",
+        role="assistant",
+        model=getattr(response, "model", "") or "",
+        content=content_blocks,  # type: ignore[arg-type]
+        stop_reason=stop_reason,
+        stop_sequence=None,
+        usage=usage,
+    )

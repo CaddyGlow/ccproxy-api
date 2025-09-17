@@ -191,7 +191,7 @@ ENDPOINT_TESTS = [
         endpoint="/copilot/v1/messages",
         stream=False,
         request="anthropic_non_stream",
-        model="claude-sonnet-4-20250514",
+        model="claude-3.5-sonnet",
         description="Copilot responses non-streaming",
     ),
     EndpointTest(

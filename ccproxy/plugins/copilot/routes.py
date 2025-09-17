@@ -92,6 +92,20 @@ async def create_anthropic_message(
     adapter: CopilotAdapterDep,
 ) -> anthropic_models.MessageResponse | OpenAIResponse:
     request.state.context.metadata["endpoint"] = "/chat/completions"
+    # Ensure the format chain is explicitly applied so the adapter converts
+    # Anthropic Messages -> OpenAI Chat Completions for the Copilot provider
+    try:
+        prev_chain = getattr(request.state.context, "format_chain", None)
+        new_chain = [FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_CHAT]
+        request.state.context.format_chain = new_chain
+        logger.debug(
+            "copilot_messages_route_enter",
+            prev_chain=prev_chain,
+            applied_chain=new_chain,
+            category="format",
+        )
+    except Exception as exc:
+        logger.debug("copilot_messages_set_chain_failed", error=str(exc))
     return await _handle_adapter_request(request, adapter)
 
 
@@ -124,7 +138,9 @@ async def create_responses_message(
         # Peek at incoming body keys for debugging
         try:
             body_json = await request.json()
-            stream_flag = body_json.get("stream") if isinstance(body_json, dict) else None
+            stream_flag = (
+                body_json.get("stream") if isinstance(body_json, dict) else None
+            )
             logger.debug(
                 "copilot_responses_request_body_inspect",
                 keys=list(body_json.keys()) if isinstance(body_json, dict) else None,

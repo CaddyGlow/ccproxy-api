@@ -139,6 +139,13 @@ class TextBlock(ContentBlockBase):
     text: str
 
 
+class TextDelta(ContentBlockBase):
+    """A delta chunk of text content used in streaming events."""
+
+    type: Literal["text_delta"] = Field(default="text_delta", alias="type")
+    text: str
+
+
 class ImageSource(LlmBaseModel):
     """Source of an image."""
 
@@ -464,7 +471,9 @@ class ContentBlockDeltaEvent(LlmBaseModel):
         default="content_block_delta", alias="type"
     )
     index: int
-    delta: TextBlock
+    # Anthropic streams use delta.type == "text_delta" during streaming.
+    # Accept both TextBlock (some SDKs may coerce) and TextDelta.
+    delta: Annotated[TextBlock | TextDelta, Field(discriminator="type")]
 
 
 class ContentBlockStopEvent(LlmBaseModel):
