@@ -3,13 +3,15 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ccproxy.llms.adapters.shared import LlmBaseModel
+
 
 # ===================================================================
 # Error Models
 # ===================================================================
 
 
-class ErrorDetail(BaseModel):
+class ErrorDetail(LlmBaseModel):
     """Base model for an error."""
 
     message: str
@@ -87,7 +89,7 @@ ErrorType = Annotated[
 ]
 
 
-class ErrorResponse(BaseModel):
+class ErrorResponse(LlmBaseModel):
     """The structure of an error response."""
 
     type: Literal["error"] = Field(default="error", alias="type")
@@ -99,7 +101,7 @@ class ErrorResponse(BaseModel):
 # ===================================================================
 
 
-class ModelInfo(BaseModel):
+class ModelInfo(LlmBaseModel):
     """Information about an available model."""
 
     id: str
@@ -108,7 +110,7 @@ class ModelInfo(BaseModel):
     display_name: str
 
 
-class ListModelsResponse(BaseModel):
+class ListModelsResponse(LlmBaseModel):
     """Response containing a list of available models."""
 
     data: list[ModelInfo]
@@ -124,7 +126,7 @@ class ListModelsResponse(BaseModel):
 # --- Base Models & Common Structures for Messages ---
 
 
-class ContentBlockBase(BaseModel):
+class ContentBlockBase(LlmBaseModel):
     """Base model for a content block."""
 
     pass
@@ -137,7 +139,7 @@ class TextBlock(ContentBlockBase):
     text: str
 
 
-class ImageSource(BaseModel):
+class ImageSource(LlmBaseModel):
     """Source of an image."""
 
     type: Literal["base64"] = Field(default="base64", alias="type")
@@ -197,27 +199,27 @@ ResponseContentBlock = Annotated[
 ]
 
 
-class Message(BaseModel):
+class Message(LlmBaseModel):
     """A message in the conversation."""
 
     role: Literal["user", "assistant"]
     content: str | list[RequestContentBlock]
 
 
-class CacheCreation(BaseModel):
+class CacheCreation(LlmBaseModel):
     """Breakdown of cached tokens."""
 
     ephemeral_1h_input_tokens: int
     ephemeral_5m_input_tokens: int
 
 
-class ServerToolUsage(BaseModel):
+class ServerToolUsage(LlmBaseModel):
     """Server-side tool usage statistics."""
 
     web_search_requests: int
 
 
-class Usage(BaseModel):
+class Usage(LlmBaseModel):
     """Token usage statistics."""
 
     input_tokens: int
@@ -230,7 +232,7 @@ class Usage(BaseModel):
 
 
 # --- Tool Definitions ---
-class Tool(BaseModel):
+class Tool(LlmBaseModel):
     """Definition of a custom tool the model can use."""
 
     # Discriminator field for union matching
@@ -242,7 +244,7 @@ class Tool(BaseModel):
     input_schema: dict[str, Any]
 
 
-class WebSearchTool(BaseModel):
+class WebSearchTool(LlmBaseModel):
     """Definition for the built-in web search tool."""
 
     type: Literal["web_search_20250305"] = Field(
@@ -260,13 +262,13 @@ AnyTool = Annotated[
 # --- Supporting models for CreateMessageRequest ---
 
 
-class Metadata(BaseModel):
+class Metadata(LlmBaseModel):
     """Metadata about the request."""
 
     user_id: str | None = Field(None, max_length=256)
 
 
-class ThinkingConfigBase(BaseModel):
+class ThinkingConfigBase(LlmBaseModel):
     """Base model for thinking configuration."""
 
     pass
@@ -290,7 +292,7 @@ ThinkingConfig = Annotated[
 ]
 
 
-class ToolChoiceBase(BaseModel):
+class ToolChoiceBase(LlmBaseModel):
     """Base model for tool choice."""
 
     pass
@@ -330,14 +332,14 @@ ToolChoice = Annotated[
 ]
 
 
-class RequestMCPServerToolConfiguration(BaseModel):
+class RequestMCPServerToolConfiguration(LlmBaseModel):
     """Tool configuration for an MCP server."""
 
     allowed_tools: list[str] | None = None
     enabled: bool | None = None
 
 
-class RequestMCPServerURLDefinition(BaseModel):
+class RequestMCPServerURLDefinition(LlmBaseModel):
     """URL definition for an MCP server."""
 
     name: str
@@ -347,7 +349,7 @@ class RequestMCPServerURLDefinition(BaseModel):
     tool_configuration: RequestMCPServerToolConfiguration | None = None
 
 
-class Container(BaseModel):
+class Container(LlmBaseModel):
     """Information about the container used in a request."""
 
     id: str
@@ -357,7 +359,7 @@ class Container(BaseModel):
 # --- Request Models ---
 
 
-class CreateMessageRequest(BaseModel):
+class CreateMessageRequest(LlmBaseModel):
     """Request model for creating a new message."""
 
     model: str
@@ -373,14 +375,14 @@ class CreateMessageRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0.0, le=1.0)
     thinking: ThinkingConfig | None = None
     tools: list[AnyTool] | None = None
-    tool_choice: ToolChoice | None = None
+    tool_choice: ToolChoice | None = Field(default=None)
     top_k: int | None = None
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
 
     model_config = ConfigDict(extra="forbid")
 
 
-class CountMessageTokensRequest(BaseModel):
+class CountMessageTokensRequest(LlmBaseModel):
     """Request model for counting tokens in a message."""
 
     model: str
@@ -394,7 +396,7 @@ class CountMessageTokensRequest(BaseModel):
 # --- Response Models ---
 
 
-class MessageResponse(BaseModel):
+class MessageResponse(LlmBaseModel):
     """Response model for a created message."""
 
     id: str
@@ -418,7 +420,7 @@ class MessageResponse(BaseModel):
     container: Container | None = None
 
 
-class CountMessageTokensResponse(BaseModel):
+class CountMessageTokensResponse(LlmBaseModel):
     """Response model for a token count request."""
 
     input_tokens: int
@@ -429,27 +431,27 @@ class CountMessageTokensResponse(BaseModel):
 # ===================================================================
 
 
-class PingEvent(BaseModel):
+class PingEvent(LlmBaseModel):
     """A keep-alive event."""
 
     type: Literal["ping"] = Field(default="ping", alias="type")
 
 
-class ErrorEvent(BaseModel):
+class ErrorEvent(LlmBaseModel):
     """An error event in the stream."""
 
     type: Literal["error"] = Field(default="error", alias="type")
     error: ErrorDetail
 
 
-class MessageStartEvent(BaseModel):
+class MessageStartEvent(LlmBaseModel):
     """Event sent when a message stream starts."""
 
     type: Literal["message_start"] = Field(default="message_start", alias="type")
     message: MessageResponse
 
 
-class ContentBlockStartEvent(BaseModel):
+class ContentBlockStartEvent(LlmBaseModel):
     """Event when a content block starts."""
 
     type: Literal["content_block_start"] = Field(
@@ -459,7 +461,7 @@ class ContentBlockStartEvent(BaseModel):
     content_block: ResponseContentBlock
 
 
-class ContentBlockDeltaEvent(BaseModel):
+class ContentBlockDeltaEvent(LlmBaseModel):
     """Event for a delta in a content block."""
 
     type: Literal["content_block_delta"] = Field(
@@ -469,7 +471,7 @@ class ContentBlockDeltaEvent(BaseModel):
     delta: TextBlock
 
 
-class ContentBlockStopEvent(BaseModel):
+class ContentBlockStopEvent(LlmBaseModel):
     """Event when a content block stops."""
 
     type: Literal["content_block_stop"] = Field(
@@ -478,7 +480,7 @@ class ContentBlockStopEvent(BaseModel):
     index: int
 
 
-class MessageDelta(BaseModel):
+class MessageDelta(LlmBaseModel):
     """The delta in a message delta event."""
 
     stop_reason: (
@@ -495,7 +497,7 @@ class MessageDelta(BaseModel):
     stop_sequence: str | None = None
 
 
-class MessageDeltaEvent(BaseModel):
+class MessageDeltaEvent(LlmBaseModel):
     """Event for a delta in the message metadata."""
 
     type: Literal["message_delta"] = Field(default="message_delta", alias="type")
@@ -503,7 +505,7 @@ class MessageDeltaEvent(BaseModel):
     usage: Usage
 
 
-class MessageStopEvent(BaseModel):
+class MessageStopEvent(LlmBaseModel):
     """Event sent when a message stream stops."""
 
     type: Literal["message_stop"] = Field(default="message_stop", alias="type")

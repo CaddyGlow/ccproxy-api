@@ -13,6 +13,7 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
+from ccproxy.llms.adapters.formatter_adapter import create_formatter_adapter_factory
 from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
 from .adapter import ClaudeAPIAdapter
@@ -317,22 +318,20 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
         FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
-            adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages",
-                fromlist=["OpenAIChatToAnthropicMessagesAdapter"],
-            ).OpenAIChatToAnthropicMessagesAdapter(),
+            adapter_factory=create_formatter_adapter_factory(
+                "openai.chat_completions", "anthropic.messages"
+            ),
             priority=100,  # Lower priority than SDK plugin
-            description="OpenAI ChatCompletions to Anthropic Messages (typed)",
+            description="OpenAI ChatCompletions to Anthropic Messages (FormatterRegistry)",
         ),
         FormatAdapterSpec(
             from_format="response_api",
             to_format="anthropic",
-            adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat",
-                fromlist=["AnthropicMessagesToOpenAIChatAdapter"],
-            ).AnthropicMessagesToOpenAIChatAdapter(),
+            adapter_factory=create_formatter_adapter_factory(
+                "anthropic.messages", "openai.chat_completions"
+            ),
             priority=100,  # Lower priority than SDK plugin
-            description="Anthropic Messages to OpenAI ChatCompletions (typed)",
+            description="Anthropic Messages to OpenAI ChatCompletions (FormatterRegistry)",
         ),
     ]
 

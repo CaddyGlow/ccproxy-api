@@ -15,13 +15,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, RootModel, field_validator
 
+from ccproxy.llms.adapters.shared import LlmBaseModel
+
 
 # ==============================================================================
 # Error Models
 # ==============================================================================
 
 
-class ErrorDetail(BaseModel):
+class ErrorDetail(LlmBaseModel):
     """
     Detailed information about an API error.
     """
@@ -32,7 +34,7 @@ class ErrorDetail(BaseModel):
     type: str | None = Field(None, description="The type of error.")
 
 
-class ErrorResponse(BaseModel):
+class ErrorResponse(LlmBaseModel):
     """
     The structure of an error response from the OpenAI API.
     """
@@ -45,7 +47,7 @@ class ErrorResponse(BaseModel):
 # ==============================================================================
 
 
-class Model(BaseModel):
+class Model(LlmBaseModel):
     """
     Represents a model available in the API.
     """
@@ -60,7 +62,7 @@ class Model(BaseModel):
     owned_by: str = Field(..., description="The organization that owns the model.")
 
 
-class ModelList(BaseModel):
+class ModelList(LlmBaseModel):
     """
     A list of available models.
     """
@@ -76,7 +78,7 @@ class ModelList(BaseModel):
 # ==============================================================================
 
 
-class EmbeddingRequest(BaseModel):
+class EmbeddingRequest(LlmBaseModel):
     """
     Request body for creating an embedding.
     """
@@ -97,7 +99,7 @@ class EmbeddingRequest(BaseModel):
     )
 
 
-class EmbeddingData(BaseModel):
+class EmbeddingData(LlmBaseModel):
     """
     Represents a single embedding vector.
     """
@@ -109,7 +111,7 @@ class EmbeddingData(BaseModel):
     index: int = Field(..., description="The index of the embedding in the list.")
 
 
-class EmbeddingUsage(BaseModel):
+class EmbeddingUsage(LlmBaseModel):
     """
     Token usage statistics for an embedding request.
     """
@@ -118,7 +120,7 @@ class EmbeddingUsage(BaseModel):
     total_tokens: int = Field(..., description="Total number of tokens used.")
 
 
-class EmbeddingResponse(BaseModel):
+class EmbeddingResponse(LlmBaseModel):
     """
     Response object for an embedding request.
     """
@@ -138,7 +140,7 @@ class EmbeddingResponse(BaseModel):
 # --- Request Models ---
 
 
-class ResponseFormat(BaseModel):
+class ResponseFormat(LlmBaseModel):
     """
     An object specifying the format that the model must output.
     """
@@ -149,7 +151,7 @@ class ResponseFormat(BaseModel):
     json_schema: dict[str, Any] | None = None
 
 
-class FunctionDefinition(BaseModel):
+class FunctionDefinition(LlmBaseModel):
     """
     The definition of a function that the model can call.
     """
@@ -164,7 +166,7 @@ class FunctionDefinition(BaseModel):
     )
 
 
-class Tool(BaseModel):
+class Tool(LlmBaseModel):
     """
     A tool the model may call.
     """
@@ -176,18 +178,18 @@ class Tool(BaseModel):
     function: FunctionDefinition
 
 
-class FunctionCall(BaseModel):
+class FunctionCall(LlmBaseModel):
     name: str
     arguments: str
 
 
-class ToolCall(BaseModel):
+class ToolCall(LlmBaseModel):
     id: str
     type: Literal["function"] = Field(default="function")
     function: FunctionCall
 
 
-class ChatMessage(BaseModel):
+class ChatMessage(LlmBaseModel):
     """
     A message within a chat conversation.
     """
@@ -202,7 +204,7 @@ class ChatMessage(BaseModel):
     tool_call_id: str | None = None  # For tool role messages
 
 
-class ChatCompletionRequest(BaseModel):
+class ChatCompletionRequest(LlmBaseModel):
     """
     Request body for creating a chat completion.
     """
@@ -247,7 +249,7 @@ class ChatCompletionRequest(BaseModel):
 # --- Response Models (Non-streaming) ---
 
 
-class ResponseMessage(BaseModel):
+class ResponseMessage(LlmBaseModel):
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
     role: Literal["assistant"] = Field(default="assistant")
@@ -255,26 +257,26 @@ class ResponseMessage(BaseModel):
     annotations: list[Any] | None = None
 
 
-class Choice(BaseModel):
+class Choice(LlmBaseModel):
     finish_reason: Literal["stop", "length", "tool_calls", "content_filter"]
     index: int
     message: ResponseMessage
     logprobs: dict[str, Any] | None = None
 
 
-class PromptTokensDetails(BaseModel):
+class PromptTokensDetails(LlmBaseModel):
     cached_tokens: int = 0
     audio_tokens: int = 0
 
 
-class CompletionTokensDetails(BaseModel):
+class CompletionTokensDetails(LlmBaseModel):
     reasoning_tokens: int = 0
     audio_tokens: int = 0
     accepted_prediction_tokens: int = 0
     rejected_prediction_tokens: int = 0
 
 
-class CompletionUsage(BaseModel):
+class CompletionUsage(LlmBaseModel):
     completion_tokens: int
     prompt_tokens: int
     total_tokens: int
@@ -282,7 +284,7 @@ class CompletionUsage(BaseModel):
     completion_tokens_details: CompletionTokensDetails | None = None
 
 
-class ChatCompletionResponse(BaseModel):
+class ChatCompletionResponse(LlmBaseModel):
     id: str
     choices: list[Choice]
     created: int
@@ -296,20 +298,20 @@ class ChatCompletionResponse(BaseModel):
 # --- Response Models (Streaming) ---
 
 
-class DeltaMessage(BaseModel):
+class DeltaMessage(LlmBaseModel):
     role: Literal["assistant"] | None = None
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
 
 
-class StreamingChoice(BaseModel):
+class StreamingChoice(LlmBaseModel):
     index: int
     delta: DeltaMessage
     finish_reason: Literal["stop", "length", "tool_calls"] | None = None
     logprobs: dict[str, Any] | None = None
 
 
-class ChatCompletionChunk(BaseModel):
+class ChatCompletionChunk(LlmBaseModel):
     id: str
     object: Literal["chat.completion.chunk"] = Field(default="chat.completion.chunk")
     created: int
@@ -328,20 +330,20 @@ class ChatCompletionChunk(BaseModel):
 
 
 # --- Request Models ---
-class StreamOptions(BaseModel):
+class StreamOptions(LlmBaseModel):
     include_usage: bool | None = Field(
         default=None,
         description="If set, an additional chunk will be streamed before the final completion chunk with usage statistics.",
     )
 
 
-class ToolFunction(BaseModel):
+class ToolFunction(LlmBaseModel):
     name: str
     description: str | None = None
     parameters: dict[str, Any]
 
 
-class FunctionTool(BaseModel):
+class FunctionTool(LlmBaseModel):
     type: Literal["function"] = Field(default="function")
     function: ToolFunction
 
@@ -358,18 +360,18 @@ VALID_INCLUDE_VALUES = [
 ]
 
 
-class InputTextContent(BaseModel):
+class InputTextContent(LlmBaseModel):
     type: Literal["input_text"]
     text: str
-    annotations: list[Any] = Field(default_factory=list)
+    annotations: list[Any] | None = None
 
 
-class InputMessage(BaseModel):
+class InputMessage(LlmBaseModel):
     role: Literal["system", "user", "assistant", "tool", "developer"]
     content: str | list[dict[str, Any] | InputTextContent] | None
 
 
-class ResponseRequest(BaseModel):
+class ResponseRequest(LlmBaseModel):
     model: str | None = Field(default=None)
     input: str | list[Any]
     background: bool | None = Field(
@@ -419,13 +421,13 @@ class ResponseRequest(BaseModel):
 
 
 # --- Response Models (Non-streaming) ---
-class OutputTextContent(BaseModel):
+class OutputTextContent(LlmBaseModel):
     type: Literal["output_text"]
     text: str
-    annotations: list[Any] = Field(default_factory=list)
+    annotations: list[Any] | None = None
 
 
-class MessageOutput(BaseModel):
+class MessageOutput(LlmBaseModel):
     type: Literal["message"]
     id: str
     status: str
@@ -433,15 +435,15 @@ class MessageOutput(BaseModel):
     content: list[OutputTextContent | dict[str, Any]]  # To handle various content types
 
 
-class InputTokensDetails(BaseModel):
+class InputTokensDetails(LlmBaseModel):
     cached_tokens: int
 
 
-class OutputTokensDetails(BaseModel):
+class OutputTokensDetails(LlmBaseModel):
     reasoning_tokens: int
 
 
-class ResponseUsage(BaseModel):
+class ResponseUsage(LlmBaseModel):
     input_tokens: int
     input_tokens_details: InputTokensDetails
     output_tokens: int
@@ -449,16 +451,16 @@ class ResponseUsage(BaseModel):
     total_tokens: int
 
 
-class IncompleteDetails(BaseModel):
+class IncompleteDetails(LlmBaseModel):
     reason: str
 
 
-class Reasoning(BaseModel):
+class Reasoning(LlmBaseModel):
     effort: Any | None = None
     summary: Any | None = None
 
 
-class ResponseObject(BaseModel):
+class ResponseObject(LlmBaseModel):
     id: str
     object: Literal["response"] = Field(default="response")
     created_at: int
@@ -485,7 +487,7 @@ class ResponseObject(BaseModel):
 
 
 # --- Response Models (Streaming) ---
-class BaseStreamEvent(BaseModel):
+class BaseStreamEvent(LlmBaseModel):
     sequence_number: int
 
 
@@ -514,7 +516,7 @@ class ResponseIncompleteEvent(BaseStreamEvent):
     response: ResponseObject
 
 
-class OutputItem(BaseModel):
+class OutputItem(LlmBaseModel):
     id: str
     status: str
     type: str
@@ -534,7 +536,7 @@ class ResponseOutputItemDoneEvent(BaseStreamEvent):
     item: OutputItem
 
 
-class ContentPart(BaseModel):
+class ContentPart(LlmBaseModel):
     type: str
     text: str | None = None
     annotations: list[Any] | None = None
@@ -604,7 +606,7 @@ class ResponseFunctionCallArgumentsDoneEvent(BaseStreamEvent):
     arguments: str
 
 
-class ReasoningSummaryPart(BaseModel):
+class ReasoningSummaryPart(LlmBaseModel):
     type: str
     text: str
 
@@ -718,7 +720,7 @@ class CodeInterpreterCallCodeDoneEvent(CodeInterpreterCallEvent):
     code: str
 
 
-class ErrorEvent(BaseModel):  # Does not inherit from BaseStreamEvent per docs
+class ErrorEvent(LlmBaseModel):  # Does not inherit from BaseStreamEvent per docs
     type: Literal["error"]
     error: ErrorDetail
 

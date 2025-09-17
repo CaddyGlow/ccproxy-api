@@ -84,7 +84,7 @@ class ResponseRequest(BaseModel):
     instructions: str | None = None
     input: list[ResponseMessage]
     stream: bool = True
-    tool_choice: Literal["auto", "none", "required"] | ResponseToolChoice | str = "auto"
+    tool_choice: Literal["auto", "none", "required"] | ResponseToolChoice | str | None = None
     tools: list[ResponseTool] | None = None
     parallel_tool_calls: bool = False
     max_tool_calls: int | None = None

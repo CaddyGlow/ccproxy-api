@@ -246,43 +246,7 @@ class ConcreteServiceFactory:
     def _register_core_format_adapters(
         self, registry: FormatAdapterRegistry, settings: Settings | None = None
     ) -> None:
-        """Pre-register core format adapters with high priority."""
-        from ccproxy.adapters.openai import AnthropicResponseAPIAdapter
-        from ccproxy.adapters.openai.adapter import OpenAIAdapter
-        from ccproxy.adapters.openai.anthropic_to_openai_adapter import (
-            OpenAIToAnthropicAdapter,
-        )
-        from ccproxy.llms.adapters.openai_to_openai.response_api_to_chat import (
-            ResponseAPIToOpenAIChatAdapter,
-        )
-
-        # Core adapters that are always available
-        thinking_xml = True
-        if settings is not None:
-            thinking_xml = getattr(
-                getattr(settings, "llm", object()), "openai_thinking_xml", True
-            )
-
-        core_adapters = {
-            ("anthropic", "response_api"): AnthropicResponseAPIAdapter(),
-            ("response_api", "anthropic"): AnthropicResponseAPIAdapter(),
-            # OpenAI ↔ Anthropic conversions
-            # - Requests:    openai → anthropic via OpenAIAdapter.adapt_request
-            # - Responses:   anthropic → openai via OpenAIAdapter.adapt_response/adapt_stream
-            ("openai", "anthropic"): OpenAIAdapter(openai_thinking_xml=thinking_xml),
-            ("anthropic", "openai"): OpenAIToAnthropicAdapter(),
-            # Response API → OpenAI for clients expecting OpenAI shape
-            ("response_api", "openai"): ResponseAPIToOpenAIChatAdapter(),
-        }
-
-        for format_pair, adapter in core_adapters.items():
-            registry.register(format_pair[0], format_pair[1], adapter, "core")
-
-        logger.debug(
-            "core_format_adapters_registered",
-            adapters=list(core_adapters.keys()),
-            category="format",
-        )
+        pass
 
     def create_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
         """Create background hook thread manager instance."""

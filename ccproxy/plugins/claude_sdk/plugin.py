@@ -13,6 +13,7 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
+from ccproxy.llms.adapters.formatter_adapter import create_formatter_adapter_factory
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import ClaudeSDKAdapter
@@ -154,12 +155,11 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
-            adapter_factory=lambda: __import__(
-                "plugins.claude_sdk.ccproxy.plugins.claude_sdk.format_adapter",
-                fromlist=["ClaudeSDKFormatAdapter"],
-            ).ClaudeSDKFormatAdapter(),
+            adapter_factory=create_formatter_adapter_factory(
+                "openai.chat_completions", "anthropic.messages"
+            ),
             priority=40,  # Higher priority than API plugin
-            description="OpenAI to Anthropic format conversion for Claude SDK",
+            description="OpenAI to Anthropic format conversion for Claude SDK (FormatterRegistry)",
         )
     ]
 

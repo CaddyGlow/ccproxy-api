@@ -12,6 +12,7 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.declaration import FormatAdapterSpec, RouterSpec
+from ccproxy.llms.adapters.formatter_adapter import create_formatter_adapter_factory
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import CopilotAdapter
@@ -141,33 +142,30 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
         FormatAdapterSpec(
             from_format="anthropic",
             to_format="openai",
-            adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat",
-                fromlist=["AnthropicMessagesToOpenAIChatAdapter"],
-            ).AnthropicMessagesToOpenAIChatAdapter(),
+            adapter_factory=create_formatter_adapter_factory(
+                "anthropic.messages", "openai.chat_completions"
+            ),
             priority=100,
-            description="Anthropic Messages to OpenAI ChatCompletions (typed)",
+            description="Anthropic Messages to OpenAI ChatCompletions (FormatterRegistry)",
         ),
         FormatAdapterSpec(
             from_format="response_api",
             to_format="anthropic",
-            adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.openai_to_anthropic.responses_request_to_messages",
-                fromlist=["OpenAIResponsesRequestToAnthropicMessagesAdapter"],
-            ).OpenAIResponsesRequestToAnthropicMessagesAdapter(),
+            adapter_factory=create_formatter_adapter_factory(
+                "openai.responses", "anthropic.messages"
+            ),
             priority=50,  # Medium priority
-            description="OpenAI Responses/Request to Anthropic Messages (typed)",
+            description="OpenAI Responses to Anthropic Messages (FormatterRegistry)",
         ),
         # Add Response API ↔ OpenAI adapter for /v1/responses endpoint
         FormatAdapterSpec(
             from_format="response_api",
             to_format="openai",
-            adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.openai_to_openai.response_api_to_chat",
-                fromlist=["ResponseAPIToOpenAIChatAdapter"],
-            ).ResponseAPIToOpenAIChatAdapter(),
+            adapter_factory=create_formatter_adapter_factory(
+                "openai.responses", "openai.chat_completions"
+            ),
             priority=90,  # Very high priority for direct conversion
-            description="Response API to OpenAI ChatCompletions (typed)",
+            description="OpenAI Responses to OpenAI ChatCompletions (FormatterRegistry)",
         ),
     ]
 

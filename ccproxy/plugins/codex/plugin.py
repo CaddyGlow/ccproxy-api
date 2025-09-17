@@ -11,6 +11,7 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
+from ccproxy.llms.adapters.formatter_adapter import create_formatter_adapter_factory
 from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
 from .adapter import CodexAdapter
@@ -339,22 +340,38 @@ class CodexFactory(BaseProviderPluginFactory):
         FormatAdapterSpec(
             from_format="openai",
             to_format="response_api",
-            adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.openai_to_openai.chat_to_responses",
-                fromlist=["OpenAIChatToOpenAIResponsesAdapter"],
-            ).OpenAIChatToOpenAIResponsesAdapter(),
+            adapter_factory=create_formatter_adapter_factory(
+                "openai.chat_completions", "openai.responses"
+            ),
             priority=50,  # Medium priority
-            description="OpenAI ChatCompletions to OpenAI Responses (typed)",
+            description="OpenAI ChatCompletions to OpenAI Responses (FormatterRegistry)",
+        ),
+        FormatAdapterSpec(
+            from_format="response_api",
+            to_format="openai",
+            adapter_factory=create_formatter_adapter_factory(
+                "openai.responses", "openai.chat_completions"
+            ),
+            priority=50,  # Medium priority
+            description="OpenAI Responses to OpenAI ChatCompletions (FormatterRegistry)",
         ),
         FormatAdapterSpec(
             from_format="anthropic",
             to_format="response_api",
-            adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses",
-                fromlist=["AnthropicMessagesToOpenAIResponsesAdapter"],
-            ).AnthropicMessagesToOpenAIResponsesAdapter(),
+            adapter_factory=create_formatter_adapter_factory(
+                "anthropic.messages", "openai.responses"
+            ),
             priority=50,  # Medium priority
-            description="Anthropic Messages to OpenAI Responses (typed)",
+            description="Anthropic Messages to OpenAI Responses (FormatterRegistry)",
+        ),
+        FormatAdapterSpec(
+            from_format="response_api",
+            to_format="anthropic",
+            adapter_factory=create_formatter_adapter_factory(
+                "openai.responses", "anthropic.messages"
+            ),
+            priority=50,  # Medium priority
+            description="OpenAI Responses to Anthropic Messages (FormatterRegistry)",
         ),
     ]
 

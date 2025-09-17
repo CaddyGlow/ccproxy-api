@@ -1,5 +1,6 @@
 """Shared utilities for LLM format adapters."""
 
+from .base_model import LlmBaseModel
 from .constants import (
     ANTHROPIC_TO_OPENAI_ERROR_TYPE,
     ANTHROPIC_TO_OPENAI_FINISH_REASON,
@@ -10,6 +11,7 @@ from .constants import (
 
 
 __all__ = [
+    "LlmBaseModel",
     "ANTHROPIC_TO_OPENAI_ERROR_TYPE",
     "ANTHROPIC_TO_OPENAI_FINISH_REASON",
     "DEFAULT_MAX_TOKENS",

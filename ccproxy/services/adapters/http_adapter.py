@@ -400,11 +400,19 @@ class BaseHTTPAdapter(BaseAdapter):
                 f"Format chain requires JSON body but parsing failed: {str(e)}"
             )
 
-        # Always apply chain left→right; adapters are responsible for
-        # adapting request, response, and error in the same (declared) direction.
-        pairs: list[tuple[str, str]] = [
-            (format_chain[i], format_chain[i + 1]) for i in range(len(format_chain) - 1)
-        ]
+        # For requests: apply chain left→right (as declared)
+        # For responses: apply chain right→left (reversed) to convert back to original format
+        if mode == "response":
+            # Reverse the format chain for response processing
+            pairs: list[tuple[str, str]] = [
+                (format_chain[i + 1], format_chain[i]) for i in range(len(format_chain) - 1)
+            ]
+            pairs.reverse()  # Apply in reverse order: right→left
+        else:
+            # For requests and errors, use left→right as before
+            pairs: list[tuple[str, str]] = [
+                (format_chain[i], format_chain[i + 1]) for i in range(len(format_chain) - 1)
+            ]
 
         for step_index, (from_format, to_format) in enumerate(pairs, start=1):
             try:

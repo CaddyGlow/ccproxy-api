@@ -85,17 +85,29 @@ class ResponseRequest(OpenAIBaseModel):
     instructions: str | None = None
     input: list[ResponseMessage]
     stream: bool = True
-    tool_choice: Literal["auto", "none", "required"] | ResponseToolChoice | str = "auto"
+    tool_choice: Literal["auto", "none", "required"] | ResponseToolChoice | str | None = None
     tools: list[ResponseTool] | None = None
     parallel_tool_calls: bool = False
     max_tool_calls: int | None = None
+    max_output_tokens: int | None = None  # Added per official OpenAI API docs
     reasoning: ResponseReasoning | None = None
     store: bool = False
     include: list[str] | None = None
     prompt_cache_key: str | None = None
-    # Note: The following OpenAI parameters are not supported by Response API (Codex backend):
-    # temperature, max_output_tokens, top_p, frequency_penalty, presence_penalty, metadata
-    # If included, they'll cause "Unsupported parameter" errors
+    # Additional fields from official OpenAI Response API docs
+    background: bool | None = None
+    conversation: dict[str, Any] | None = None
+    metadata: dict[str, str] | None = None
+    previous_response_id: str | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    safety_identifier: str | None = None
+    service_tier: Literal["auto", "default", "flex", "priority"] | None = None
+    text: dict[str, Any] | None = None  # Configuration options for text response
+    top_logprobs: int | None = None
+    truncation: Literal["auto", "disabled"] | None = None
+    user: str | None = None  # Deprecated, use safety_identifier and prompt_cache_key
+    # Note: Some parameters may not be supported by all backends - check compatibility
 
 
 # Response Models

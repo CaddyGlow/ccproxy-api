@@ -19,7 +19,7 @@ from ccproxy.adapters.openai.models.embedding import (
     OpenAIEmbedding,
     OpenAIEmbeddingResponse,
 )
-from ccproxy.adapters.openai.models.responses import ResponseRequest
+from ccproxy.llms.openai.models import ResponseRequest
 from ccproxy.api.decorators import format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
