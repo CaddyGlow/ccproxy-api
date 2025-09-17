@@ -105,7 +105,7 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
             session_manager=session_manager,
             hook_manager=hook_manager,
         )
-        self.format_adapter = ClaudeSDKFormatAdapter()
+        self.format_adapter = None
         self.request_transformer = ClaudeSDKRequestTransformer()
         # Initialize response transformer (CORS settings can be added later if needed)
         self.response_transformer = ClaudeSDKResponseTransformer(None)

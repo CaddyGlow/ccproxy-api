@@ -10,11 +10,11 @@ from uuid import uuid4
 
 from claude_code_sdk import ClaudeCodeOptions
 
-from ccproxy.adapters.anthropic.models.messages import TextContentBlock
 from ccproxy.auth.manager import AuthManager
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.request_context import RequestContext
+from ccproxy.llms.models import anthropic as anthropic_models
 
 # from ccproxy.observability.metrics import  # Metrics moved to plugin PrometheusMetrics
 from ccproxy.utils.model_mapping import map_model_to_claude
@@ -324,7 +324,7 @@ class ClaudeSDKHandler:
                             if content_block.get("type") == "text":
                                 # Convert SDK TextBlock to core TextContentBlock
                                 response.content.append(
-                                    TextContentBlock(
+                                    anthropic_models.TextBlock(
                                         type="text", text=content_block["text"]
                                     )
                                 )

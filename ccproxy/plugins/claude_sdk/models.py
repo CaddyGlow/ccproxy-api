@@ -17,9 +17,7 @@ from claude_code_sdk import ToolResultBlock as SDKToolResultBlock
 from claude_code_sdk import ToolUseBlock as SDKToolUseBlock
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ccproxy.adapters.anthropic.models.messages import MessageContentBlock
-from ccproxy.adapters.anthropic.models.requests import Usage
-from ccproxy.adapters.anthropic.models.types import StopReason
+from ccproxy.llms.models import anthropic as anthropic_models
 
 
 # Type variables for generic functions
@@ -270,11 +268,11 @@ class ResultMessage(BaseModel):
         return "end_turn"
 
     @property
-    def usage_model(self) -> Usage:
+    def usage_model(self) -> anthropic_models.Usage:
         """Get usage information as a Usage model for backward compatibility."""
         if self.usage is None:
-            return Usage()
-        return Usage.model_validate(self.usage)
+            return anthropic_models.Usage(input_tokens=0, output_tokens=0)
+        return anthropic_models.Usage.model_validate(self.usage)
 
     model_config = ConfigDict(extra="allow")
 
@@ -346,7 +344,7 @@ ExtendedContentBlock = SDKContentBlock
 # Note: We only include SDK-specific types to avoid discriminator conflicts
 # with core types that have the same discriminator values
 CCProxyContentBlock = Annotated[
-    MessageContentBlock
+    anthropic_models.RequestContentBlock
     | SDKMessageMode
     | ToolUseSDKBlock
     | ToolResultSDKBlock
@@ -370,13 +368,13 @@ class MessageResponse(BaseModel):
     ]
     model: Annotated[str, Field(description="The model used for the response")]
     stop_reason: Annotated[
-        StopReason | None, Field(description="Reason why the model stopped generating")
+        str | None, Field(description="Reason why the model stopped generating")
     ] = None
     stop_sequence: Annotated[
         str | None,
         Field(description="The stop sequence that triggered stopping (if applicable)"),
     ] = None
-    usage: Annotated[Usage, Field(description="Token usage information")]
+    usage: Annotated[anthropic_models.Usage, Field(description="Token usage information")]
     container: Annotated[
         dict[str, Any] | None,
         Field(description="Information about container used in the request"),

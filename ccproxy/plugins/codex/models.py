@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ccproxy.adapters.anthropic.models.requests import Usage
+from ccproxy.llms.models import anthropic as anthropic_models
 
 
 class CodexCliStatus(str, Enum):
@@ -158,7 +158,7 @@ class CodexResponse(BaseModel):
     finish_reason: Annotated[
         str | None, Field(description="Reason the response finished")
     ] = None
-    usage: Annotated[Usage | None, Field(description="Token usage information")] = None
+    usage: Annotated[anthropic_models.Usage | None, Field(description="Token usage information")] = None
 
     model_config = ConfigDict(
         extra="allow"

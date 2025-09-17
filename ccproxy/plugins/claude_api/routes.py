@@ -6,21 +6,12 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
 
-from ccproxy.adapters.anthropic.models.messages import (
-    MessageCreateParams,
-    MessageResponse,
-)
-from ccproxy.adapters.anthropic.models.responses import APIError
-from ccproxy.adapters.openai.models import (
-    OpenAIChatCompletionResponse,
-    OpenAIErrorResponse,
-    OpenAIModelsResponse,
-)
-from ccproxy.adapters.openai.models.chat_completions import OpenAIChatCompletionRequest
 from ccproxy.api.decorators import base_format, format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.llms.models import anthropic as anthropic_models
+from ccproxy.llms.models import openai as openai_models
 from ccproxy.streaming import DeferredStreaming
 
 
@@ -51,11 +42,11 @@ async def _handle_adapter_request(
     return _cast_result(result)
 
 
-@router.post("/v1/messages", response_model=MessageResponse | APIError)
+@router.post("/v1/messages", response_model=anthropic_models.MessageResponse | anthropic_models.APIError)
 @base_format("anthropic")
 async def create_anthropic_message(
     request: Request,
-    _: MessageCreateParams,
+    _: anthropic_models.CreateMessageRequest,
     auth: ConditionalAuthDep,
     adapter: ClaudeAPIAdapterDep,
 ) -> APIResponse:
@@ -67,13 +58,13 @@ async def create_anthropic_message(
 
 @router.post(
     "/v1/chat/completions",
-    response_model=OpenAIChatCompletionResponse | OpenAIErrorResponse,
+    response_model=openai_models.ChatCompletionResponse | openai_models.ErrorResponse,
 )
 @base_format("openai")
 @format_chain(["openai", "anthropic"])
 async def create_openai_chat_completion(
     request: Request,
-    _: OpenAIChatCompletionRequest,
+    _: openai_models.ChatCompletionRequest,
     auth: ConditionalAuthDep,
     adapter: ClaudeAPIAdapterDep,
 ) -> APIResponse:
@@ -83,7 +74,7 @@ async def create_openai_chat_completion(
     return await _handle_adapter_request(request, adapter)
 
 
-@router.get("/v1/models", response_model=OpenAIModelsResponse)
+@router.get("/v1/models", response_model=openai_models.ModelList)
 async def list_models(
     request: Request,
     auth: ConditionalAuthDep,

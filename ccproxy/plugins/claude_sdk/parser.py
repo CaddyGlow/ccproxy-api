@@ -14,7 +14,25 @@ import json
 import re
 from typing import Any
 
-from ccproxy.adapters.openai.models import format_openai_tool_call
+from ccproxy.llms.models import openai as openai_models
+
+
+def format_openai_tool_call(tool_use: dict[str, Any]) -> openai_models.ToolCall:
+    """Convert Anthropic tool use to OpenAI tool call format."""
+    tool_input = tool_use.get("input", {})
+    if isinstance(tool_input, dict):
+        arguments_str = json.dumps(tool_input)
+    else:
+        arguments_str = str(tool_input)
+
+    return openai_models.ToolCall(
+        id=tool_use.get("id", ""),
+        type="function",
+        function=openai_models.FunctionCall(
+            name=tool_use.get("name", ""),
+            arguments=arguments_str,
+        ),
+    )
 
 
 def parse_system_message_tags(text: str) -> str:

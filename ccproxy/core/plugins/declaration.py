@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # Import adapter types for format adapter specifications
-from ccproxy.adapters.base import APIAdapter
+from ccproxy.llms.adapters.base import BaseAPIAdapter as APIAdapter
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 
 

@@ -9,7 +9,7 @@ from ccproxy.services.adapters.format_context import FormatContext
 
 
 if TYPE_CHECKING:
-    from ccproxy.adapters.base import APIAdapter
+    from ccproxy.llms.adapters.base import BaseAPIAdapter as APIAdapter
 
 
 @runtime_checkable

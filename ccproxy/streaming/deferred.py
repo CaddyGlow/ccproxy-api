@@ -18,7 +18,7 @@ from ccproxy.core.plugins.hooks.base import HookContext
 
 
 if TYPE_CHECKING:
-    from ccproxy.adapters.base import APIAdapter
+    from ccproxy.llms.adapters.base import BaseAPIAdapter as APIAdapter
     from ccproxy.core.request_context import RequestContext
     from ccproxy.services.handler_config import HandlerConfig
 

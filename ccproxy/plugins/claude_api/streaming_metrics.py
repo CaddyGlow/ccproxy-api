@@ -4,9 +4,18 @@ This module provides utilities for extracting token usage from
 Anthropic streaming responses.
 """
 
-from typing import Any
+from typing import Any, TypedDict
 
-from ccproxy.adapters.anthropic.models.types import UsageData
+
+class UsageData(TypedDict, total=False):
+    """Token usage data extracted from streaming or non-streaming responses."""
+
+    input_tokens: int | None
+    output_tokens: int | None
+    cache_read_input_tokens: int | None
+    cache_creation_input_tokens: int | None
+    event_type: str | None  # Extra field for tracking event source
+    model: str | None  # Extra field for model information
 
 
 def extract_usage_from_streaming_chunk(chunk_data: Any) -> UsageData | None:

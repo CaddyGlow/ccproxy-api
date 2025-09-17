@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Literal
 
 import structlog
 
-from ccproxy.adapters.base import APIAdapter
+from ccproxy.llms.adapters.base import BaseAPIAdapter as APIAdapter
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.adapters.shim import AdapterShim
 
