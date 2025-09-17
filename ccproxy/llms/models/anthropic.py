@@ -379,8 +379,6 @@ class CreateMessageRequest(LlmBaseModel):
     top_k: int | None = None
     top_p: float | None = Field(default=None, ge=0.0, le=1.0)
 
-    model_config = ConfigDict(extra="forbid")
-
 
 class CountMessageTokensRequest(LlmBaseModel):
     """Request model for counting tokens in a message."""
@@ -389,8 +387,6 @@ class CountMessageTokensRequest(LlmBaseModel):
     messages: list[Message]
     system: str | list[TextBlock] | None = None
     tools: list[AnyTool] | None = None
-
-    model_config = ConfigDict(extra="forbid")
 
 
 # --- Response Models ---

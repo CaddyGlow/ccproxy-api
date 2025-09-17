@@ -8,7 +8,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ccproxy.adapters.anthropic.models.responses import APIError as AnthropicAPIError
+from ccproxy.llms.models import anthropic as anthropic_models
+from ccproxy.llms.models import openai as openai_models
 from ccproxy.core.errors import (
     AuthenticationError,
     ClaudeProxyError,
@@ -76,36 +77,28 @@ def _get_format_aware_error_content(
     try:
         if base_format == "openai":
             # Use OpenAI error model
-            from ccproxy.adapters.openai.models.chat_completions import (
-                OpenAIErrorDetail,
-                OpenAIErrorResponse,
+            error_detail = openai_models.ErrorDetail(
+                message=message, type=error_type, code=str(status_code), param=None
             )
-
-            error_detail = OpenAIErrorDetail(
-                message=message, type=error_type, code=str(status_code)
-            )
-            error_response = OpenAIErrorResponse(error=error_detail)
+            error_response = openai_models.ErrorResponse(error=error_detail)
             return error_response.model_dump()
 
         elif base_format == "anthropic":
             # Use Anthropic error model
-            api_error = AnthropicAPIError(type=error_type, message=message)
+            # APIError has a fixed type field, so create a generic ErrorDetail instead
+            api_error = anthropic_models.ErrorDetail(message=message)
             # Anthropic error format has 'type': 'error' at top level
             return {"type": "error", "error": api_error.model_dump()}
 
         elif base_format == "response_api":
             # Use OpenAI-style error for Response API (same format but different context)
-            from ccproxy.adapters.openai.models.chat_completions import (
-                OpenAIErrorDetail,
-                OpenAIErrorResponse,
-            )
-
-            error_detail = OpenAIErrorDetail(
+            error_detail = openai_models.ErrorDetail(
                 message=message,
                 type=error_type,
                 code=error_type,  # Use error_type as code for Response API
+                param=None
             )
-            error_response = OpenAIErrorResponse(error=error_detail)
+            error_response = openai_models.ErrorResponse(error=error_detail)
             return error_response.model_dump()
 
     except Exception as e:

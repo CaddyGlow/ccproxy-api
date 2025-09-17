@@ -5,24 +5,11 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 from fastapi import APIRouter, Body, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from ccproxy.adapters.anthropic.models.messages import (
-    MessageCreateParams,
-    MessageResponse,
-)
-from ccproxy.adapters.openai.models import (
-    OpenAIChatCompletionResponse,
-    OpenAIErrorResponse,
-    OpenAIModelsResponse,
-)
-from ccproxy.adapters.openai.models.chat_completions import OpenAIChatCompletionRequest
-from ccproxy.adapters.openai.models.embedding import (
-    OpenAIEmbedding,
-    OpenAIEmbeddingResponse,
-)
+from ccproxy.llms.models import anthropic as anthropic_models
+from ccproxy.llms.models import openai as openai_models
 from ccproxy.api.decorators import format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.llms.models.openai import ResponseRequest
 from ccproxy.streaming import DeferredStreaming
 
 from .models import (
@@ -40,7 +27,7 @@ logger = get_plugin_logger()
 CopilotAdapterDep = Annotated[Any, Depends(get_plugin_adapter("copilot"))]
 
 APIResponse = Response | StreamingResponse | DeferredStreaming
-OpenAIResponse = APIResponse | OpenAIErrorResponse
+OpenAIResponse = APIResponse | openai_models.ErrorResponse
 
 # V1 API Router - OpenAI/Anthropic compatible endpoints
 router_v1 = APIRouter()
@@ -74,14 +61,14 @@ def _get_request_body(request: Request) -> Any:
 
 @router_v1.post(
     "/chat/completions",
-    response_model=OpenAIChatCompletionResponse,
+    response_model=openai_models.ChatCompletionResponse,
 )
 async def create_openai_chat_completion(
     request: Request,
     adapter: CopilotAdapterDep,
-    _: OpenAIChatCompletionRequest = Body(..., include_in_schema=True),
+    _: openai_models.ChatCompletionRequest = Body(..., include_in_schema=True),
     body: dict[str, Any] = Depends(_get_request_body, use_cache=False),
-) -> OpenAIChatCompletionResponse | OpenAIResponse:
+) -> openai_models.ChatCompletionResponse | OpenAIResponse:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await _handle_adapter_request(request, adapter)
@@ -89,16 +76,16 @@ async def create_openai_chat_completion(
 
 @router_v1.post(
     "/messages",
-    response_model=MessageResponse,
+    response_model=anthropic_models.MessageResponse,
 )
 @format_chain(
     ["anthropic", "openai"]
 )  # Client expects Anthropic, provider speaks OpenAI
 async def create_anthropic_message(
     request: Request,
-    _: MessageCreateParams,
+    _: anthropic_models.CreateMessageRequest,
     adapter: CopilotAdapterDep,
-) -> MessageResponse | OpenAIResponse:
+) -> anthropic_models.MessageResponse | OpenAIResponse:
     """Create a message using Copilot with native Anthropic format."""
     # Ensure format chain present for request/response conversion
     if not getattr(request.state, "context", None) or not getattr(
@@ -124,13 +111,13 @@ async def create_anthropic_message(
 @format_chain(["response_api", "openai"])  # Single-hop flow: Response API -> OpenAI
 @router_v1.post(
     "/responses",
-    response_model=MessageResponse,
+    response_model=anthropic_models.MessageResponse,
 )
 async def create_responses_message(
     request: Request,
-    _: ResponseRequest,
+    _: openai_models.ResponseRequest,
     adapter: CopilotAdapterDep,
-) -> MessageResponse | OpenAIResponse:
+) -> anthropic_models.MessageResponse | OpenAIResponse:
     """Create a message using Response API with OpenAI provider.
 
     Request conversion: Response API -> Anthropic -> OpenAI.
@@ -162,16 +149,16 @@ async def create_responses_message(
 
 @router_v1.post(
     "/embeddings",
-    response_model=OpenAIEmbeddingResponse,
+    response_model=openai_models.EmbeddingResponse,
 )
 async def create_embeddings(
-    request: Request, _: OpenAIEmbedding, adapter: CopilotAdapterDep
-) -> OpenAIEmbeddingResponse | OpenAIResponse:
+    request: Request, _: openai_models.EmbeddingRequest, adapter: CopilotAdapterDep
+) -> openai_models.EmbeddingResponse | OpenAIResponse:
     request.state.context.metadata["endpoint"] = "/embeddings"
     return await _handle_adapter_request(request, adapter)
 
 
-@router_v1.get("/models", response_model=OpenAIModelsResponse)
+@router_v1.get("/models", response_model=openai_models.ModelList)
 async def list_models_v1(
     request: Request, adapter: CopilotAdapterDep
 ) -> OpenAIResponse:
