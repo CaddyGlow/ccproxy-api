@@ -8,7 +8,6 @@ from typing import Any, cast
 from pydantic import BaseModel
 
 from ccproxy.core.constants import DEFAULT_MAX_TOKENS
-from ccproxy.llms.formatters.formatter_registry import formatter
 from ccproxy.llms.formatters.shared.constants import (
     OPENAI_TO_ANTHROPIC_ERROR_TYPE,
 )
@@ -21,7 +20,6 @@ from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
 
 
-@formatter("openai.error", "anthropic.error", "error")
 def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
     """Convert an OpenAI error payload to the Anthropic envelope."""
     if isinstance(error, openai_models.ErrorResponse):
@@ -105,7 +103,6 @@ def convert__openai_responses_usage_to_openai_completion__usage(
     )
 
 
-@formatter("openai.responses", "anthropic.usage", "usage")
 def convert__openai_responses_usage_to_anthropic__usage(
     usage: openai_models.ResponseUsage,
 ) -> anthropic_models.Usage:
@@ -127,7 +124,6 @@ def convert__openai_responses_usage_to_anthropic__usage(
     )
 
 
-@formatter("openai.chat_completions", "anthropic.messages", "request")
 async def convert__openai_chat_to_anthropic_message__request(
     request: openai_models.ChatCompletionRequest,
 ) -> anthropic_models.CreateMessageRequest:
@@ -425,7 +421,6 @@ async def convert__openai_chat_to_anthropic_message__request(
     return anthropic_models.CreateMessageRequest.model_validate(payload_data)
 
 
-@formatter("openai.responses", "anthropic.messages", "request")
 def convert__openai_responses_to_anthropic_message__request(
     request: openai_models.ResponseRequest,
 ) -> anthropic_models.CreateMessageRequest:
@@ -684,7 +679,6 @@ def derive_thinking_config(
     return {"type": "enabled", "budget_tokens": budget}
 
 
-@formatter("openai.responses", "anthropic.messages", "response")
 def convert__openai_responses_to_anthropic_message__response(
     response: openai_models.ResponseObject,
 ) -> anthropic_models.MessageResponse:
@@ -816,7 +810,6 @@ def convert__openai_responses_to_anthropic_message__response(
     )
 
 
-@formatter("openai.responses", "anthropic.messages", "stream")
 async def convert__openai_responses_to_anthropic_messages__stream(
     stream: AsyncIterator[Any],
 ) -> AsyncGenerator[anthropic_models.MessageStreamEvent, None]:
@@ -1062,7 +1055,6 @@ async def convert__openai_responses_to_anthropic_messages__stream(
         yield anthropic_models.MessageStopEvent(type="message_stop")
 
 
-@formatter("openai.chat_completions", "anthropic.messages", "stream")
 def convert__openai_chat_to_anthropic_messages__stream(
     stream: AsyncIterator[openai_models.ChatCompletionChunk],
 ) -> AsyncGenerator[anthropic_models.MessageStreamEvent, None]:
@@ -1248,7 +1240,6 @@ def convert__openai_chat_to_anthropic_messages__stream(
     return generator()
 
 
-@formatter("openai.chat_completions", "anthropic.messages", "response")
 def convert__openai_chat_to_anthropic_messages__response(
     response: openai_models.ChatCompletionResponse,
 ) -> anthropic_models.MessageResponse:

@@ -53,7 +53,14 @@ class DuckDBStorageRuntime(SystemPluginRuntime):
         # Enable only if plugin config enables it
         enabled = bool(cfg.enabled)
         if not enabled:
-            logger.info("duckdb_plugin_disabled")
+            from ccproxy.core.logging import reduce_startup
+
+            if reduce_startup(
+                self.context.get("app") if hasattr(self, "context") else None
+            ):
+                logger.debug("duckdb_plugin_disabled", category="plugin")
+            else:
+                logger.info("duckdb_plugin_disabled", category="plugin")
             return
 
         # Resolve DB path
@@ -68,7 +75,18 @@ class DuckDBStorageRuntime(SystemPluginRuntime):
         registry = self.context.get("plugin_registry")
         if registry:
             registry.register_service("log_storage", self.storage, self.manifest.name)
-            logger.info("duckdb_storage_service_registered", path=db_path)
+            from ccproxy.core.logging import reduce_startup
+
+            if reduce_startup(
+                self.context.get("app") if hasattr(self, "context") else None
+            ):
+                logger.debug(
+                    "duckdb_storage_service_registered", path=db_path, category="plugin"
+                )
+            else:
+                logger.info(
+                    "duckdb_storage_service_registered", path=db_path, category="plugin"
+                )
 
         app = self.context.get("app")
         if app and hasattr(app, "state"):
@@ -78,7 +96,7 @@ class DuckDBStorageRuntime(SystemPluginRuntime):
                 app.state.duckdb_storage = self.storage
             logger.debug("duckdb_storage_attached_to_app_state")
 
-        logger.info("duckdb_storage_initialized", path=db_path)
+        logger.info("duckdb_storage_initialized", path=db_path, category="plugin")
 
     async def _on_shutdown(self) -> None:
         if self.storage:

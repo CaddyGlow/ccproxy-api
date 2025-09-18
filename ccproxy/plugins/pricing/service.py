@@ -37,7 +37,16 @@ class PricingService:
             logger.info("pricing_service_disabled")
             return
 
-        logger.info("pricing_service_initializing")
+        from ccproxy.core.logging import info_allowed
+
+        log_fn = (
+            logger.info
+            if info_allowed(
+                self.context.get("app") if hasattr(self, "context") else None
+            )
+            else logger.debug
+        )
+        log_fn("pricing_service_initializing")
 
         # Force refresh on startup if configured
         if self.config.force_refresh_on_startup:

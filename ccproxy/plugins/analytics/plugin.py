@@ -52,7 +52,7 @@ class AnalyticsRuntime(SystemPluginRuntime):
         if engine is not None:
             try:
                 SQLModel.metadata.create_all(engine)
-                logger.info("analytics_table_ready", table="access_logs")
+                logger.debug("analytics_table_ready", table="access_logs")
             except Exception as e:
                 logger.error("analytics_table_create_failed", error=str(e))
                 raise
@@ -86,7 +86,7 @@ class AnalyticsRuntime(SystemPluginRuntime):
                         registry.register_service(
                             "analytics_ingest", ingest_service, self.manifest.name
                         )
-                        logger.info("analytics_ingest_service_registered")
+                        logger.debug("analytics_ingest_service_registered")
                 else:
                     logger.warning(
                         "analytics_ingest_registration_skipped",
@@ -95,7 +95,7 @@ class AnalyticsRuntime(SystemPluginRuntime):
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("analytics_ingest_registration_failed", error=str(e))
 
-        logger.info("analytics_plugin_initialized")
+        logger.debug("analytics_plugin_initialized")
 
 
 class AnalyticsFactory(SystemPluginFactory):

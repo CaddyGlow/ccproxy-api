@@ -1,5 +1,6 @@
 from typing import Any
 
+from ccproxy.core.log_events import ACCESS_LOG_READY, HOOK_REGISTERED
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
     PluginManifest,
@@ -34,9 +35,9 @@ class AccessLogRuntime(SystemPluginRuntime):
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, AccessLogConfig):
-            logger.warning("plugin_no_config")
+            logger.info("plugin_no_config")
             config = AccessLogConfig()
-            logger.info("plugin_using_default_config")
+            logger.debug("plugin_using_default_config")
         self.config = config
 
         if not config.enabled:
@@ -66,13 +67,22 @@ class AccessLogRuntime(SystemPluginRuntime):
 
         if hook_registry and isinstance(hook_registry, HookRegistry):
             hook_registry.register(self.hook)
-            logger.info(
-                "access_log_hook_registered",
+            logger.debug(
+                HOOK_REGISTERED,
                 mode="hooks",
                 client_enabled=config.client_enabled,
                 client_format=config.client_format,
                 client_log_file=config.client_log_file,
                 provider_enabled=config.provider_enabled,
+                provider_log_file=config.provider_log_file,
+            )
+            # Consolidated ready summary at INFO
+            logger.info(
+                ACCESS_LOG_READY,
+                client_enabled=config.client_enabled,
+                provider_enabled=config.provider_enabled,
+                client_format=config.client_format,
+                client_log_file=config.client_log_file,
                 provider_log_file=config.provider_log_file,
             )
         else:
@@ -98,7 +108,7 @@ class AccessLogRuntime(SystemPluginRuntime):
                     pass
                 if ingest_service:
                     self.hook.ingest_service = ingest_service
-                    logger.info("access_log_ingest_service_connected")
+                    logger.debug("access_log_ingest_service_connected")
         except Exception as e:
             logger.debug("access_log_ingest_service_connect_failed", error=str(e))
 

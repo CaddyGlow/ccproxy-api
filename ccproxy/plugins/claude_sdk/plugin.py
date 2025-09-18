@@ -56,10 +56,10 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, ClaudeSDKSettings):
-            logger.warning("plugin_no_config")
+            logger.info("plugin_no_config")
             # Use default config if none provided
             config = ClaudeSDKSettings()
-            logger.info("plugin_using_default_config")
+            logger.debug("plugin_using_default_config")
 
         # Initialize adapter with session manager if enabled
         if self.adapter and hasattr(self.adapter, "session_manager"):
@@ -80,7 +80,16 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
 
             if cli_path:
                 # Single consolidated log message with both CLI detection and plugin initialization status
-                logger.info(
+                from ccproxy.core.logging import info_allowed
+
+                log_fn = (
+                    logger.info
+                    if info_allowed(
+                        self.context.get("app") if hasattr(self, "context") else None
+                    )
+                    else logger.debug
+                )
+                log_fn(
                     "plugin_initialized",
                     plugin="claude_sdk",
                     version="1.0.0",
@@ -160,20 +169,8 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
     ]
     optional_requires = ["pricing"]
 
-    format_adapters = [
-        FormatAdapterSpec(
-            from_format=FORMAT_OPENAI_CHAT,
-            to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_openai_to_anthropic_request,
-                response=convert_anthropic_to_openai_response,
-                stream=convert_anthropic_to_openai_stream,
-                name="openai_to_anthropic_claude_sdk",
-            ),
-            priority=40,  # Higher priority than API plugin
-            description="OpenAI to Anthropic format conversion for Claude SDK (SimpleFormatAdapter)",
-        )
-    ]
+    # No format adapters needed - core provides all required conversions
+    format_adapters: list[FormatAdapterSpec] = []
 
     # Dependencies: All required adapters now provided by core
     requires_format_adapters: list[FormatPair] = []

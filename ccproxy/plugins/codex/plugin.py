@@ -63,10 +63,10 @@ class CodexRuntime(ProviderPluginRuntime):
         try:
             config = self.context.get(CodexSettings)
         except ValueError:
-            logger.warning("plugin_no_config")
+            logger.info("plugin_no_config")
             # Use default config if none provided
             config = CodexSettings()
-            logger.info("plugin_using_default_config")
+            logger.debug("plugin_using_default_config")
         self.config = config
 
         # Get auth manager from context
@@ -109,7 +109,16 @@ class CodexRuntime(ProviderPluginRuntime):
                 }
             )
 
-        logger.info(
+        from ccproxy.core.logging import info_allowed
+
+        log_fn = (
+            logger.info
+            if info_allowed(
+                self.context.get("app") if hasattr(self, "context") else None
+            )
+            else logger.debug
+        )
+        log_fn(
             "plugin_initialized",
             plugin="codex",
             version="1.0.0",
@@ -315,13 +324,26 @@ class CodexRuntime(ProviderPluginRuntime):
             )
             hook_registry.register(metrics_hook)
 
-            logger.info(
-                "streaming_metrics_hook_registered",
-                plugin="codex",
-                hook_name=metrics_hook.name,
-                priority=metrics_hook.priority,
-                has_pricing=pricing_service is not None,
-            )
+            from ccproxy.core.logging import info_allowed
+
+            if info_allowed(
+                self.context.get("app") if hasattr(self, "context") else None
+            ):
+                logger.info(
+                    "streaming_metrics_hook_registered",
+                    plugin="codex",
+                    hook_name=metrics_hook.name,
+                    priority=metrics_hook.priority,
+                    has_pricing=pricing_service is not None,
+                )
+            else:
+                logger.debug(
+                    "streaming_metrics_hook_registered",
+                    plugin="codex",
+                    hook_name=metrics_hook.name,
+                    priority=metrics_hook.priority,
+                    has_pricing=pricing_service is not None,
+                )
 
         except Exception as e:
             logger.error(
@@ -354,54 +376,8 @@ class CodexFactory(BaseProviderPluginFactory):
     dependencies = ["oauth_codex"]
     optional_requires = ["pricing"]
 
-    format_adapters = [
-        FormatAdapterSpec(
-            from_format=FORMAT_OPENAI_CHAT,
-            to_format=FORMAT_OPENAI_RESPONSES,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_openai_chat_to_openai_responses_request,
-                response=convert_openai_chat_to_openai_responses_response,
-                stream=convert_openai_chat_to_openai_responses_stream,
-                name="openai_chat_to_responses_codex",
-            ),
-            priority=50,  # Medium priority
-            description="OpenAI ChatCompletions to OpenAI Responses (SimpleFormatAdapter)",
-        ),
-        FormatAdapterSpec(
-            from_format=FORMAT_OPENAI_RESPONSES,
-            to_format=FORMAT_OPENAI_CHAT,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_openai_responses_to_openai_chat_request,
-                response=convert_openai_responses_to_openai_chat_response,
-                stream=convert_openai_responses_to_openai_chat_stream,
-                name="openai_responses_to_chat_codex",
-            ),
-            priority=50,  # Medium priority
-            description="OpenAI Responses to OpenAI ChatCompletions (SimpleFormatAdapter)",
-        ),
-        FormatAdapterSpec(
-            from_format=FORMAT_ANTHROPIC_MESSAGES,
-            to_format=FORMAT_OPENAI_RESPONSES,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_anthropic_to_openai_responses_request,
-                response=convert_anthropic_to_openai_responses_response,
-                name="anthropic_to_openai_responses_codex",
-            ),
-            priority=50,  # Medium priority
-            description="Anthropic Messages to OpenAI Responses (SimpleFormatAdapter)",
-        ),
-        FormatAdapterSpec(
-            from_format=FORMAT_OPENAI_RESPONSES,
-            to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_openai_responses_to_anthropic_request,
-                response=convert_openai_responses_to_anthropic_response,
-                name="openai_responses_to_anthropic_codex",
-            ),
-            priority=50,  # Medium priority
-            description="OpenAI Responses to Anthropic Messages (SimpleFormatAdapter)",
-        ),
-    ]
+    # No format adapters needed - core provides all required conversions
+    format_adapters: list[FormatAdapterSpec] = []
 
     # Define requirements for adapters this plugin needs
     requires_format_adapters: list[FormatPair] = [

@@ -35,13 +35,20 @@ class PricingRuntime(SystemPluginRuntime):
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, PricingConfig):
-            logger.warning("plugin_no_config_using_defaults")
+            from ccproxy.core.logging import reduce_startup
+
+            if reduce_startup(
+                self.context.get("app") if hasattr(self, "context") else None
+            ):
+                logger.debug("plugin_no_config_using_defaults", category="plugin")
+            else:
+                logger.info("plugin_no_config_using_defaults", category="plugin")
             # Use default config if none provided
             self.config = PricingConfig()
         else:
             self.config = config
 
-        logger.info("initializing_pricing_plugin", enabled=self.config.enabled)
+        logger.debug("initializing_pricing_plugin", enabled=self.config.enabled)
 
         # Create pricing service
         self.service = PricingService(self.config)
@@ -56,7 +63,7 @@ class PricingRuntime(SystemPluginRuntime):
                 plugin_registry.register_service(
                     "pricing", self.service, self.manifest.name
                 )
-                logger.info("pricing_service_registered")
+                logger.debug("pricing_service_registered")
 
             # Create and start pricing update task
             interval_seconds = self.config.update_interval_hours * 3600
@@ -69,24 +76,24 @@ class PricingRuntime(SystemPluginRuntime):
             )
 
             await self.update_task.start()
-            logger.info(
+            logger.debug(
                 "pricing_plugin_initialized",
                 update_interval_hours=self.config.update_interval_hours,
                 auto_update=self.config.auto_update,
                 force_refresh_on_startup=self.config.force_refresh_on_startup,
             )
         else:
-            logger.info("pricing_plugin_disabled")
+            logger.debug("pricing_plugin_disabled")
 
     async def _on_shutdown(self) -> None:
         """Shutdown the plugin and cleanup resources."""
-        logger.info("shutting_down_pricing_plugin")
+        logger.debug("shutting_down_pricing_plugin")
 
         # Stop the update task
         if self.update_task:
             await self.update_task.stop()
 
-        logger.info("pricing_plugin_shutdown_complete")
+        logger.debug("pricing_plugin_shutdown_complete")
 
     async def _get_health_details(self) -> dict[str, Any]:
         """Get health check details."""

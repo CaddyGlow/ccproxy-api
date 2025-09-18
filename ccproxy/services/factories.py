@@ -342,15 +342,43 @@ class ConcreteServiceFactory:
                 plugin_name="core",
             )
 
-        logger.info(
-            "core_format_adapters_registered",
-            count=len(core_adapter_specs),
-            adapters=[
-                f"{spec['from_format']}->{spec['to_format']}"
-                for spec in core_adapter_specs
-            ],
-            category="format",
-        )
+        # Respect info_summaries_only to reduce noise at INFO
+        try:
+            from ccproxy.core.logging import info_allowed
+
+            app = None
+            # Attempt to get app from a known settings/service container path if present
+            # Fallback: if not available, default to allowing INFO
+            if info_allowed(app):
+                logger.info(
+                    "core_format_adapters_registered",
+                    count=len(core_adapter_specs),
+                    adapters=[
+                        f"{spec['from_format']}->{spec['to_format']}"
+                        for spec in core_adapter_specs
+                    ],
+                    category="format",
+                )
+            else:
+                logger.debug(
+                    "core_format_adapters_registered",
+                    count=len(core_adapter_specs),
+                    adapters=[
+                        f"{spec['from_format']}->{spec['to_format']}"
+                        for spec in core_adapter_specs
+                    ],
+                    category="format",
+                )
+        except Exception:
+            logger.info(
+                "core_format_adapters_registered",
+                count=len(core_adapter_specs),
+                adapters=[
+                    f"{spec['from_format']}->{spec['to_format']}"
+                    for spec in core_adapter_specs
+                ],
+                category="format",
+            )
 
     def create_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
         """Create background hook thread manager instance."""

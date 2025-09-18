@@ -2,6 +2,7 @@
 
 import time
 
+from ccproxy.core.log_events import METRICS_CONFIGURED
 from ccproxy.core.logging import get_logger
 from ccproxy.core.plugins.hooks import Hook
 from ccproxy.core.plugins.hooks.base import HookContext
@@ -75,8 +76,8 @@ class MetricsHook(Hook):
         # Track active requests and their start times
         self._request_start_times: dict[str, float] = {}
 
-        logger.info(
-            "metrics_hook_initialized",
+        logger.debug(
+            METRICS_CONFIGURED,
             enabled=self.config.enabled,
             namespace=self.config.namespace,
             pushgateway_enabled=self.config.pushgateway_enabled,

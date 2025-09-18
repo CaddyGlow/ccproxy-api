@@ -159,8 +159,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.streaming_handler = container.get_streaming_handler()
             self.metrics = None
             self.format_registry = container.get_format_registry()
-            # Legacy formatter registry removed; use FormatRegistry only
-            self.formatter_registry = None
+            # Legacy formatter registry removed; use format_registry only
 
         def get_plugin_config(self, plugin_name: str) -> Any:
             if hasattr(self.settings, "plugins") and self.settings.plugins:
@@ -195,13 +194,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             # Continue with other plugins
 
     await plugin_registry.initialize_all(cast(CoreServices, core_services))
-
-    logger.info(
-        "plugins_initialization_completed",
-        total_plugins=len(plugin_registry.list_plugins()),
-        provider_plugins=len(plugin_registry.list_provider_plugins()),
-        category="lifecycle",
-    )
+    # A consolidated summary is already emitted by PluginRegistry.initialize_all()
 
 
 async def shutdown_plugins(app: FastAPI) -> None:
@@ -347,10 +340,13 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
             "startup_hook_failed", error=str(e), exc_info=e, category="lifecycle"
         )
 
+    # Consolidated hooks summary at INFO
+    from ccproxy.core.log_events import HOOKS_REGISTERED
+
     logger.info(
-        "hook_system_initialized",
-        hook_count=len(hook_registry._hooks),
-        category="lifecycle",
+        HOOKS_REGISTERED,
+        total=len(hook_registry._hooks),
+        category="hooks",
     )
 
 
@@ -400,14 +396,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager using component-based approach."""
     service_container: ServiceContainer = app.state.service_container
     settings = service_container.get_service(Settings)
+    # Expose logging flags for startup verbosity to app.state
+    try:
+        app.state.info_summaries_only = bool(settings.logging.info_summaries_only)
+        app.state.reduce_startup_info = bool(settings.logging.reduce_startup_info)
+    except Exception:
+        app.state.info_summaries_only = False
+        app.state.reduce_startup_info = False
+
+    from ccproxy.core.log_events import SERVER_READY, SERVER_STARTING
 
     logger.info(
-        "server_start",
+        SERVER_STARTING,
         host=settings.server.host,
         port=settings.server.port,
         url=f"http://{settings.server.host}:{settings.server.port}",
         category="lifecycle",
     )
+    # Demote granular config detail to DEBUG
     logger.debug(
         "server_configured",
         host=settings.server.host,
@@ -440,6 +446,51 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     exc_info=e,
                     category="lifecycle",
                 )
+
+    # After startup completes (post-yield happens on shutdown); emit ready before yielding
+    # Safely derive feature flags from settings which may be models or dicts
+    def _get_plugin_enabled(name: str) -> bool:
+        plugins_cfg = getattr(settings, "plugins", None)
+        if plugins_cfg is None:
+            return False
+        # dict-like
+        if isinstance(plugins_cfg, dict):
+            cfg = plugins_cfg.get(name)
+            if isinstance(cfg, dict):
+                return bool(cfg.get("enabled", False))
+            try:
+                return bool(getattr(cfg, "enabled", False))
+            except Exception:
+                return False
+        # object-like
+        try:
+            sub = getattr(plugins_cfg, name, None)
+            return bool(getattr(sub, "enabled", False))
+        except Exception:
+            return False
+
+    def _get_auth_enabled() -> bool:
+        auth_cfg = getattr(settings, "auth", None)
+        if auth_cfg is None:
+            return False
+        if isinstance(auth_cfg, dict):
+            return bool(auth_cfg.get("enabled", False))
+        return bool(getattr(auth_cfg, "enabled", False))
+
+    logger.info(
+        SERVER_READY,
+        url=f"http://{settings.server.host}:{settings.server.port}",
+        version=__version__,
+        workers=settings.server.workers,
+        reload=settings.server.reload,
+        features_enabled={
+            "plugins": bool(getattr(settings, "enable_plugins", False)),
+            "metrics": _get_plugin_enabled("metrics"),
+            "access": _get_plugin_enabled("access_log"),
+            "auth": _get_auth_enabled(),
+        },
+        category="lifecycle",
+    )
 
     yield
 
@@ -535,9 +586,12 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
     if settings.enable_plugins:
         plugin_registry, middleware_manager = load_plugin_system(settings)
 
+        # Consolidated plugin init summary at INFO
+        from ccproxy.core.log_events import PLUGINS_INITIALIZED
+
         logger.info(
-            "plugins_registered",
-            total=len(plugin_registry.factories),
+            PLUGINS_INITIALIZED,
+            plugin_count=len(plugin_registry.factories),
             providers=sum(
                 1
                 for f in plugin_registry.factories.values()

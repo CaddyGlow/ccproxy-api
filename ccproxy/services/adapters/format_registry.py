@@ -47,7 +47,25 @@ class FormatRegistry:
         self._adapters[key] = adapter
         self._registered_plugins[key] = plugin_name
 
-        logger.info(
+        # Respect summaries-only flag to reduce INFO noise
+        info_summaries_only = False
+        try:
+            # Attempt to detect a settings object on a common context attribute
+            settings = getattr(self, "_settings", None)
+            if settings is None:
+                # No direct settings; leave as default False
+                settings = None
+            if settings is not None:
+                info_summaries_only = bool(
+                    getattr(
+                        getattr(settings, "logging", None), "info_summaries_only", False
+                    )
+                )
+        except Exception:
+            info_summaries_only = False
+
+        log_fn = logger.debug if info_summaries_only else logger.info
+        log_fn(
             "format_adapter_registered",
             from_format=from_format,
             to_format=to_format,

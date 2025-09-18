@@ -25,7 +25,6 @@ class CoreServices:
         scheduler: "Scheduler | None" = None,
         plugin_registry: "PluginRegistry | None" = None,
         format_registry: "FormatRegistry | None" = None,
-        formatter_registry: "None" = None,
     ):
         """Initialize core services.
 
@@ -43,7 +42,6 @@ class CoreServices:
         self.scheduler = scheduler
         self.plugin_registry = plugin_registry
         self.format_registry = format_registry
-        self.formatter_registry = formatter_registry
 
     def is_plugin_logging_enabled(self, plugin_name: str) -> bool:
         """Check if logging is enabled for a specific plugin.

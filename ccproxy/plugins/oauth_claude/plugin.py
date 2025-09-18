@@ -38,7 +38,7 @@ class OAuthClaudeRuntime(AuthProviderPluginRuntime):
             if not isinstance(config, ClaudeOAuthConfig):
                 # Use default config if none provided
                 config = ClaudeOAuthConfig()
-                logger.info("oauth_claude_using_default_config")
+            logger.debug("oauth_claude_using_default_config")
             self.config = config
 
         # Call parent initialization which handles provider registration

@@ -7,7 +7,6 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel
 
 import ccproxy.core.logging
-from ccproxy.llms.formatters.formatter_registry import formatter
 from ccproxy.llms.formatters.shared.constants import (
     ANTHROPIC_TO_OPENAI_ERROR_TYPE,
     ANTHROPIC_TO_OPENAI_FINISH_REASON,
@@ -30,7 +29,6 @@ ResponseStreamEvent = (
 )
 
 
-@formatter("anthropic.usage", "openai.completions", "usage")
 def convert__anthropic_usage_to_openai_completion__usage(
     usage: anthropic_models.Usage,
 ) -> openai_models.CompletionUsage:
@@ -61,7 +59,6 @@ def convert__anthropic_usage_to_openai_completion__usage(
     )
 
 
-@formatter("anthropic.usage", "openai.responses", "usage")
 def convert__anthropic_usage_to_openai_responses__usage(
     usage: anthropic_models.Usage,
 ) -> openai_models.ResponseUsage:
@@ -88,7 +85,6 @@ def convert__anthropic_usage_to_openai_responses__usage(
 # Error helpers migrated from ccproxy.llms.formatters.shared.errors
 
 
-@formatter("anthropic.error", "openai.error", "error")
 def convert__anthropic_to_openai__error(error: BaseModel) -> BaseModel:
     """Convert an Anthropic error payload to the OpenAI envelope."""
     from ccproxy.llms.models.anthropic import ErrorResponse as AnthropicErrorResponse
@@ -144,7 +140,6 @@ def convert__anthropic_to_openai__error(error: BaseModel) -> BaseModel:
     )
 
 
-@formatter("anthropic.messages", "openai.responses", "stream")
 async def convert__anthropic_message_to_openai_responses__stream(
     stream: AsyncIterator[anthropic_models.MessageStreamEvent | dict[str, Any]],
 ) -> AsyncGenerator[ResponseStreamEvent, None]:
@@ -313,21 +308,15 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     output=[],
                     parallel_tool_calls=False,
                     usage=(
-                        cast(
-                            openai_models.ResponseUsage,
-                            convert__anthropic_usage_to_openai_responses__usage(
-                                evt.get("usage")
-                            )
-                            if isinstance(evt, dict)
-                            else convert__anthropic_usage_to_openai_responses__usage(
-                                getattr(evt, "usage", None)
-                            ),
-                        )
+                        convert__anthropic_usage_to_openai_responses__usage(usage_obj)
                         if (
-                            evt.get("usage")
-                            if isinstance(evt, dict)
-                            else getattr(evt, "usage", None)
+                            usage_obj := (
+                                evt.get("usage")
+                                if isinstance(evt, dict)
+                                else getattr(evt, "usage", None)
+                            )
                         )
+                        and hasattr(usage_obj, "input_tokens")
                         else None
                     ),
                 ),
@@ -371,7 +360,6 @@ async def convert__anthropic_message_to_openai_responses__stream(
             )
 
 
-@formatter("anthropic.messages", "openai.responses", "request")
 def convert__anthropic_message_to_openai_responses__request(
     request: anthropic_models.CreateMessageRequest,
 ) -> openai_models.ResponseRequest:
@@ -480,7 +468,6 @@ def convert__anthropic_message_to_openai_responses__request(
     return openai_models.ResponseRequest.model_validate(payload_data)
 
 
-@formatter("anthropic.messages", "openai.chat_completions", "stream")
 def convert__anthropic_message_to_openai_chat__stream(
     stream: AsyncIterator[anthropic_models.MessageStreamEvent],
 ) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
@@ -616,7 +603,6 @@ def convert__anthropic_message_to_openai_chat__stream(
     return generator()
 
 
-@formatter("anthropic.messages", "openai.responses", "response")
 def convert__anthropic_message_to_openai_responses__response(
     response: anthropic_models.MessageResponse,
 ) -> openai_models.ResponseObject:
@@ -658,9 +644,8 @@ def convert__anthropic_message_to_openai_responses__response(
 
     usage_model = None
     if response.usage is not None:
-        usage_model = cast(
-            openai_models.ResponseUsage,
-            convert__anthropic_usage_to_openai_responses__usage(response.usage),
+        usage_model = convert__anthropic_usage_to_openai_responses__usage(
+            response.usage
         )
 
     return openai_models.ResponseObject(
@@ -683,7 +668,6 @@ def convert__anthropic_message_to_openai_responses__response(
     )
 
 
-@formatter("anthropic.messages", "openai.chat_completions", "request")
 def convert__anthropic_message_to_openai_chat__request(
     request: anthropic_models.CreateMessageRequest,
 ) -> openai_models.ChatCompletionRequest:
@@ -865,7 +849,6 @@ def convert__anthropic_message_to_openai_chat__request(
     return openai_models.ChatCompletionRequest.model_validate(params)
 
 
-@formatter("anthropic.messages", "openai.chat_completions", "response")
 def convert__anthropic_message_to_openai_chat__response(
     response: anthropic_models.MessageResponse,
 ) -> openai_models.ChatCompletionResponse:

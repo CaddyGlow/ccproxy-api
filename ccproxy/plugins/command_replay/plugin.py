@@ -40,13 +40,22 @@ class CommandReplayRuntime(SystemPluginRuntime):
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, CommandReplayConfig):
-            logger.warning("plugin_no_config")
+            logger.info("plugin_no_config")
             config = CommandReplayConfig()
-            logger.info("plugin_using_default_config")
+            logger.debug("plugin_using_default_config")
         self.config = config
 
-        # Debug log the configuration being used
-        logger.info(
+        # Debug log the configuration being used (respect summaries-only flag)
+        info_summaries_only = False
+        try:
+            app = self.context.get("app") if self.context else None
+            info_summaries_only = (
+                bool(getattr(app.state, "info_summaries_only", False)) if app else False
+            )
+        except Exception:
+            info_summaries_only = False
+
+        (logger.debug if info_summaries_only else logger.info)(
             "plugin_configuration_loaded",
             enabled=config.enabled,
             generate_curl=config.generate_curl,
@@ -66,7 +75,7 @@ class CommandReplayRuntime(SystemPluginRuntime):
                     enabled=True,
                     separate_files_per_command=self.config.separate_files_per_command,
                 )
-                logger.info(
+                (logger.debug if info_summaries_only else logger.info)(
                     "command_replay_file_formatter_initialized",
                     log_dir=self.config.log_dir,
                     separate_files=self.config.separate_files_per_command,
@@ -89,7 +98,7 @@ class CommandReplayRuntime(SystemPluginRuntime):
 
             if hook_registry and isinstance(hook_registry, HookRegistry):
                 hook_registry.register(self.hook)
-                logger.info(
+                (logger.debug if info_summaries_only else logger.info)(
                     "command_replay_hook_registered",
                     events=self.hook.events,
                     priority=self.hook.priority,
@@ -104,7 +113,9 @@ class CommandReplayRuntime(SystemPluginRuntime):
                     fallback="disabled",
                 )
         else:
-            logger.info("command_replay_plugin_disabled")
+            (logger.debug if info_summaries_only else logger.info)(
+                "command_replay_plugin_disabled"
+            )
 
     async def _on_shutdown(self) -> None:
         """Clean up plugin resources."""

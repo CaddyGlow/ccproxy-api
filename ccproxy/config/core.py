@@ -322,6 +322,16 @@ class LoggingSettings(BaseModel):
         "A plugin is enabled if not in dict or if value is True",
     )
 
+    # === Noise Reduction Flags ===
+    reduce_startup_info: bool = Field(
+        default=True,
+        description="Reduce startup INFO noise by demoting initializer logs to DEBUG",
+    )
+    info_summaries_only: bool = Field(
+        default=True,
+        description="At INFO level, show only consolidated summaries (server_ready, plugins_initialized, hooks_registered, metrics_ready, access_log_ready)",
+    )
+
     @field_validator("level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:

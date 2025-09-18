@@ -48,7 +48,16 @@ class RequestTracerHook(Hook):
         """
         self.config = config or RequestTracerConfig()
 
-        logger.info(
+        # Respect summaries-only flag if available via app state
+        info_summaries_only = False
+        try:
+            app = getattr(self, "app", None)
+            info_summaries_only = bool(
+                getattr(getattr(app, "state", None), "info_summaries_only", False)
+            )
+        except Exception:
+            info_summaries_only = False
+        (logger.debug if info_summaries_only else logger.info)(
             "request_tracer_hook_initialized",
             enabled=self.config.enabled,
         )

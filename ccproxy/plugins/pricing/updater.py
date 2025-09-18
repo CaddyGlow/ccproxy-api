@@ -77,7 +77,16 @@ class PricingUpdater:
         )
 
         if should_refresh:
-            logger.info("pricing_refresh_start")
+            from ccproxy.core.logging import info_allowed
+
+            log_fn = (
+                logger.info
+                if info_allowed(
+                    self.context.get("app") if hasattr(self, "context") else None
+                )
+                else logger.debug
+            )
+            log_fn("pricing_refresh_start")
             await self._refresh_pricing()
 
         # Load pricing data
@@ -116,7 +125,16 @@ class PricingUpdater:
             True if refresh was successful
         """
         try:
-            logger.info("pricing_refresh_start")
+            from ccproxy.core.logging import info_allowed
+
+            log_fn = (
+                logger.info
+                if info_allowed(
+                    self.context.get("app") if hasattr(self, "context") else None
+                )
+                else logger.debug
+            )
+            log_fn("pricing_refresh_start")
 
             # Download fresh data
             raw_data = await self.cache.download_pricing_data()
@@ -129,7 +147,16 @@ class PricingUpdater:
                 logger.error("cache_save_failed")
                 return False
 
-            logger.info("pricing_refresh_completed")
+            from ccproxy.core.logging import info_allowed
+
+            log_fn = (
+                logger.info
+                if info_allowed(
+                    self.context.get("app") if hasattr(self, "context") else None
+                )
+                else logger.debug
+            )
+            log_fn("pricing_refresh_completed")
             return True
 
         except httpx.TimeoutException as e:

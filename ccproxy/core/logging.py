@@ -599,6 +599,39 @@ def get_plugin_logger(name: str | None = None) -> TraceBoundLogger:
     return logger
 
 
+def info_allowed(app: Any | None = None) -> bool:
+    """Whether non-summary INFO logs are allowed based on app.state.
+
+    If `app.state.info_summaries_only` is True, return False to suppress
+    granular INFO lines. Defaults to True when state not available.
+    """
+    try:
+        if app is None:
+            return True
+        state = getattr(app, "state", None)
+        if not state:
+            return True
+        return not bool(getattr(state, "info_summaries_only", False))
+    except Exception:
+        return True
+
+
+def reduce_startup(app: Any | None = None) -> bool:
+    """Whether startup noise reduction is enabled.
+
+    Returns True when `app.state.reduce_startup_info` is True; False otherwise.
+    """
+    try:
+        if app is None:
+            return False
+        state = getattr(app, "state", None)
+        if not state:
+            return False
+        return bool(getattr(state, "reduce_startup_info", False))
+    except Exception:
+        return False
+
+
 def _parse_arg_value(argv: list[str], flag: str) -> str | None:
     """Parse a simple CLI flag value from argv.
 

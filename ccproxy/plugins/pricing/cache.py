@@ -85,14 +85,32 @@ class PricingCache:
             timeout = self.settings.download_timeout
 
         try:
-            logger.info("pricing_download_start", url=self.settings.source_url)
+            from ccproxy.core.logging import info_allowed
+
+            log_fn = (
+                logger.info
+                if info_allowed(
+                    self.context.get("app") if hasattr(self, "context") else None
+                )
+                else logger.debug
+            )
+            log_fn("pricing_download_start", url=self.settings.source_url)
 
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(self.settings.source_url)
                 response.raise_for_status()
 
                 data = response.json()
-                logger.info("pricing_download_completed", model_count=len(data))
+                from ccproxy.core.logging import info_allowed
+
+                log_fn = (
+                    logger.info
+                    if info_allowed(
+                        self.context.get("app") if hasattr(self, "context") else None
+                    )
+                    else logger.debug
+                )
+                log_fn("pricing_download_completed", model_count=len(data))
                 return data  # type: ignore[no-any-return]
 
         except (httpx.HTTPError, json.JSONDecodeError) as e:

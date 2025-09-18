@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from ccproxy.core.log_events import METRICS_CONFIG_MISSING, METRICS_CONFIGURED
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
     PluginContext,
@@ -37,10 +38,10 @@ class MetricsRuntime(SystemPluginRuntime):
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, MetricsConfig):
-            logger.warning("metrics_no_config")
+            logger.debug(METRICS_CONFIG_MISSING)
             # Use default config if none provided
             config = MetricsConfig()
-            logger.info("metrics_using_default_config")
+            logger.debug(METRICS_CONFIGURED)
         self.config = config
 
         if self.config.enabled:
@@ -67,12 +68,23 @@ class MetricsRuntime(SystemPluginRuntime):
 
             if hook_registry and isinstance(hook_registry, HookRegistry):
                 hook_registry.register(self.hook)
-                logger.info(
-                    "metrics_hook_registered",
-                    namespace=self.config.namespace,
-                    pushgateway_enabled=self.config.pushgateway_enabled,
-                    metrics_endpoint_enabled=self.config.metrics_endpoint_enabled,
-                )
+                # Only emit non-summary INFO when allowed
+                from ccproxy.core.logging import info_allowed
+
+                if info_allowed(self.context.get("app")):
+                    logger.info(
+                        "metrics_hook_registered",
+                        namespace=self.config.namespace,
+                        pushgateway_enabled=self.config.pushgateway_enabled,
+                        metrics_endpoint_enabled=self.config.metrics_endpoint_enabled,
+                    )
+                else:
+                    logger.debug(
+                        "metrics_hook_registered",
+                        namespace=self.config.namespace,
+                        pushgateway_enabled=self.config.pushgateway_enabled,
+                        metrics_endpoint_enabled=self.config.metrics_endpoint_enabled,
+                    )
             else:
                 logger.warning(
                     "hook_registry_not_available",
@@ -86,9 +98,15 @@ class MetricsRuntime(SystemPluginRuntime):
                     # Create and register metrics router
                     metrics_router = create_metrics_router(self.hook.get_collector())
                     app.include_router(metrics_router, prefix="")
+                    from ccproxy.core.log_events import METRICS_READY
+
                     logger.info(
-                        "metrics_endpoint_registered",
+                        METRICS_READY,
+                        enabled=True,
                         endpoint="/metrics",
+                        namespace=self.config.namespace,
+                        pushgateway_enabled=self.config.pushgateway_enabled,
+                        pushgateway_url=self.config.pushgateway_url,
                     )
 
             # Register pushgateway task with scheduler if enabled
@@ -135,7 +153,7 @@ class MetricsRuntime(SystemPluginRuntime):
                         message="Pushgateway task will not be scheduled",
                     )
 
-            logger.info(
+            logger.debug(
                 "metrics_plugin_enabled",
                 namespace=self.config.namespace,
                 collect_request_metrics=self.config.collect_request_metrics,
@@ -145,7 +163,7 @@ class MetricsRuntime(SystemPluginRuntime):
                 collect_pool_metrics=self.config.collect_pool_metrics,
             )
         else:
-            logger.info("metrics_plugin_disabled")
+            logger.debug("metrics_plugin_disabled")
 
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""

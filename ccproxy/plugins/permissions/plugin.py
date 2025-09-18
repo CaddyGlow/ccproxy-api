@@ -37,36 +37,36 @@ class PermissionsRuntime(SystemPluginRuntime):
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, PermissionsConfig):
-            logger.warning("plugin_no_config")
+            logger.info("plugin_no_config")
             # Use default config if none provided
             self.config = PermissionsConfig()
         else:
             self.config = config
 
-        logger.info("initializing_permissions_plugin")
+        logger.debug("initializing_permissions_plugin")
 
         # Start the permission service if enabled
         if self.config.enabled:
             # Update service timeout from config
             self.service._timeout_seconds = self.config.timeout_seconds
             await self.service.start()
-            logger.info(
+            logger.debug(
                 "permission_service_started",
                 timeout_seconds=self.config.timeout_seconds,
                 terminal_ui=self.config.enable_terminal_ui,
                 sse_stream=self.config.enable_sse_stream,
             )
         else:
-            logger.info("permission_service_disabled")
+            logger.debug("permission_service_disabled")
 
     async def _on_shutdown(self) -> None:
         """Shutdown the plugin and cleanup resources."""
-        logger.info("shutting_down_permissions_plugin")
+        logger.debug("shutting_down_permissions_plugin")
 
         # Stop the permission service
         await self.service.stop()
 
-        logger.info("permissions_plugin_shutdown_complete")
+        logger.debug("permissions_plugin_shutdown_complete")
 
     async def _get_health_details(self) -> dict[str, Any]:
         """Get health check details."""

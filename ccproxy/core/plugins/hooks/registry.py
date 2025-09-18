@@ -55,10 +55,12 @@ class HookRegistry:
             #     priority=priority,
             # )
 
-        # Log summary at INFO level only if multiple events
+        # Log summary at DEBUG; a global summary will be logged elsewhere at INFO
         if len(events_registered) > 0:
-            self._logger.info(
-                "hook_registered_summary",
+            from ccproxy.core.log_events import HOOK_REGISTERED
+
+            self._logger.debug(
+                HOOK_REGISTERED,
                 name=hook.name,
                 events=events_registered,
                 event_count=len(events_registered),

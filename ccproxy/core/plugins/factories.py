@@ -261,11 +261,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "context": context,
             }
 
-            if "formatter_registry" in init_params:
-                adapter_kwargs["formatter_registry"] = adapter_dependencies[
-                    "formatter_registry"
-                ]
-
             return cast(BaseAdapter, self.adapter_class(**adapter_kwargs))
         else:
             # Non-HTTP adapters (like ClaudeSDK) have different dependencies
@@ -294,7 +289,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "streaming_handler": streaming_handler,
                 "hook_manager": hook_manager,
                 "format_registry": adapter_dependencies["format_registry"],
-                "formatter_registry": adapter_dependencies["formatter_registry"],
                 "context": context,
             }
 
@@ -697,8 +691,11 @@ class PluginRegistry:
         settings = core_services.settings
         order = self.resolve_dependencies(settings)
 
+        # Consolidated discovery summary at INFO
+        from ccproxy.core.log_events import PLUGINS_DISCOVERED
+
         logger.info(
-            "initializing_plugins", count=len(order), order=order, category="plugin"
+            PLUGINS_DISCOVERED, count=len(order), names=order, category="plugin"
         )
 
         # Register format adapters from manifests in first pass (latest behavior)
@@ -714,9 +711,11 @@ class PluginRegistry:
                     category="format",
                 )
 
+        initialized: list[str] = []
         for name in order:
             try:
                 await self.create_runtime(name, core_services)
+                initialized.append(name)
             except Exception as e:
                 logger.warning(
                     "plugin_initialization_failed",
@@ -727,7 +726,31 @@ class PluginRegistry:
                 )
                 # Continue with other plugins
 
-        # Registry entries are available immediately; no finalize pass required
+        # Registry entries are available immediately; log consolidated summary
+        from ccproxy.core.log_events import HOOKS_REGISTERED, PLUGINS_INITIALIZED
+
+        skipped = [n for n in order if n not in initialized]
+        logger.info(
+            PLUGINS_INITIALIZED,
+            count=len(initialized),
+            names=initialized,
+            skipped=skipped if skipped else [],
+            category="plugin",
+        )
+
+        # Emit a single hooks summary at the end
+        try:
+            hook_registry = core_services.get_hook_registry()
+            totals: dict[str, int] = {}
+            for event_name, hooks in hook_registry.list().items():
+                totals[event_name] = len(hooks)
+            logger.info(
+                HOOKS_REGISTERED,
+                total_events=len(totals),
+                by_event_counts=totals,
+            )
+        except Exception:
+            pass
 
     async def shutdown_all(self) -> None:
         """Shutdown all plugin runtimes in reverse initialization order."""

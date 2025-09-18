@@ -48,7 +48,14 @@ class HTTPTracerHook(Hook):
         self.raw_formatter = raw_formatter
 
         if self.enabled:
-            logger.info(
+            # Respect summaries-only if app state is available via context at runtime
+            info_summaries_only = False
+            try:
+                # No app reference here; keep default false
+                info_summaries_only = False
+            except Exception:
+                info_summaries_only = False
+            (logger.debug if info_summaries_only else logger.info)(
                 "core_http_tracer_hook_initialized",
                 json_logs=json_formatter is not None,
                 raw_http=raw_formatter is not None,

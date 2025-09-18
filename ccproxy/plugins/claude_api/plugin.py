@@ -70,7 +70,14 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             logger.warning("plugin_no_config")
             # Use default config if none provided
             config = ClaudeAPISettings()
-            logger.info("plugin_using_default_config")
+            from ccproxy.core.logging import reduce_startup
+
+            if reduce_startup(
+                self.context.get("app") if hasattr(self, "context") else None
+            ):
+                logger.debug("plugin_using_default_config", category="plugin")
+            else:
+                logger.info("plugin_using_default_config", category="plugin")
         self.config = config
 
         # Setup format registry
@@ -114,7 +121,16 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
                 }
             )
 
-        logger.info(
+        from ccproxy.core.logging import info_allowed
+
+        log_fn = (
+            logger.info
+            if info_allowed(
+                self.context.get("app") if hasattr(self, "context") else None
+            )
+            else logger.debug
+        )
+        log_fn(
             "plugin_initialized",
             plugin="claude_api",
             version="1.0.0",
@@ -283,16 +299,32 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             )
             hook_registry.register(metrics_hook)
 
-            logger.info(
-                "streaming_metrics_hook_registered",
-                plugin="claude_api",
-                hook_name=metrics_hook.name,
-                priority=metrics_hook.priority,
-                has_pricing=pricing_service is not None,
-                pricing_service_type=type(pricing_service).__name__
-                if pricing_service
-                else "None",
-            )
+            from ccproxy.core.logging import info_allowed
+
+            if info_allowed(
+                self.context.get("app") if hasattr(self, "context") else None
+            ):
+                logger.info(
+                    "streaming_metrics_hook_registered",
+                    plugin="claude_api",
+                    hook_name=metrics_hook.name,
+                    priority=metrics_hook.priority,
+                    has_pricing=pricing_service is not None,
+                    pricing_service_type=type(pricing_service).__name__
+                    if pricing_service
+                    else "None",
+                )
+            else:
+                logger.debug(
+                    "streaming_metrics_hook_registered",
+                    plugin="claude_api",
+                    hook_name=metrics_hook.name,
+                    priority=metrics_hook.priority,
+                    has_pricing=pricing_service is not None,
+                    pricing_service_type=type(pricing_service).__name__
+                    if pricing_service
+                    else "None",
+                )
 
         except Exception as e:
             logger.error(
@@ -326,31 +358,8 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
     dependencies = ["oauth_claude"]
     optional_requires = ["pricing"]
 
-    format_adapters = [
-        FormatAdapterSpec(
-            from_format=FORMAT_OPENAI_CHAT,
-            to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_openai_to_anthropic_request,
-                response=convert_anthropic_to_openai_response,
-                stream=convert_anthropic_to_openai_stream,
-                name="openai_to_anthropic_claude_api",
-            ),
-            priority=100,  # Lower priority than SDK plugin
-            description="OpenAI ChatCompletions to Anthropic Messages (SimpleFormatAdapter)",
-        ),
-        FormatAdapterSpec(
-            from_format=FORMAT_OPENAI_RESPONSES,
-            to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_openai_responses_to_anthropic_request,
-                response=convert_openai_responses_to_anthropic_response,
-                name="openai_responses_to_anthropic_claude_api",
-            ),
-            priority=100,  # Lower priority than SDK plugin
-            description="OpenAI Responses to Anthropic Messages (SimpleFormatAdapter)",
-        ),
-    ]
+    # No format adapters needed - core provides all required conversions
+    format_adapters: list[FormatAdapterSpec] = []
 
     # Define requirements for adapters this plugin needs
     requires_format_adapters: list[FormatPair] = [

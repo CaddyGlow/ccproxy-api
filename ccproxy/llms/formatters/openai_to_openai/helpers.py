@@ -5,14 +5,12 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 import ccproxy.core.logging
-from ccproxy.llms.formatters.formatter_registry import formatter
 from ccproxy.llms.models import openai as openai_models
 
 
 logger = ccproxy.core.logging.get_logger(__name__)
 
 
-@formatter("openai.responses", "openai.completions", "usage")
 def convert__openai_responses_usage_to_openai_completion__usage(
     usage: openai_models.ResponseUsage,
 ) -> openai_models.CompletionUsage:
@@ -48,7 +46,6 @@ def convert__openai_responses_usage_to_openai_completion__usage(
     )
 
 
-@formatter("openai.completions", "openai.responses", "usage")
 def convert__openai_completion_usage_to_openai_responses__usage(
     usage: openai_models.CompletionUsage,
 ) -> openai_models.ResponseUsage:
@@ -79,7 +76,6 @@ def convert__openai_completion_usage_to_openai_responses__usage(
     )
 
 
-@formatter("openai.responses", "openai.chat_completions", "request")
 async def convert__openai_responses_to_openaichat__request(
     request: openai_models.ResponseRequest,
 ) -> openai_models.ChatCompletionRequest:
@@ -186,7 +182,6 @@ async def convert__openai_responses_to_openaichat__request(
     return openai_models.ChatCompletionRequest.model_validate(payload)
 
 
-@formatter("openai.chat_completions", "openai.responses", "response")
 async def convert__openai_chat_to_openai_responses__response(
     chat_response: openai_models.ChatCompletionResponse,
 ) -> openai_models.ResponseObject:
@@ -224,7 +219,6 @@ async def convert__openai_chat_to_openai_responses__response(
     )
 
 
-@formatter("openai.responses", "openai.chat_completions", "response")
 def convert__openai_responses_to_openai_chat__response(
     response: openai_models.ResponseObject,
 ) -> openai_models.ChatCompletionResponse:
@@ -272,7 +266,6 @@ def convert__openai_responses_to_openai_chat__response(
     )
 
 
-@formatter("openai.responses", "openai.chat_completions", "stream")
 def convert__openai_responses_to_openai_chat__stream(
     stream: AsyncIterator[openai_models.AnyStreamEvent],
 ) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
@@ -334,7 +327,6 @@ def convert__openai_responses_to_openai_chat__stream(
     return generator()
 
 
-@formatter("openai.chat_completions", "openai.responses", "stream")
 def convert__openai_chat_to_openai_responses__stream(
     stream: AsyncIterator[openai_models.ChatCompletionChunk | dict[str, Any]],
 ) -> AsyncGenerator[
@@ -496,7 +488,6 @@ def convert__openai_chat_to_openai_responses__stream(
     return generator()
 
 
-@formatter("openai.chat_completions", "openai.responses", "request")
 async def convert__openai_chat_to_openai_responses__request(
     request: openai_models.ChatCompletionRequest,
 ) -> openai_models.ResponseRequest:

@@ -38,7 +38,7 @@ class OAuthCodexRuntime(AuthProviderPluginRuntime):
             if not isinstance(config, CodexOAuthConfig):
                 # Use default config if none provided
                 config = CodexOAuthConfig()
-                logger.info("oauth_codex_using_default_config")
+            logger.debug("oauth_codex_using_default_config")
             self.config = config
 
         # Call parent initialization which handles provider registration

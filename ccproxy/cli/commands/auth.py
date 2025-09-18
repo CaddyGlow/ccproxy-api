@@ -258,7 +258,6 @@ async def _lazy_register_oauth_provider(
                 "streaming_handler",
                 "http_pool_manager",
                 "format_registry",
-                "formatter_registry",
             ]:
                 # Allow setting of internal attributes normally
                 super().__setattr__(name, value)
