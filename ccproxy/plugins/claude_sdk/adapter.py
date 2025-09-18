@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import uuid
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, cast
 
@@ -52,8 +53,6 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
             metrics: Optional metrics collector
             hook_manager: Optional hook manager for emitting events
         """
-        import uuid
-
         # Initialize BaseHTTPAdapter with dummy auth_manager and http_pool_manager
         # since ClaudeSDK doesn't use external HTTP
         super().__init__(
@@ -311,8 +310,6 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
                             # Cast to AsyncIterator since we know stream=True
                             stream_result = cast(AsyncIterator[dict[str, Any]], result)
                             async for chunk in stream_result:
-                                import json
-
                                 data = json.dumps(chunk)
                                 yield f"data: {data}\n\n".encode()
                     except asyncio.CancelledError as e:

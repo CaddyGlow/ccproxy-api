@@ -6,6 +6,7 @@ REQUEST_COMPLETED hook event when the stream actually completes.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import datetime
@@ -208,8 +209,6 @@ class StreamingResponseWithHooks(StreamingResponse):
 
                     if "application/json" in content_type:
                         try:
-                            import json
-
                             http_response_context["response_body"] = json.loads(
                                 response_text
                             )

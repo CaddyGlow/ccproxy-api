@@ -1,6 +1,6 @@
 """OAuth Codex plugin v2 implementation."""
 
-from typing import Any
+from typing import Any, cast
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
@@ -115,10 +115,8 @@ class OAuthCodexFactory(AuthProviderPluginFactory):
             CodexOAuthProvider instance
         """
         # Prefer validated config from context when available
-        from typing import cast as _cast
-
         if context and isinstance(context.get("config"), CodexOAuthConfig):
-            cfg = _cast(CodexOAuthConfig, context.get("config"))
+            cfg = cast(CodexOAuthConfig, context.get("config"))
         else:
             cfg = CodexOAuthConfig()
         config: CodexOAuthConfig = cfg

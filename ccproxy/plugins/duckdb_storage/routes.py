@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
-from typing import cast as _cast
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -22,7 +21,7 @@ async def health(request: Request) -> dict[str, Any]:
     storage = _get_storage(request)
     if not storage:
         raise HTTPException(status_code=503, detail="Storage not initialized")
-    return _cast(dict[str, Any], await storage.health_check())
+    return cast(dict[str, Any], await storage.health_check())
 
 
 @router.get("/status")
@@ -31,7 +30,7 @@ async def status(request: Request) -> dict[str, Any]:
     if not storage:
         raise HTTPException(status_code=503, detail="Storage not initialized")
 
-    health = _cast(dict[str, Any], await storage.health_check())
+    health = cast(dict[str, Any], await storage.health_check())
 
     # Include basic plugin/service context when available
     plugin_info: dict[str, Any] = {

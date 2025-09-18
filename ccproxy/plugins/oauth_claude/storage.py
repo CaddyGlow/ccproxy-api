@@ -1,7 +1,10 @@
 """Token storage for Claude OAuth plugin."""
 
+import asyncio
+import json
+import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ccproxy.auth.storage.base import BaseJsonStorage
 from ccproxy.core.logging import get_plugin_logger
@@ -109,10 +112,6 @@ class ClaudeProfileStorage:
         Args:
             data: JSON data to write
         """
-        import asyncio
-        import json
-        import tempfile
-
         # Ensure parent directory exists
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -141,19 +140,12 @@ class ClaudeProfileStorage:
         Returns:
             Parsed JSON data or None if file doesn't exist
         """
-        import asyncio
-        import json
-
         if not self.file_path.exists():
             return None
 
         def read_file() -> dict[str, Any]:
-            from typing import cast
-
             with self.file_path.open("r") as f:
                 return cast(dict[str, Any], json.load(f))
-
-        from typing import cast
 
         return cast(dict[str, Any], await asyncio.to_thread(read_file))
 

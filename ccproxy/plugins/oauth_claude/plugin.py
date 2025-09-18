@@ -1,6 +1,6 @@
 """OAuth Claude plugin v2 implementation."""
 
-from typing import Any
+from typing import Any, cast
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
@@ -115,10 +115,8 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
             ClaudeOAuthProvider instance
         """
         # Prefer validated config from context when available
-        from typing import cast as _cast
-
         if context and isinstance(context.get("config"), ClaudeOAuthConfig):
-            cfg = _cast(ClaudeOAuthConfig, context.get("config"))
+            cfg = cast(ClaudeOAuthConfig, context.get("config"))
         else:
             cfg = ClaudeOAuthConfig()
         config: ClaudeOAuthConfig = cfg

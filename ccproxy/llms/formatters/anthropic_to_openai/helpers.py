@@ -1,3 +1,4 @@
+import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any, Literal, cast
@@ -249,8 +250,6 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     else getattr(cblock, "input", None)
                 ) or {}
                 try:
-                    import json
-
                     args_str = json.dumps(tool_input, separators=(",", ":"))
                 except Exception:
                     args_str = str(tool_input)

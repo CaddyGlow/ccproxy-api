@@ -79,9 +79,7 @@ class BaseHTTPAdapter(BaseAdapter):
             # Detect streaming via Accept header and/or body flag stream:true
             body_wants_stream = False
             try:
-                import json as _json
-
-                parsed = _json.loads(body.decode()) if body else {}
+                parsed = json.loads(body.decode()) if body else {}
                 body_wants_stream = bool(parsed.get("stream", False))
             except Exception:
                 body_wants_stream = False

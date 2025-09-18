@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from fastapi import FastAPI
@@ -28,7 +28,13 @@ from ccproxy.core.plugins import (
 )
 from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.core.plugins.hooks.events import HookEvent
+from ccproxy.core.services import CoreServices
 from ccproxy.services.container import ServiceContainer
+from ccproxy.services.adapters.chain_validation import (
+    validate_chains,
+    validate_stream_pairs,
+)
+from ccproxy.services.adapters.simple_converters import register_converters
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
     check_version_updates_startup,
@@ -188,11 +194,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             )
             # Continue with other plugins
 
-    from typing import cast as _cast
-
-    from ccproxy.core.services import CoreServices as _CoreServices
-
-    await plugin_registry.initialize_all(_cast(_CoreServices, core_services))
+    await plugin_registry.initialize_all(cast(CoreServices, core_services))
 
     logger.info(
         "plugins_initialization_completed",
@@ -619,20 +621,12 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
     # TODO: This should not be here
     # Register core converters into the format registry and validate route chains
     try:
-        from ccproxy.services.adapters.chain_validation import (
-            validate_chains,
-            validate_stream_pairs,
-        )
-        from ccproxy.services.adapters.simple_converters import (
-            register_converters,
-        )
-
         registry = service_container.get_format_registry()
         register_converters(registry, plugin_name="core")
 
         # Collect declared chains from routes for validation
         declared_chains: list[list[str]] = []
-        for route in app.router.routes:  # type: ignore[attr-defined]
+        for route in app.router.routes:
             endpoint = getattr(route, "endpoint", None)
             chain = getattr(endpoint, "__format_chain__", None)
             if chain:

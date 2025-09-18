@@ -16,6 +16,7 @@ Key features:
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -126,8 +127,6 @@ class RequestContext:
 
         Excludes non-serializable fields like logger and storage.
         """
-        import json
-
         # Start with basic fields
         data = {
             "request_id": self.request_id,

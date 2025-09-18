@@ -2,17 +2,21 @@
 
 import hashlib
 from base64 import urlsafe_b64encode
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-
-if TYPE_CHECKING:
-    from ccproxy.services.cli_detection import CLIDetectionService
 from urllib.parse import urlencode
 
 import httpx
 
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import CliAuthConfig, FlowType, OAuthProviderInfo
+from ccproxy.auth.storage.generic import GenericJsonStorage
+
+if TYPE_CHECKING:
+    from ccproxy.services.cli_detection import CLIDetectionService
+
+from .manager import ClaudeApiTokenManager
+from .models import ClaudeCredentials
 from ccproxy.core.logging import get_plugin_logger
 
 from .client import ClaudeOAuthClient
@@ -312,13 +316,6 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         Returns:
             True if saved successfully, False otherwise
         """
-        from pathlib import Path
-
-        from ccproxy.auth.storage.generic import GenericJsonStorage
-
-        from .manager import ClaudeApiTokenManager
-        from .models import ClaudeCredentials
-
         try:
             if custom_path:
                 # Use custom path for storage
@@ -347,13 +344,6 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         Returns:
             Credentials if found, None otherwise
         """
-        from pathlib import Path
-
-        from ccproxy.auth.storage.generic import GenericJsonStorage
-
-        from .manager import ClaudeApiTokenManager
-        from .models import ClaudeCredentials
-
         try:
             if custom_path:
                 # Load from custom path

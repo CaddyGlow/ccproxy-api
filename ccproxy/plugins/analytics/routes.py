@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.auth.conditional import ConditionalAuthDep
+from ccproxy.core.request_context import get_request_event_stream
 from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
+from .service import AnalyticsService
 
 
 router = APIRouter()
@@ -36,8 +38,6 @@ async def query_logs(
         raise HTTPException(status_code=503, detail="Storage engine not available")
 
     try:
-        from .service import AnalyticsService
-
         svc = AnalyticsService(storage._engine)
         return svc.query_logs(
             limit=limit,
@@ -71,8 +71,6 @@ async def get_logs_analytics(
         raise HTTPException(status_code=503, detail="Storage engine not available")
 
     try:
-        from .service import AnalyticsService
-
         svc = AnalyticsService(storage._engine)
         analytics = svc.get_analytics(
             start_time=start_time,
@@ -107,8 +105,6 @@ async def stream_logs(
     status_code_max: int | None = Query(None, description="Max status code"),
 ) -> StreamingResponse:
     async def event_generator() -> AsyncGenerator[str, None]:
-        from ccproxy.core.request_context import get_request_event_stream
-
         try:
             async for event in get_request_event_stream():
                 data = event

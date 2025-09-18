@@ -6,13 +6,14 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Annotated, Any, TypeVar
 
 import httpx
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import get_logger
 from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.services.container import ServiceContainer
-
+from ccproxy.core.plugins import PluginRegistry, ProviderPluginRuntime
+from ccproxy.services.adapters.base import BaseAdapter
 
 if TYPE_CHECKING:
     pass
@@ -31,8 +32,6 @@ def get_service(service_type: type[T]) -> Callable[[Request], T]:
             request.app.state, "service_container", None
         )
         if container is None:
-            from fastapi import HTTPException
-
             logger.error(
                 "service_container_missing_on_app_state",
                 category="lifecycle",
@@ -66,18 +65,12 @@ def get_hook_manager(request: Request) -> HookManager:
 
 def get_plugin_adapter(plugin_name: str) -> Any:
     """Create a dependency function for a specific plugin's adapter."""
-    from fastapi import HTTPException
-
-    from ccproxy.services.adapters.base import BaseAdapter
-
     def _get_adapter(request: Request) -> BaseAdapter:
         """Get adapter for the specified plugin."""
         if not hasattr(request.app.state, "plugin_registry"):
             raise HTTPException(
                 status_code=503, detail="Plugin registry not initialized"
             )
-
-        from ccproxy.core.plugins import PluginRegistry, ProviderPluginRuntime
 
         registry: PluginRegistry = request.app.state.plugin_registry
         runtime = registry.get_runtime(plugin_name)

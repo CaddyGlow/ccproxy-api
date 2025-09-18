@@ -1,6 +1,7 @@
 """Hooks middleware for request lifecycle management."""
 
 import time
+from datetime import datetime
 from typing import Any, cast
 
 from fastapi import Request, Response
@@ -86,8 +87,6 @@ class HooksMiddleware(BaseHTTPMiddleware):
         start_time = time.time()
 
         # Create hook context for the request
-        from datetime import datetime
-
         logger.debug("headers_on_request_start", headers=dict(request.headers))
         hook_context = HookContext(
             event=HookEvent.REQUEST_STARTED,  # Will be overridden in emit calls
@@ -359,9 +358,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
         try:
             # Check if body is already cached
             if hasattr(request.state, "cached_body"):
-                from typing import cast as _cast
-
-                return _cast(bytes, request.state.cached_body)
+                return cast(bytes, request.state.cached_body)
 
             # Read and cache body for future use
             body = await request.body()

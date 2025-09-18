@@ -1,7 +1,7 @@
 """API routes for Claude API plugin."""
 
 import uuid
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
@@ -35,9 +35,7 @@ router = APIRouter()
 
 
 def _cast_result(result: object) -> APIResponse:
-    from typing import cast as _cast
-
-    return _cast(APIResponse, result)
+    return cast(APIResponse, result)
 
 
 async def _handle_adapter_request(

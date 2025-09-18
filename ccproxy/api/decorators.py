@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import time
+import uuid
 from collections.abc import Awaitable, Callable
 from functools import wraps
 from typing import ParamSpec, TypeVar
 
 from fastapi import Request
+
+from ccproxy.core.logging import get_logger as _get_logger
+from ccproxy.core.request_context import RequestContext
 
 
 P = ParamSpec("P")
@@ -59,12 +64,6 @@ def with_format_chain(
 
             if request is not None:
                 # Ensure a context exists
-                import time
-                import uuid
-
-                from ccproxy.core.logging import get_logger as _get_logger
-                from ccproxy.core.request_context import RequestContext
-
                 if (
                     not hasattr(request.state, "context")
                     or request.state.context is None

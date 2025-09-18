@@ -1,5 +1,6 @@
 """Core transformer abstractions for request/response transformation."""
 
+import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
@@ -139,8 +140,6 @@ class RequestTransformer(BaseTransformer):
         Returns:
             The transformed request
         """
-        import time
-
         start_time = time.perf_counter()
         error_msg = None
         result = None
@@ -194,8 +193,6 @@ class ResponseTransformer(BaseTransformer):
         Returns:
             The transformed response
         """
-        import time
-
         start_time = time.perf_counter()
         error_msg = None
         result = None

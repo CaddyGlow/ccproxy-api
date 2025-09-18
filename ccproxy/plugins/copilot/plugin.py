@@ -1,6 +1,6 @@
 """GitHub Copilot plugin factory and runtime implementation."""
 
-from typing import Any
+from typing import Any, cast
 
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
@@ -201,10 +201,8 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
         Returns:
             CopilotOAuthProvider instance
         """
-        from typing import cast as _cast
-
         if context and isinstance(context.get("config"), CopilotConfig):
-            cfg = _cast(CopilotConfig, context.get("config"))
+            cfg = cast(CopilotConfig, context.get("config"))
         else:
             cfg = CopilotConfig()
 

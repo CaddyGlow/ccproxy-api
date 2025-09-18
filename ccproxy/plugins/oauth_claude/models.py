@@ -1,6 +1,8 @@
 """Claude-specific authentication models."""
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import (
@@ -184,9 +186,6 @@ class ClaudeTokenWrapper(BaseTokenInfo):
         """
         # Lazy, best-effort read of local profile data; keep this non-fatal.
         try:
-            import json
-            from pathlib import Path
-
             profile_path = Path.home() / ".claude" / ".account.json"
             if profile_path.exists():
                 with profile_path.open("r") as f:

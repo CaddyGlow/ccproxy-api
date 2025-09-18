@@ -13,8 +13,9 @@ import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from sqlalchemy import delete, insert, select as sa_select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, func
@@ -299,7 +300,6 @@ class SimpleDuckDBStorage:
                 "cost_sdk_usd": data.get("cost_sdk_usd", 0.0),
             }
 
-            from sqlalchemy import insert
 
             table = SQLModel.metadata.tables.get("access_logs")
             if table is None:
@@ -308,9 +308,7 @@ class SimpleDuckDBStorage:
                 )
             with Session(self._engine) as session:
                 try:
-                    from typing import cast as _cast
-
-                    _ = _cast(Any, session).exec(insert(table).values(values))
+                    _ = cast(Any, session).exec(insert(table).values(values))
                     session.commit()
                 except (OperationalError, IntegrityError, SQLAlchemyError) as e:
                     # Fallback for older schemas without the 'provider' column
@@ -383,7 +381,6 @@ class SimpleDuckDBStorage:
             return False
 
         try:
-            from sqlalchemy import insert
 
             rows = []
             for data in metrics:
@@ -425,9 +422,7 @@ class SimpleDuckDBStorage:
                     "access_logs table not registered; ensure analytics plugin is enabled"
                 )
             with Session(self._engine) as session:
-                from typing import cast as _cast
-
-                _ = _cast(Any, session).exec(insert(table), rows)
+                cast(Any, session).exec(insert(table), rows)
                 session.commit()
 
             logger.info(
@@ -583,9 +578,7 @@ class SimpleDuckDBStorage:
             if table is None:
                 return 0
             statement = sa_select(func.count()).select_from(table)
-            from typing import cast as _cast
-
-            return _cast(Any, session).exec(statement).first() or 0
+            return cast(Any, session).exec(statement).first() or 0
 
     async def reset_data(self) -> bool:
         """Reset all data in the storage (useful for testing/debugging).
@@ -618,9 +611,7 @@ class SimpleDuckDBStorage:
             if table is None:
                 return True
             with Session(self._engine) as session:
-                from typing import cast as _cast
-
-                _ = _cast(Any, session).exec(delete(table))
+                _ = cast(Any, session).exec(delete(table))
                 session.commit()
 
             logger.info("simple_duckdb_reset_success")

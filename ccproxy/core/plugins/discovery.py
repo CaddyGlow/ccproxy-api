@@ -7,7 +7,7 @@ and dynamically load their factories.
 import importlib
 import importlib.util
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 
@@ -251,9 +251,7 @@ class PluginDiscovery:
 
                 # If the object already looks like a factory (duck typing)
                 if hasattr(obj, "get_manifest") and hasattr(obj, "create_runtime"):
-                    from typing import cast as _cast
-
-                    factory = _cast(PluginFactory, obj)
+                    factory = cast(PluginFactory, obj)
                 # If it's callable, try to call to get a factory
                 elif callable(obj):
                     try:
@@ -261,9 +259,7 @@ class PluginDiscovery:
                         if hasattr(maybe, "get_manifest") and hasattr(
                             maybe, "create_runtime"
                         ):
-                            from typing import cast as _cast
-
-                            factory = _cast(PluginFactory, maybe)
+                            factory = cast(PluginFactory, maybe)
                     except Exception:
                         factory = None
 
