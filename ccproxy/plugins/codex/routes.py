@@ -1,17 +1,20 @@
 """Codex plugin routes."""
 
-import contextlib
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Request
 from starlette.responses import Response, StreamingResponse
 
+from ccproxy.api.decorators import with_format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
     FORMAT_OPENAI_CHAT,
     FORMAT_OPENAI_RESPONSES,
+    UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES,
+    UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS,
+    UPSTREAM_ENDPOINT_OPENAI_RESPONSES,
 )
 from ccproxy.streaming import DeferredStreaming
 
@@ -23,99 +26,85 @@ CodexAdapterDep = Annotated[Any, Depends(get_plugin_adapter("codex"))]
 router = APIRouter()
 
 
-def codex_path_transformer(path: str) -> str:
-    """Transform stripped paths for Codex API."""
-    if (
-        path.endswith("/chat/completions")
-        or path.endswith("/completions")
-        or path.endswith("/messages")
-    ):
-        return "/responses"
-    return path
-
-
 # Helper to handle adapter requests
 async def handle_codex_request(
     request: Request,
     adapter: Any,
-    endpoint: str,
-    session_id: str | None = None,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    from typing import cast as _cast
-
-    # Mark service type for downstream streaming helpers/metrics
-    with contextlib.suppress(Exception):
-        request.state.context.metadata.setdefault("service_type", "codex")
-
     result = await adapter.handle_request(request)
-    return _cast(StreamingResponse | Response | DeferredStreaming, result)
+    return cast(StreamingResponse | Response | DeferredStreaming, result)
 
 
 # Route definitions
 @router.post("/responses", response_model=None)
+@with_format_chain(
+    [FORMAT_OPENAI_RESPONSES], endpoint=UPSTREAM_ENDPOINT_OPENAI_RESPONSES
+)
 async def codex_responses(
     request: Request,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for native responses format
-    request.state.context.format_chain = [FORMAT_OPENAI_RESPONSES]
-    request.state.context.metadata["endpoint"] = "/responses"
-    return await handle_codex_request(request, adapter, "/responses")
+    return await handle_codex_request(request, adapter)
 
 
 @router.post("/{session_id}/responses", response_model=None)
+@with_format_chain([FORMAT_OPENAI_RESPONSES], endpoint="/{session_id}/responses")
 async def codex_responses_with_session(
     session_id: str,
     request: Request,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for native responses format
-    request.state.context.format_chain = [FORMAT_OPENAI_RESPONSES]
-    request.state.context.metadata["endpoint"] = "/{session_id}/responses"
     return await handle_codex_request(
-        request, adapter, "/{session_id}/responses", session_id
+        request,
+        adapter,
     )
 
 
 @router.post("/chat/completions", response_model=None)
+@with_format_chain(
+    [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES],
+    endpoint=UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS,
+)
 async def codex_chat_completions(
     request: Request,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for OpenAI→Response API conversion
-    request.state.context.format_chain = [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES]
-    request.state.context.metadata["endpoint"] = "/chat/completions"
-    return await handle_codex_request(request, adapter, "/chat/completions")
+    return await handle_codex_request(
+        request, adapter, UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS
+    )
 
 
 @router.post("/{session_id}/chat/completions", response_model=None)
+@with_format_chain(
+    [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES],
+    endpoint="/{session_id}/chat/completions",
+)
 async def codex_chat_completions_with_session(
     session_id: str,
     request: Request,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for OpenAI→Response API conversion
-    request.state.context.format_chain = [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES]
-    request.state.context.metadata["endpoint"] = "/{session_id}/chat/completions"
     return await handle_codex_request(
-        request, adapter, "/{session_id}/chat/completions", session_id
+        request,
+        adapter,
     )
 
 
 @router.post("/v1/chat/completions", response_model=None)
+@with_format_chain(
+    [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES],
+    endpoint="/v1/chat/completions",
+)
 async def codex_v1_chat_completions(
     request: Request,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for OpenAI→Response API conversion
-    request.state.context.format_chain = [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES]
-    request.state.context.metadata["endpoint"] = "/v1/chat/completions"
-    return await handle_codex_request(request, adapter, "/chat/completions")
+    return await handle_codex_request(request, adapter)
 
 
 @router.get("/v1/models", response_model=None)
@@ -148,33 +137,29 @@ async def list_models(
 
 
 @router.post("/v1/messages", response_model=None)
+@with_format_chain(
+    [FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_RESPONSES],
+    endpoint=UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES,
+)
 async def codex_v1_messages(
     request: Request,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for Anthropic→Response API conversion
-    request.state.context.format_chain = [
-        FORMAT_ANTHROPIC_MESSAGES,
-        FORMAT_OPENAI_RESPONSES,
-    ]
-    request.state.context.metadata["endpoint"] = "/v1/messages"
     return await handle_codex_request(request, adapter, "/v1/messages")
 
 
 @router.post("/{session_id}/v1/messages", response_model=None)
+@with_format_chain(
+    [FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_RESPONSES],
+    endpoint="/{session_id}/v1/messages",
+)
 async def codex_v1_messages_with_session(
     session_id: str,
     request: Request,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for Anthropic→Response API conversion
-    request.state.context.format_chain = [
-        FORMAT_ANTHROPIC_MESSAGES,
-        FORMAT_OPENAI_RESPONSES,
-    ]
-    request.state.context.metadata["endpoint"] = "/{session_id}/v1/messages"
     return await handle_codex_request(
         request, adapter, "/{session_id}/v1/messages", session_id
     )

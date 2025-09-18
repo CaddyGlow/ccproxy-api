@@ -1,16 +1,21 @@
 "CopilotEmbeddingRequestAPI routes for GitHub Copilot plugin."
 
-from typing import TYPE_CHECKING, Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Body, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from ccproxy.api.decorators import format_chain
+from ccproxy.api.decorators import format_chain, with_format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
     FORMAT_OPENAI_CHAT,
     FORMAT_OPENAI_RESPONSES,
+    UPSTREAM_ENDPOINT_COPILOT_INTERNAL_TOKEN,
+    UPSTREAM_ENDPOINT_COPILOT_INTERNAL_USER,
+    UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS,
+    UPSTREAM_ENDPOINT_OPENAI_EMBEDDINGS,
+    UPSTREAM_ENDPOINT_OPENAI_MODELS,
 )
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.llms.models import anthropic as anthropic_models
@@ -42,9 +47,7 @@ router_github = APIRouter()
 
 
 def _cast_result(result: object) -> OpenAIResponse:
-    from typing import cast as _cast
-
-    return _cast(APIResponse, result)
+    return cast(APIResponse, result)
 
 
 async def _handle_adapter_request(
@@ -75,7 +78,9 @@ async def create_openai_chat_completion(
     body: dict[str, Any] = Depends(_get_request_body, use_cache=False),
 ) -> openai_models.ChatCompletionResponse | OpenAIResponse:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
-    request.state.context.metadata["endpoint"] = "/chat/completions"
+    request.state.context.metadata["endpoint"] = (
+        UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS
+    )
     return await _handle_adapter_request(request, adapter)
 
 
@@ -83,29 +88,15 @@ async def create_openai_chat_completion(
     "/messages",
     response_model=anthropic_models.MessageResponse,
 )
-@format_chain(
-    [FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_CHAT]
-)  # Client expects Anthropic, provider speaks OpenAI
+@with_format_chain(
+    [FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_CHAT],
+    endpoint=UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS,
+)
 async def create_anthropic_message(
     request: Request,
     _: anthropic_models.CreateMessageRequest,
     adapter: CopilotAdapterDep,
 ) -> anthropic_models.MessageResponse | OpenAIResponse:
-    request.state.context.metadata["endpoint"] = "/chat/completions"
-    # Ensure the format chain is explicitly applied so the adapter converts
-    # Anthropic Messages -> OpenAI Chat Completions for the Copilot provider
-    try:
-        prev_chain = getattr(request.state.context, "format_chain", None)
-        new_chain = [FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_CHAT]
-        request.state.context.format_chain = new_chain
-        logger.debug(
-            "copilot_messages_route_enter",
-            prev_chain=prev_chain,
-            applied_chain=new_chain,
-            category="format",
-        )
-    except Exception as exc:
-        logger.debug("copilot_messages_set_chain_failed", error=str(exc))
     return await _handle_adapter_request(request, adapter)
 
 
@@ -123,7 +114,9 @@ async def create_responses_message(
 ) -> anthropic_models.MessageResponse | OpenAIResponse:
     """Create a message using Response API with OpenAI provider."""
     # Ensure format chain is present in context even if decorator injection is bypassed
-    request.state.context.metadata["endpoint"] = "/chat/completions"
+    request.state.context.metadata["endpoint"] = (
+        UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS
+    )
     # Explicitly set format_chain so BaseHTTPAdapter applies request conversion
     try:
         prev_chain = getattr(request.state.context, "format_chain", None)
@@ -161,7 +154,7 @@ async def create_responses_message(
 async def create_embeddings(
     request: Request, _: openai_models.EmbeddingRequest, adapter: CopilotAdapterDep
 ) -> openai_models.EmbeddingResponse | OpenAIResponse:
-    request.state.context.metadata["endpoint"] = "/embeddings"
+    request.state.context.metadata["endpoint"] = UPSTREAM_ENDPOINT_OPENAI_EMBEDDINGS
     return await _handle_adapter_request(request, adapter)
 
 
@@ -171,14 +164,14 @@ async def list_models_v1(
 ) -> OpenAIResponse:
     """List available Copilot models."""
     # Forward request to upstream Copilot API
-    request.state.context.metadata["endpoint"] = "/models"
+    request.state.context.metadata["endpoint"] = UPSTREAM_ENDPOINT_OPENAI_MODELS
     return await _handle_adapter_request(request, adapter)
 
 
 @router_github.get("/usage", response_model=CopilotUserInternalResponse)
 async def get_usage_stats(adapter: CopilotAdapterDep, request: Request) -> Response:
     """Get Copilot usage statistics."""
-    request.state.context.metadata["endpoint"] = "/copilot_internal/user"
+    request.state.context.metadata["endpoint"] = UPSTREAM_ENDPOINT_COPILOT_INTERNAL_USER
     request.state.context.metadata["method"] = "get"
     result = await adapter.handle_request_gh_api(request)
     from typing import cast
@@ -189,7 +182,9 @@ async def get_usage_stats(adapter: CopilotAdapterDep, request: Request) -> Respo
 @router_github.get("/token", response_model=CopilotTokenStatus)
 async def get_token_status(adapter: CopilotAdapterDep, request: Request) -> Response:
     """Get Copilot usage statistics."""
-    request.state.context.metadata["endpoint"] = "/copilot_internal/v2/token"
+    request.state.context.metadata["endpoint"] = (
+        UPSTREAM_ENDPOINT_COPILOT_INTERNAL_TOKEN
+    )
     request.state.context.metadata["method"] = "get"
     result = await adapter.handle_request_gh_api(request)
     from typing import cast

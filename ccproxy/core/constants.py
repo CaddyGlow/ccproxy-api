@@ -51,3 +51,13 @@ CONFIG_FILE_NAMES = [
     "config.yaml",
     "config.yml",
 ]
+# Common upstream endpoint paths (provider APIs)
+UPSTREAM_ENDPOINT_OPENAI_RESPONSES = "/responses"
+UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS = "/chat/completions"
+UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES = "/v1/messages"
+# Additional common OpenAI-style endpoints
+UPSTREAM_ENDPOINT_OPENAI_EMBEDDINGS = "/embeddings"
+UPSTREAM_ENDPOINT_OPENAI_MODELS = "/models"
+# GitHub Copilot internal API endpoints
+UPSTREAM_ENDPOINT_COPILOT_INTERNAL_USER = "/copilot_internal/user"
+UPSTREAM_ENDPOINT_COPILOT_INTERNAL_TOKEN = "/copilot_internal/v2/token"

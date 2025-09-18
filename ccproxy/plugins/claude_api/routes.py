@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
 
-from ccproxy.api.decorators import base_format, format_chain
+from ccproxy.api.decorators import with_format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
     FORMAT_OPENAI_CHAT,
     FORMAT_OPENAI_RESPONSES,
+    UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES,
 )
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.llms.models import anthropic as anthropic_models
@@ -51,7 +52,9 @@ async def _handle_adapter_request(
     "/v1/messages",
     response_model=anthropic_models.MessageResponse | anthropic_models.APIError,
 )
-@base_format(FORMAT_ANTHROPIC_MESSAGES)
+@with_format_chain(
+    [FORMAT_ANTHROPIC_MESSAGES], endpoint=UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES
+)
 async def create_anthropic_message(
     request: Request,
     _: anthropic_models.CreateMessageRequest,
@@ -59,8 +62,6 @@ async def create_anthropic_message(
     adapter: ClaudeAPIAdapterDep,
 ) -> APIResponse:
     """Create a message using Claude AI with native Anthropic format."""
-    request.state.context.format_chain = [FORMAT_ANTHROPIC_MESSAGES]
-    request.state.context.metadata["endpoint"] = "/v1/messages"
     return await _handle_adapter_request(request, adapter)
 
 
@@ -68,8 +69,10 @@ async def create_anthropic_message(
     "/v1/chat/completions",
     response_model=openai_models.ChatCompletionResponse | openai_models.ErrorResponse,
 )
-@base_format(FORMAT_OPENAI_CHAT)
-@format_chain([FORMAT_OPENAI_CHAT, FORMAT_ANTHROPIC_MESSAGES])
+@with_format_chain(
+    [FORMAT_OPENAI_CHAT, FORMAT_ANTHROPIC_MESSAGES],
+    endpoint=UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES,
+)
 async def create_openai_chat_completion(
     request: Request,
     _: openai_models.ChatCompletionRequest,
@@ -77,8 +80,6 @@ async def create_openai_chat_completion(
     adapter: ClaudeAPIAdapterDep,
 ) -> APIResponse:
     """Create a chat completion using Claude AI with OpenAI-compatible format."""
-    request.state.context.format_chain = [FORMAT_OPENAI_CHAT, FORMAT_ANTHROPIC_MESSAGES]
-    request.state.context.metadata["endpoint"] = "/v1/messages"
     return await _handle_adapter_request(request, adapter)
 
 
@@ -111,9 +112,10 @@ async def list_models(
 
 
 @router.post("/v1/responses", response_model=None)
-@format_chain(
-    [FORMAT_OPENAI_RESPONSES, FORMAT_ANTHROPIC_MESSAGES]
-)  # Client expects Response API, provider is Anthropic
+@with_format_chain(
+    [FORMAT_OPENAI_RESPONSES, FORMAT_ANTHROPIC_MESSAGES],
+    endpoint=UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES,
+)
 async def claude_v1_responses(
     request: Request,
     auth: ConditionalAuthDep,
@@ -121,19 +123,16 @@ async def claude_v1_responses(
 ) -> APIResponse:
     """Response API compatible endpoint using Claude backend."""
     # Ensure format chain is present for request/response conversion
-    request.state.context.format_chain = [
-        FORMAT_OPENAI_RESPONSES,
-        FORMAT_ANTHROPIC_MESSAGES,
-    ]
-    request.state.context.metadata["endpoint"] = "/v1/messages"
+    # format chain and endpoint set by decorator
     session_id = request.headers.get("session_id") or str(uuid.uuid4())
     return await _handle_adapter_request(request, adapter)
 
 
 @router.post("/{session_id}/v1/responses", response_model=None)
-@format_chain(
-    [FORMAT_OPENAI_RESPONSES, FORMAT_ANTHROPIC_MESSAGES]
-)  # Client expects Response API
+@with_format_chain(
+    [FORMAT_OPENAI_RESPONSES, FORMAT_ANTHROPIC_MESSAGES],
+    endpoint=UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES,
+)
 async def claude_v1_responses_with_session(
     session_id: str,
     request: Request,
@@ -142,9 +141,5 @@ async def claude_v1_responses_with_session(
 ) -> APIResponse:
     """Response API with session_id using Claude backend."""
     # Ensure format chain is present for request/response conversion
-    request.state.context.format_chain = [
-        FORMAT_OPENAI_RESPONSES,
-        FORMAT_ANTHROPIC_MESSAGES,
-    ]
-    request.state.context.metadata["endpoint"] = "/v1/messages"
+    # format chain and endpoint set by decorator
     return await _handle_adapter_request(request, adapter)

@@ -5,7 +5,7 @@ from typing import Annotated, Any, cast
 from fastapi import APIRouter, Depends, Request
 from starlette.responses import Response, StreamingResponse
 
-from ccproxy.api.decorators import base_format
+from ccproxy.api.decorators import with_format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.core.constants import (
@@ -33,7 +33,7 @@ async def _handle_claude_sdk_request(
 
 
 @router.post("/v1/messages", response_model=None)
-@base_format(FORMAT_ANTHROPIC_MESSAGES)
+@with_format_chain([FORMAT_ANTHROPIC_MESSAGES], endpoint="/v1/messages")
 async def claude_sdk_messages(
     request: Request,
     auth: ConditionalAuthDep,
