@@ -113,7 +113,7 @@ class TestFormatRegistry:
             from_format="test_from",
             to_format="test_to",
             adapter=adapter,
-            plugin_name="test_plugin"
+            plugin_name="test_plugin",
         )
 
         retrieved = registry.get("test_from", "test_to")
@@ -151,7 +151,7 @@ class TestFormatRegistry:
             from_format="test_from",
             to_format="test_to",
             adapter=adapter,
-            plugin_name="test_plugin"
+            plugin_name="test_plugin",
         )
 
         retrieved = registry.get_if_exists("test_from", "test_to")
@@ -261,7 +261,10 @@ class TestFormatRegistry:
         )
 
         assert ("anthropic.messages", "openai.responses") in registry._adapters
-        assert registry._registered_plugins[("anthropic.messages", "openai.responses")] == "core"
+        assert (
+            registry._registered_plugins[("anthropic.messages", "openai.responses")]
+            == "core"
+        )
 
     def test_list_pairs(self, registry):
         """Test format pair listing."""

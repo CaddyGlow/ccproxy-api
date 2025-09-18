@@ -22,7 +22,9 @@ def test_stop_reason_mapping_stop() -> None:
                 "finish_reason": "stop",
             }
         ],
-        usage=openai_models.CompletionUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3),
+        usage=openai_models.CompletionUsage(
+            prompt_tokens=1, completion_tokens=2, total_tokens=3
+        ),
     )
     out = convert__openai_chat_to_anthropic_messages__response(resp)
     assert out.stop_reason == "end_turn"
@@ -42,7 +44,9 @@ def test_stop_reason_mapping_length() -> None:
                 "finish_reason": "length",
             }
         ],
-        usage=openai_models.CompletionUsage(prompt_tokens=1, completion_tokens=2, total_tokens=3),
+        usage=openai_models.CompletionUsage(
+            prompt_tokens=1, completion_tokens=2, total_tokens=3
+        ),
     )
     out = convert__openai_chat_to_anthropic_messages__response(resp)
     assert out.stop_reason == "max_tokens"
@@ -54,9 +58,14 @@ def test_usage_mapping_cached_tokens() -> None:
         prompt_tokens=10,
         completion_tokens=5,
         total_tokens=15,
-        prompt_tokens_details=openai_models.PromptTokensDetails(cached_tokens=7, audio_tokens=0),
+        prompt_tokens_details=openai_models.PromptTokensDetails(
+            cached_tokens=7, audio_tokens=0
+        ),
         completion_tokens_details=openai_models.CompletionTokensDetails(
-            reasoning_tokens=0, audio_tokens=0, accepted_prediction_tokens=0, rejected_prediction_tokens=0
+            reasoning_tokens=0,
+            audio_tokens=0,
+            accepted_prediction_tokens=0,
+            rejected_prediction_tokens=0,
         ),
     )
     resp = openai_models.ChatCompletionResponse(
@@ -88,7 +97,7 @@ def test_tool_calls_strict_arguments_json() -> None:
             {
                 "id": "tool_1",
                 "type": "function",
-                "function": {"name": "do", "arguments": "{\"a\":1}"},
+                "function": {"name": "do", "arguments": '{"a":1}'},
             }
         ],
     }
@@ -98,10 +107,14 @@ def test_tool_calls_strict_arguments_json() -> None:
         created=0,
         model="gpt-x",
         choices=[{"index": 0, "message": msg, "finish_reason": "tool_calls"}],
-        usage=openai_models.CompletionUsage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        usage=openai_models.CompletionUsage(
+            prompt_tokens=1, completion_tokens=1, total_tokens=2
+        ),
     )
     out = convert__openai_chat_to_anthropic_messages__response(resp)
-    names: list[str] = [getattr(b, "name") for b in out.content if getattr(b, "type", None) == "tool_use"]  # type: ignore[list-item]
+    names: list[str] = [
+        b.name for b in out.content if getattr(b, "type", None) == "tool_use"
+    ]  # type: ignore[list-item]
     assert names == ["do"]
 
 
@@ -124,7 +137,9 @@ def test_tool_calls_strict_arguments_invalid_raises() -> None:
         created=0,
         model="gpt-x",
         choices=[{"index": 0, "message": msg2, "finish_reason": "tool_calls"}],
-        usage=openai_models.CompletionUsage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+        usage=openai_models.CompletionUsage(
+            prompt_tokens=1, completion_tokens=1, total_tokens=2
+        ),
     )
     with pytest.raises(ValueError):
         _ = convert__openai_chat_to_anthropic_messages__response(resp)

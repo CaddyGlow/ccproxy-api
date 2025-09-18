@@ -12,7 +12,6 @@ import pytest
 from claude_code_sdk import (
     AssistantMessage,
     ResultMessage,
-    TextBlock,
     ToolResultBlock,
     ToolUseBlock,
 )

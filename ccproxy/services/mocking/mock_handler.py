@@ -11,7 +11,9 @@ from fastapi.responses import StreamingResponse
 
 from ccproxy.core.request_context import RequestContext
 from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
-from ccproxy.services.adapters.simple_converters import convert_anthropic_to_openai_response
+from ccproxy.services.adapters.simple_converters import (
+    convert_anthropic_to_openai_response,
+)
 from ccproxy.testing import RealisticMockResponseGenerator
 
 

@@ -268,6 +268,7 @@ class BaseHTTPAdapter(BaseAdapter):
                     )
                     # Return proper error instead of potentially malformed response
                     from starlette.responses import JSONResponse
+
                     return JSONResponse(
                         status_code=500,
                         content={
@@ -276,7 +277,7 @@ class BaseHTTPAdapter(BaseAdapter):
                                 "message": "Failed to convert response format",
                                 "details": str(e),
                             }
-                        }
+                        },
                     )
             else:
                 logger.debug("format_chain_skipped", reason="no forward chain")

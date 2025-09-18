@@ -1,3 +1,5 @@
+""" """
+
 import json
 import re
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -419,12 +421,6 @@ async def convert__openai_chat_to_anthropic_message__request(
 
     # Validate against Anthropic model to ensure shape
     return anthropic_models.CreateMessageRequest.model_validate(payload_data)
-
-
-"""
-OpenAI Response→Chat converters are consolidated under openai_to_openai.helpers.
-This module focuses on OpenAI→Anthropic conversions only.
-"""
 
 
 @formatter("openai.responses", "anthropic.messages", "request")

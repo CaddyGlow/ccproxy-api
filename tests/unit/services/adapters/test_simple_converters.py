@@ -13,9 +13,7 @@ async def test_openai_to_anthropic_request_conversion():
     """Test OpenAI to Anthropic request conversion."""
     openai_request = {
         "model": "gpt-4",
-        "messages": [
-            {"role": "user", "content": "Hello, world!"}
-        ],
+        "messages": [{"role": "user", "content": "Hello, world!"}],
         "max_tokens": 100,
     }
 
@@ -36,19 +34,11 @@ async def test_anthropic_to_openai_response_conversion():
         "id": "msg_123",
         "type": "message",
         "role": "assistant",
-        "content": [
-            {
-                "type": "text",
-                "text": "Hello! How can I help you today?"
-            }
-        ],
+        "content": [{"type": "text", "text": "Hello! How can I help you today?"}],
         "model": "claude-3-sonnet-20240229",
         "stop_reason": "end_turn",
         "stop_sequence": None,
-        "usage": {
-            "input_tokens": 10,
-            "output_tokens": 20
-        }
+        "usage": {"input_tokens": 10, "output_tokens": 20},
     }
 
     # Should not raise an exception
