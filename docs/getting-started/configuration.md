@@ -352,17 +352,11 @@ SCHEDULER__VERSION_CHECK_ENABLED=true      # Enable version checks
 SCHEDULER__PRICING_UPDATE_ENABLED=true      # Enable pricing updates
 ```
 
-**Via CLI Flags:**
+CLI flags for network controls were removed. Use environment variables or TOML instead:
 ```bash
-# Disable all network calls
-ccproxy serve --no-network-calls
-
-# Disable specific features
-ccproxy serve --disable-version-check
-ccproxy serve --disable-pricing-updates
-
 # Enable features (override defaults)
 SCHEDULER__VERSION_CHECK_ENABLED=true ccproxy serve
+SCHEDULER__PRICING_UPDATE_ENABLED=true ccproxy serve
 ```
 
 **Via TOML Configuration:**
@@ -373,6 +367,23 @@ pricing_update_enabled = false     # Default: false
 ```
 
 **Note:** Network features are disabled by default for privacy. You must explicitly enable them if desired.
+
+### Plugin Selection via CLI
+
+You can enable or disable specific plugins when starting the server:
+
+```bash
+# Enable specific plugins
+ccproxy serve --enable-plugin metrics --enable-plugin analytics
+
+# Disable specific plugins
+ccproxy serve --disable-plugin docker
+
+# Combine enable/disable
+ccproxy serve --enable-plugin metrics --disable-plugin docker
+```
+
+These map to configuration fields `enabled_plugins` and `disabled_plugins` for the current process. Use TOML to make changes persistent.
 
 ## Claude CLI Auto-Detection
 

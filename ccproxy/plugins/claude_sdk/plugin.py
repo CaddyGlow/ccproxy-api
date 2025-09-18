@@ -156,7 +156,7 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
     detection_service_class = ClaudeSDKDetectionService
     config_class = ClaudeSDKSettings
     routers = [
-        RouterSpec(router=router, prefix="/claude"),
+        RouterSpec(router=router, prefix="/claude/sdk"),
     ]
     optional_requires = ["pricing"]
 

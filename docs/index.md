@@ -15,33 +15,36 @@ CCProxy uses a modern plugin system that provides:
 
 The server provides access through different provider plugins:
 
-### Claude SDK Plugin (`/claude`)
+### Claude SDK Plugin (`/claude/sdk`)
 Routes requests through the local `claude-code-sdk`. This enables access to tools configured in your Claude environment and includes MCP (Model Context Protocol) integration.
+
+**Endpoints:**
+- `POST /claude/sdk/v1/messages` - Anthropic messages API
+- `POST /claude/sdk/v1/chat/completions` - OpenAI chat completions
+- `POST /claude/sdk/{session_id}/v1/messages` - Session-based messages
+- `POST /claude/sdk/{session_id}/v1/chat/completions` - Session-based completions
+
+### Claude API Plugin (`/claude`)
+Acts as a direct reverse proxy to `api.anthropic.com`, injecting the necessary authentication headers. This provides full access to the underlying API features and model settings.
 
 **Endpoints:**
 - `POST /claude/v1/messages` - Anthropic messages API
 - `POST /claude/v1/chat/completions` - OpenAI chat completions
-- `POST /claude/{session_id}/v1/messages` - Session-based messages
-- `POST /claude/{session_id}/v1/chat/completions` - Session-based completions
+- `POST /claude/v1/responses` - OpenAI Responses API (via adapters)
+- `POST /claude/{session_id}/v1/responses` - Session-based Responses API
+- `GET /claude/v1/models` - List available models
 
-### Claude API Plugin (`/api`)
-Acts as a direct reverse proxy to `api.anthropic.com`, injecting the necessary authentication headers. This provides full access to the underlying API features and model settings.
-
-**Endpoints:**
-- `POST /api/v1/messages` - Anthropic messages API
-- `POST /api/v1/chat/completions` - OpenAI chat completions
-- `GET /api/v1/models` - List available models
-
-### Codex Plugin (`/api/codex`)
-Provides access to OpenAI's Response API through ChatGPT Plus subscription using OAuth2 PKCE authentication.
+### Codex Plugin (`/codex`)
+Provides access to OpenAI's APIs (Responses and Chat Completions) through OAuth2 PKCE.
 
 **Endpoints:**
-- `POST /api/codex/responses` - Codex response API
-- `POST /api/codex/chat/completions` - OpenAI format
-- `POST /api/codex/{session_id}/responses` - Session-based responses
-- `POST /api/codex/{session_id}/chat/completions` - Session-based completions
-- `POST /api/codex/v1/chat/completions` - Standard OpenAI v1 endpoint
-- `GET /api/codex/v1/models` - List available models
+- `POST /codex/v1/responses` - OpenAI Responses API
+- `POST /codex/{session_id}/v1/responses` - Session-based Responses
+- `POST /codex/v1/chat/completions` - OpenAI Chat Completions
+- `POST /codex/{session_id}/v1/chat/completions` - Session-based Chat Completions
+- `GET /codex/v1/models` - List available models
+- `POST /codex/v1/messages` - Anthropic messages (converted via adapters)
+- `POST /codex/{session_id}/v1/messages` - Session-based Anthropic messages
 
 All plugins support both Anthropic and OpenAI-compatible API formats for requests and responses, including streaming.
 
@@ -111,6 +114,9 @@ ccproxy serve --reload
 
 # With debug logging
 ccproxy serve --log-level debug
+
+# Enable or disable plugins at startup
+ccproxy serve --enable-plugin metrics --disable-plugin docker
 ```
 
 The server will start on `http://127.0.0.1:8000` by default.
@@ -122,19 +128,21 @@ Point your existing tools and applications to the local proxy instance. Most cli
 **For OpenAI-compatible clients:**
 ```bash
 export OPENAI_API_KEY="sk-dummy"
-export OPENAI_BASE_URL="http://localhost:8000/claude/v1"    # For Claude SDK
+export OPENAI_BASE_URL="http://localhost:8000/claude/sdk/v1"  # For Claude SDK
 # Or
-export OPENAI_BASE_URL="http://localhost:8000/api/v1"        # For Claude API
-# Or  
-export OPENAI_BASE_URL="http://localhost:8000/api/codex/v1"  # For Codex
+export OPENAI_BASE_URL="http://localhost:8000/claude/v1"      # For Claude API
+# Or
+export OPENAI_BASE_URL="http://localhost:8000/codex/v1"       # For Codex
 ```
 
 **For Anthropic clients:**
 ```bash
 export ANTHROPIC_API_KEY="sk-dummy"
-export ANTHROPIC_BASE_URL="http://localhost:8000/claude"  # For Claude SDK
+export ANTHROPIC_BASE_URL="http://localhost:8000/claude/sdk"  # For Claude SDK
 # Or
-export ANTHROPIC_BASE_URL="http://localhost:8000/api"      # For Claude API
+export ANTHROPIC_BASE_URL="http://localhost:8000/claude"      # For Claude API
+# Optional (via adapters)
+# export ANTHROPIC_BASE_URL="http://localhost:8000/codex"
 ```
 
 ## System Plugins

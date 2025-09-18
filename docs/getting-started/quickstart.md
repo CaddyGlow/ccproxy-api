@@ -93,6 +93,9 @@ ccproxy serve --reload
 # With debug logging
 ccproxy serve --log-level debug
 
+# Enable or disable plugins at startup
+ccproxy serve --enable-plugin metrics --disable-plugin docker
+
 # With verbose API logging
 LOGGING__VERBOSE_API=true ccproxy serve
 ```

@@ -152,97 +152,188 @@ REQUEST_DATA = {
 }
 
 
-# Endpoint configurations (no response_type, type is in REQUEST_DATA)
-ENDPOINT_TESTS = [
-    EndpointTest(
-        name="copilot_chat_completions_stream",
-        endpoint="/copilot/v1/chat/completions",
-        stream=True,
-        request="openai_stream",
+# Provider and format configuration for automatic endpoint generation
+@dataclass(frozen=True)
+class ProviderConfig:
+    """Configuration for a provider's endpoints and capabilities."""
+
+    name: str
+    base_path: str
+    model: str
+    supported_formats: list[str]
+    description_prefix: str
+
+
+@dataclass(frozen=True)
+class FormatConfig:
+    """Configuration mapping API format to request types and endpoint paths."""
+
+    name: str
+    endpoint_path: str
+    request_type_base: str  # e.g., "openai", "anthropic", "response_api"
+    description: str
+
+
+# Provider configurations
+PROVIDER_CONFIGS = {
+    "copilot": ProviderConfig(
+        name="copilot",
+        base_path="/copilot/v1",
         model="gpt-4o",
-        description="Copilot chat completions streaming",
+        supported_formats=["chat_completions", "responses", "messages"],
+        description_prefix="Copilot",
     ),
-    EndpointTest(
-        name="copilot_chat_completions",
-        endpoint="/copilot/v1/chat/completions",
-        stream=False,
-        request="openai_non_stream",
-        model="gpt-4o",
-        description="Copilot chat completions non-streaming",
-    ),
-    EndpointTest(
-        name="copilot_responsess_stream",
-        endpoint="/copilot/v1/responses",
-        stream=True,
-        request="response_api_stream",
-        model="gpt-4o",
-        description="Copilot responses streaming",
-    ),
-    EndpointTest(
-        name="copilot_responses",
-        endpoint="/copilot/v1/responses",
-        stream=False,
-        request="response_api_non_stream",
-        model="gpt-4o",
-        description="Copilot responses non-streaming",
-    ),
-    EndpointTest(
-        name="copilot_anthropic",
-        endpoint="/copilot/v1/messages",
-        stream=False,
-        request="anthropic_non_stream",
-        model="claude-3.5-sonnet",
-        description="Copilot responses non-streaming",
-    ),
-    EndpointTest(
-        name="anthropic_api_openai_stream",
-        endpoint="/api/v1/chat/completions",
-        stream=True,
-        request="openai_stream",
+    "claude": ProviderConfig(
+        name="claude",
+        base_path="/claude/v1",
         model="claude-sonnet-4-20250514",
-        description="Claude API OpenAI format streaming",
+        supported_formats=["chat_completions", "responses", "messages"],
+        description_prefix="Claude API",
     ),
-    EndpointTest(
-        name="anthropic_api_openai",
-        endpoint="/api/v1/chat/completions",
-        stream=False,
-        request="openai_non_stream",
+    "claude_sdk": ProviderConfig(
+        name="claude_sdk",
+        base_path="/claude/sdk/v1",
         model="claude-sonnet-4-20250514",
-        description="Claude API OpenAI format non-streaming",
+        supported_formats=["chat_completions", "responses", "messages"],
+        description_prefix="Claude SDK",
     ),
-    EndpointTest(
-        name="anthropic_api_responses_stream",
-        endpoint="/api/v1/responses",
-        stream=True,
-        request="response_api_stream",
-        model="claude-sonnet-4-20250514",
-        description="Claude API Response format streaming",
-    ),
-    EndpointTest(
-        name="anthropic_api_responses",
-        endpoint="/api/v1/responses",
-        stream=False,
-        request="response_api_non_stream",
-        model="claude-sonnet-4-20250514",
-        description="Claude API Response format non-streaming",
-    ),
-    EndpointTest(
-        name="codex_chat_completions_stream",
-        endpoint="/api/codex/v1/chat/completions",
-        stream=True,
-        request="openai_stream",
+    "codex": ProviderConfig(
+        name="codex",
+        base_path="/codex/v1",
         model="gpt-5",
-        description="Codex chat completions streaming",
+        supported_formats=["chat_completions", "responses", "messages"],
+        description_prefix="Codex",
     ),
-    EndpointTest(
-        name="codex_chat_completions",
-        endpoint="/api/codex/v1/chat/completions",
-        stream=False,
-        request="openai_non_stream",
-        model="gpt-5",
-        description="Codex chat completions non-streaming",
+}
+
+# Format configurations mapping API formats to request types
+FORMAT_CONFIGS = {
+    "chat_completions": FormatConfig(
+        name="chat_completions",
+        endpoint_path="/chat/completions",
+        request_type_base="openai",
+        description="chat completions",
     ),
-]
+    "responses": FormatConfig(
+        name="responses",
+        endpoint_path="/responses",
+        request_type_base="response_api",
+        description="responses",
+    ),
+    "messages": FormatConfig(
+        name="messages",
+        endpoint_path="/messages",
+        request_type_base="anthropic",
+        description="messages",
+    ),
+}
+
+
+def generate_endpoint_tests() -> list[EndpointTest]:
+    """Generate all endpoint test permutations from provider and format configurations."""
+    tests = []
+
+    for provider_key, provider in PROVIDER_CONFIGS.items():
+        for format_name in provider.supported_formats:
+            if format_name not in FORMAT_CONFIGS:
+                continue
+
+            format_config = FORMAT_CONFIGS[format_name]
+            endpoint = provider.base_path + format_config.endpoint_path
+
+            # Generate streaming and non-streaming variants
+            for is_streaming in [True, False]:
+                stream_suffix = "_stream" if is_streaming else "_non_stream"
+                request_type = format_config.request_type_base + stream_suffix
+
+                # Skip if request type doesn't exist (e.g., anthropic only has non_stream in some cases)
+                if request_type not in REQUEST_DATA:
+                    continue
+
+                # Build test name: provider_format_stream
+                stream_name_part = "_stream" if is_streaming else ""
+                test_name = f"{provider_key}_{format_config.name}{stream_name_part}"
+
+                # Build description
+                stream_desc = "streaming" if is_streaming else "non-streaming"
+                description = f"{provider.description_prefix} {format_config.description} {stream_desc}"
+
+                test = EndpointTest(
+                    name=test_name,
+                    endpoint=endpoint,
+                    stream=is_streaming,
+                    request=request_type,
+                    model=provider.model,
+                    description=description,
+                )
+                tests.append(test)
+
+    return tests
+
+
+# Generate endpoint tests automatically
+ENDPOINT_TESTS = generate_endpoint_tests()
+
+
+def add_provider(
+    name: str,
+    base_path: str,
+    model: str,
+    supported_formats: list[str],
+    description_prefix: str,
+) -> None:
+    """Add a new provider configuration and regenerate endpoint tests.
+
+    Example usage:
+        add_provider(
+            name="gemini",
+            base_path="/gemini/v1",
+            model="gemini-pro",
+            supported_formats=["chat_completions"],
+            description_prefix="Gemini"
+        )
+    """
+    global ENDPOINT_TESTS, PROVIDER_CONFIGS
+
+    PROVIDER_CONFIGS[name] = ProviderConfig(
+        name=name,
+        base_path=base_path,
+        model=model,
+        supported_formats=supported_formats,
+        description_prefix=description_prefix,
+    )
+
+    # Regenerate endpoint tests
+    ENDPOINT_TESTS = generate_endpoint_tests()
+
+
+def add_format(
+    name: str,
+    endpoint_path: str,
+    request_type_base: str,
+    description: str,
+) -> None:
+    """Add a new format configuration and regenerate endpoint tests.
+
+    Example usage:
+        add_format(
+            name="embeddings",
+            endpoint_path="/embeddings",
+            request_type_base="openai",
+            description="embeddings"
+        )
+    """
+    global ENDPOINT_TESTS, FORMAT_CONFIGS
+
+    FORMAT_CONFIGS[name] = FormatConfig(
+        name=name,
+        endpoint_path=endpoint_path,
+        request_type_base=request_type_base,
+        description=description,
+    )
+
+    # Regenerate endpoint tests
+    ENDPOINT_TESTS = generate_endpoint_tests()
 
 
 def get_request_payload(test: EndpointTest) -> dict[str, Any]:
@@ -452,79 +543,107 @@ class TestEndpoint:
             )
             return False
 
-    async def run_endpoint_test(self, test: EndpointTest):
-        """Run a single endpoint test based on configuration."""
-        full_url = f"{self.base_url}{test.endpoint}"
-        payload = get_request_payload(test)
+    async def run_endpoint_test(self, test: EndpointTest) -> bool:
+        """Run a single endpoint test based on configuration.
 
-        # Get validation classes from original template
-        template = REQUEST_DATA[test.request]
-        model_class = template.get("model_class")
-        chunk_model_class = template.get("chunk_model_class")
+        Returns:
+            True if test completed successfully, False if it failed.
+        """
+        try:
+            full_url = f"{self.base_url}{test.endpoint}"
+            payload = get_request_payload(test)
 
-        logger.info(
-            "Running endpoint test",
-            name=test.name,
-            endpoint=test.endpoint,
-            stream=test.stream,
-            model_class=getattr(model_class, "__name__", None) if model_class else None,
-        )
+            # Get validation classes from original template
+            template = REQUEST_DATA[test.request]
+            model_class = template.get("model_class")
+            chunk_model_class = template.get("chunk_model_class")
 
-        print(colored_header(test.description))
+            logger.info(
+                "Running endpoint test",
+                name=test.name,
+                endpoint=test.endpoint,
+                stream=test.stream,
+                model_class=getattr(model_class, "__name__", None)
+                if model_class
+                else None,
+            )
 
-        if test.stream:
-            # Streaming test
-            stream_events = await self.post_stream(full_url, payload)
+            print(colored_header(test.description))
 
-            # Track last SSE event name for Responses API
-            last_event_name: str | None = None
+            if test.stream:
+                # Streaming test
+                stream_events = await self.post_stream(full_url, payload)
 
-            # Print and validate streaming events
-            for event in stream_events:
-                print(event)
+                # Track last SSE event name for Responses API
+                last_event_name: str | None = None
 
-                # Capture SSE event name lines
-                if event.startswith("event: "):
-                    last_event_name = event[len("event: ") :].strip()
-                    continue
+                # Print and validate streaming events
+                for event in stream_events:
+                    print(event)
 
-                if self.validate_sse_event(event) and not event.endswith("[DONE]"):
-                    try:
-                        data = json.loads(event[6:])  # Remove "data: " prefix
-                        if chunk_model_class:
-                            # If validating Responses API SSE events, wrap with event name
-                            if chunk_model_class is BaseStreamEvent:
-                                wrapped = {"event": last_event_name, "data": data}
-                                self.validate_stream_chunk(wrapped, chunk_model_class)
-                            else:
-                                # Skip Copilot prelude chunks lacking required fields
-                                if chunk_model_class is ChatCompletionChunk and (
-                                    not isinstance(data, dict)
-                                    or not data.get("model")
-                                    or not data.get("choices")
-                                ):
-                                    logger.info(
-                                        "Skipping non-standard prelude chunk",
-                                        has_model=data.get("model")
-                                        if isinstance(data, dict)
-                                        else False,
-                                        has_choices=bool(data.get("choices"))
-                                        if isinstance(data, dict)
-                                        else False,
+                    # Capture SSE event name lines
+                    if event.startswith("event: "):
+                        last_event_name = event[len("event: ") :].strip()
+                        continue
+
+                    if self.validate_sse_event(event) and not event.endswith("[DONE]"):
+                        try:
+                            data = json.loads(event[6:])  # Remove "data: " prefix
+                            if chunk_model_class:
+                                # If validating Responses API SSE events, wrap with event name
+                                if chunk_model_class is BaseStreamEvent:
+                                    wrapped = {"event": last_event_name, "data": data}
+                                    self.validate_stream_chunk(
+                                        wrapped, chunk_model_class
                                     )
                                 else:
-                                    self.validate_stream_chunk(data, chunk_model_class)
-                        # elif model_class:
-                        #     self.validate_response(data, model_class, is_streaming=True)
-                    except json.JSONDecodeError:
-                        logger.warning("Invalid JSON in streaming event", event=event)
-        else:
-            # Non-streaming test
-            response = await self.post_json(full_url, payload)
+                                    # Skip Copilot prelude chunks lacking required fields
+                                    if chunk_model_class is ChatCompletionChunk and (
+                                        not isinstance(data, dict)
+                                        or not data.get("model")
+                                        or not data.get("choices")
+                                    ):
+                                        logger.info(
+                                            "Skipping non-standard prelude chunk",
+                                            has_model=data.get("model")
+                                            if isinstance(data, dict)
+                                            else False,
+                                            has_choices=bool(data.get("choices"))
+                                            if isinstance(data, dict)
+                                            else False,
+                                        )
+                                    else:
+                                        self.validate_stream_chunk(
+                                            data, chunk_model_class
+                                        )
+                            # elif model_class:
+                            #     self.validate_response(data, model_class, is_streaming=True)
+                        except json.JSONDecodeError:
+                            logger.warning(
+                                "Invalid JSON in streaming event", event=event
+                            )
+            else:
+                # Non-streaming test
+                response = await self.post_json(full_url, payload)
 
-            print(json.dumps(response, indent=2))
-            if "error" not in response and model_class:
-                self.validate_response(response, model_class, is_streaming=False)
+                print(json.dumps(response, indent=2))
+                if "error" not in response and model_class:
+                    self.validate_response(response, model_class, is_streaming=False)
+
+            print(colored_success(f"✓ Test {test.name} completed successfully"))
+            logger.info("Test completed successfully", test_name=test.name)
+            return True
+
+        except Exception as e:
+            print(colored_error(f"✗ Test {test.name} failed: {e}"))
+            logger.error(
+                "Test execution failed",
+                test_name=test.name,
+                endpoint=test.endpoint,
+                error=str(e),
+                exc_info=e,
+            )
+            return False
 
     async def run_all_tests(self, selected_indices: list[int] | None = None):
         """Run endpoint tests, optionally filtered by selected indices."""
@@ -558,7 +677,10 @@ class TestEndpoint:
                 test_count=len(ENDPOINT_TESTS),
             )
 
-        # Run selected tests
+        # Run selected tests and track results
+        successful_tests = 0
+        failed_tests = 0
+
         for i, test in enumerate(tests_to_run, 1):
             if selected_indices is not None:
                 # Show original test number when running subset
@@ -568,10 +690,38 @@ class TestEndpoint:
                         f"[Test {i}/{len(tests_to_run)}] #{original_index}: {test.description}"
                     )
                 )
-            await self.run_endpoint_test(test)
 
-        print(colored_success(f"\n🎉 {len(tests_to_run)} endpoint tests completed!"))
-        logger.info("Endpoint tests completed", completed_count=len(tests_to_run))
+            test_success = await self.run_endpoint_test(test)
+            if test_success:
+                successful_tests += 1
+            else:
+                failed_tests += 1
+
+        # Report final results
+        total_tests = len(tests_to_run)
+        if failed_tests == 0:
+            print(
+                colored_success(
+                    f"\n🎉 All {total_tests} endpoint tests completed successfully!"
+                )
+            )
+            logger.info(
+                "All endpoint tests completed successfully",
+                total_tests=total_tests,
+                successful=successful_tests,
+            )
+        else:
+            print(
+                colored_warning(
+                    f"\n⚠️  {total_tests} endpoint tests completed: {successful_tests} successful, {failed_tests} failed"
+                )
+            )
+            logger.warning(
+                "Endpoint tests completed with failures",
+                total_tests=total_tests,
+                successful=successful_tests,
+                failed=failed_tests,
+            )
 
 
 def setup_logging(level: str = "warn") -> None:

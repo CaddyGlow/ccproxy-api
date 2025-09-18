@@ -1,7 +1,7 @@
 """Claude API token manager implementation for the Claude API plugin."""
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 import httpx
 
@@ -9,40 +9,50 @@ import httpx
 if TYPE_CHECKING:
     pass
 
-from ccproxy.auth.managers.base import BaseTokenManager
+from ccproxy.auth.managers.base_enhanced import EnhancedTokenManager
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 
 from .config import ClaudeOAuthConfig
 from .models import ClaudeCredentials, ClaudeProfileInfo, ClaudeTokenWrapper
-from .provider import ClaudeOAuthProvider
 from .storage import ClaudeOAuthStorage, ClaudeProfileStorage
+
+
+class TokenRefreshProvider(Protocol):
+    """Protocol for token refresh capability."""
+
+    async def refresh_access_token(self, refresh_token: str) -> ClaudeCredentials:
+        """Refresh access token using refresh token."""
+        ...
 
 
 logger = get_plugin_logger()
 
 
-class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
+class ClaudeApiTokenManager(EnhancedTokenManager[ClaudeCredentials]):
     """Manager for Claude API token storage and refresh operations.
 
-    Uses the Claude-specific storage implementation.
+    Uses the Claude-specific storage implementation with enhanced token management.
     """
 
     def __init__(
         self,
         storage: TokenStorage[ClaudeCredentials] | None = None,
         http_client: "httpx.AsyncClient | None" = None,
+        oauth_provider: TokenRefreshProvider | None = None,
     ):
         """Initialize Claude API token manager.
 
         Args:
             storage: Optional custom storage, defaults to standard location
             http_client: Optional HTTP client for API requests
+            oauth_provider: Optional OAuth provider for token refresh (protocol injection)
         """
         if storage is None:
             storage = ClaudeOAuthStorage()
         super().__init__(storage)
         self._profile_cache: ClaudeProfileInfo | None = None
+        self.oauth_provider = oauth_provider
 
         # Create default HTTP client if not provided; track ownership
         self._owns_client = False
@@ -108,12 +118,15 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         cls,
         storage: TokenStorage["ClaudeCredentials"] | None = None,
         http_client: "httpx.AsyncClient | None" = None,
+        oauth_provider: TokenRefreshProvider | None = None,
     ) -> "ClaudeApiTokenManager":
         """Async factory that constructs the manager and preloads cached profile.
 
         This avoids creating event loops in __init__ and keeps initialization non-blocking.
         """
-        manager = cls(storage=storage, http_client=http_client)
+        manager = cls(
+            storage=storage, http_client=http_client, oauth_provider=oauth_provider
+        )
         await manager.preload_profile_cache()
         return manager
 
@@ -141,6 +154,25 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
                 category="auth",
             )
 
+    # ==================== Enhanced Token Management Methods ====================
+
+    async def get_access_token(self) -> str:
+        """Get access token using enhanced base with automatic refresh."""
+        token = await self.get_access_token_with_refresh(
+            oauth_client=self.oauth_provider
+        )
+        if not token:
+            from ccproxy.auth.exceptions import CredentialsInvalidError
+
+            raise CredentialsInvalidError("No valid access token available")
+        return token
+
+    async def refresh_token_if_needed(self) -> ClaudeCredentials | None:
+        """Use enhanced base's automatic refresh capability."""
+        if await self.ensure_valid_token(oauth_client=self.oauth_provider):
+            return await self.load_credentials()
+        return None
+
     # ==================== Abstract Method Implementations ====================
 
     async def refresh_token(self, oauth_client: Any = None) -> ClaudeCredentials | None:
@@ -165,12 +197,18 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             return None
 
         try:
-            # Refresh directly using a local OAuth client/provider (no global registry)
+            # Use injected provider or fallback to local import
+            new_credentials: ClaudeCredentials
+            if self.oauth_provider:
+                new_credentials = await self.oauth_provider.refresh_access_token(
+                    refresh_token
+                )
+            else:
+                # Fallback to local import if no provider injected
+                from .provider import ClaudeOAuthProvider
 
-            provider = ClaudeOAuthProvider(http_client=self.http_client)
-            new_credentials: ClaudeCredentials = await provider.refresh_access_token(
-                refresh_token
-            )
+                provider = ClaudeOAuthProvider(http_client=self.http_client)
+                new_credentials = await provider.refresh_access_token(refresh_token)
 
             # Save updated credentials
             if await self.save_credentials(new_credentials):
@@ -272,52 +310,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         """
         return self._profile_cache
 
-    async def get_access_token(self) -> str | None:
-        """Get valid access token, automatically refreshing if expired.
-
-        Returns:
-            Access token if available and valid, None otherwise
-        """
-        credentials = await self.load_credentials()
-        if not credentials:
-            logger.debug("no_credentials_found", category="auth")
-            return None
-
-        # Check if token is expired
-        if self.is_expired(credentials):
-            logger.info("claude_token_expired_attempting_refresh", category="auth")
-
-            # Try to refresh if we have a refresh token
-            wrapper = ClaudeTokenWrapper(credentials=credentials)
-            refresh_token = wrapper.refresh_token_value
-            if refresh_token:
-                try:
-                    refreshed = await self.refresh_token()
-                    if refreshed:
-                        logger.info(
-                            "claude_token_refreshed_successfully", category="auth"
-                        )
-                        wrapper = ClaudeTokenWrapper(credentials=refreshed)
-                        return wrapper.access_token_value
-                    else:
-                        logger.error("claude_token_refresh_failed", category="auth")
-                        return None
-                except Exception as e:
-                    logger.error(
-                        "Error refreshing Claude token", error=str(e), category="auth"
-                    )
-                    return None
-            else:
-                logger.warning(
-                    "Cannot refresh Claude token - no refresh token available",
-                    category="auth",
-                )
-                return None
-
-        # Token is still valid
-        wrapper = ClaudeTokenWrapper(credentials=credentials)
-        return wrapper.access_token_value
-
     async def get_access_token_value(self) -> str | None:
         """Get the actual access token value.
 
@@ -374,13 +366,19 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             }
             # Optionally add detection headers if client supports it
             try:
-                # Avoid import cycles by dynamic import
+                # Use injected provider or fallback to local import
+                if self.oauth_provider and hasattr(self.oauth_provider, "client"):
+                    if hasattr(self.oauth_provider.client, "get_custom_headers"):
+                        headers.update(self.oauth_provider.client.get_custom_headers())
+                else:
+                    # Fallback to local import if no provider injected
+                    from .provider import ClaudeOAuthProvider
 
-                temp_provider = ClaudeOAuthProvider(http_client=self.http_client)
-                if hasattr(temp_provider, "client") and hasattr(
-                    temp_provider.client, "get_custom_headers"
-                ):
-                    headers.update(temp_provider.client.get_custom_headers())
+                    temp_provider = ClaudeOAuthProvider(http_client=self.http_client)
+                    if hasattr(temp_provider, "client") and hasattr(
+                        temp_provider.client, "get_custom_headers"
+                    ):
+                        headers.update(temp_provider.client.get_custom_headers())
             except Exception:
                 pass
 

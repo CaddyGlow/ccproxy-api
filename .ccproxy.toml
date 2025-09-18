@@ -60,7 +60,7 @@ enabled = false
 
 # DuckDB storage and analytics plugins
 [plugins.duckdb_storage]
-enabled = true
+enabled = false
 database_path = "/tmp/ccproxy/metrics.duckdb"
 register_app_state_alias = true
 

@@ -290,53 +290,29 @@ def api(
             rich_help_panel="Security Settings",
         ),
     ] = None,
-    plugin_setting: Annotated[
+    enable_plugin: Annotated[
         list[str] | None,
         typer.Option(
-            "--plugin-setting",
-            help="Set a plugin setting, e.g., claude_sdk.cli_path=/path/to/claude",
+            "--enable-plugin",
+            help="Enable a plugin by name (repeatable)",
             rich_help_panel="Plugin Settings",
         ),
     ] = None,
-    no_network_calls: Annotated[
-        bool,
+    disable_plugin: Annotated[
+        list[str] | None,
         typer.Option(
-            "--no-network-calls",
-            help="Disable all network calls (version checks and pricing updates)",
-            rich_help_panel="Privacy Settings",
+            "--disable-plugin",
+            help="Disable a plugin by name (repeatable)",
+            rich_help_panel="Plugin Settings",
         ),
-    ] = False,
-    disable_version_check: Annotated[
-        bool,
-        typer.Option(
-            "--disable-version-check",
-            help="Disable version update checks (prevents calls to GitHub API)",
-            rich_help_panel="Privacy Settings",
-        ),
-    ] = False,
-    disable_pricing_updates: Annotated[
-        bool,
-        typer.Option(
-            "--disable-pricing-updates",
-            help="Disable pricing data updates (prevents downloads from GitHub)",
-            rich_help_panel="Privacy Settings",
-        ),
-    ] = False,
+    ] = None,
+    # Removed unused flags: plugin_setting, no_network_calls,
+    # disable_version_check, disable_pricing_updates
 ) -> None:
     """Start the CCProxy API server."""
     try:
         if config is None:
             config = get_config_path_from_context()
-
-        scheduler_overrides = {}
-        if no_network_calls:
-            scheduler_overrides["pricing_update_enabled"] = False
-            scheduler_overrides["version_check_enabled"] = False
-        else:
-            if disable_pricing_updates:
-                scheduler_overrides["pricing_update_enabled"] = False
-            if disable_version_check:
-                scheduler_overrides["version_check_enabled"] = False
 
         cli_context = {
             "port": port,
@@ -345,10 +321,8 @@ def api(
             "log_level": log_level,
             "log_file": log_file,
             "auth_token": auth_token,
-            "plugin_setting": plugin_setting,
-            "no_network_calls": no_network_calls,
-            "disable_version_check": disable_version_check,
-            "disable_pricing_updates": disable_pricing_updates,
+            "enabled_plugins": enable_plugin,
+            "disabled_plugins": disable_plugin,
         }
 
         # Pass CLI context to settings creation

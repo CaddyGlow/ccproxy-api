@@ -36,7 +36,7 @@ async def handle_codex_request(
 
 
 # Route definitions
-@router.post("/responses", response_model=None)
+@router.post("/v1/responses", response_model=None)
 @with_format_chain(
     [FORMAT_OPENAI_RESPONSES], endpoint=UPSTREAM_ENDPOINT_OPENAI_RESPONSES
 )
@@ -48,7 +48,7 @@ async def codex_responses(
     return await handle_codex_request(request, adapter)
 
 
-@router.post("/{session_id}/responses", response_model=None)
+@router.post("/{session_id}/v1/responses", response_model=None)
 @with_format_chain([FORMAT_OPENAI_RESPONSES], endpoint="/{session_id}/responses")
 async def codex_responses_with_session(
     session_id: str,
@@ -62,7 +62,7 @@ async def codex_responses_with_session(
     )
 
 
-@router.post("/chat/completions", response_model=None)
+@router.post("/v1/chat/completions", response_model=None)
 @with_format_chain(
     [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES],
     endpoint=UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS,
@@ -75,7 +75,7 @@ async def codex_chat_completions(
     return await handle_codex_request(request, adapter)
 
 
-@router.post("/{session_id}/chat/completions", response_model=None)
+@router.post("/{session_id}/v1/chat/completions", response_model=None)
 @with_format_chain(
     [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES],
     endpoint="/{session_id}/chat/completions",

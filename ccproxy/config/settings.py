@@ -302,7 +302,43 @@ class Settings(BaseSettings):
             _apply_overrides(settings, kwargs)
 
         if cli_context:
+            # Store raw CLI context for plugins
             settings.cli_context = cli_context
+
+            # Apply common serve CLI overrides directly to settings
+            # Only override when a value is explicitly provided (not None / empty)
+            server_overrides: dict[str, Any] = {}
+            if cli_context.get("host") is not None:
+                server_overrides["host"] = cli_context["host"]
+            if cli_context.get("port") is not None:
+                server_overrides["port"] = cli_context["port"]
+            if cli_context.get("reload") is not None:
+                server_overrides["reload"] = cli_context["reload"]
+
+            logging_overrides: dict[str, Any] = {}
+            if cli_context.get("log_level") is not None:
+                logging_overrides["level"] = cli_context["log_level"]
+            if cli_context.get("log_file") is not None:
+                logging_overrides["file"] = cli_context["log_file"]
+
+            security_overrides: dict[str, Any] = {}
+            if cli_context.get("auth_token") is not None:
+                security_overrides["auth_token"] = cli_context["auth_token"]
+
+            if server_overrides:
+                _apply_overrides(settings, {"server": server_overrides})
+            if logging_overrides:
+                _apply_overrides(settings, {"logging": logging_overrides})
+            if security_overrides:
+                _apply_overrides(settings, {"security": security_overrides})
+
+            # Apply plugin enable/disable lists if provided
+            enabled_plugins = cli_context.get("enabled_plugins")
+            disabled_plugins = cli_context.get("disabled_plugins")
+            if enabled_plugins is not None:
+                settings.enabled_plugins = list(enabled_plugins)
+            if disabled_plugins is not None:
+                settings.disabled_plugins = list(disabled_plugins)
 
         return settings
 

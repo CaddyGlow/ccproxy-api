@@ -16,11 +16,12 @@ from ccproxy.auth.storage.generic import GenericJsonStorage
 if TYPE_CHECKING:
     from ccproxy.services.cli_detection import CLIDetectionService
 
+    from .manager import ClaudeApiTokenManager
+
 from ccproxy.core.logging import get_plugin_logger
 
 from .client import ClaudeOAuthClient
 from .config import ClaudeOAuthConfig
-from .manager import ClaudeApiTokenManager
 from .models import ClaudeCredentials, ClaudeProfileInfo
 from .storage import ClaudeOAuthStorage
 
@@ -320,10 +321,10 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
             if custom_path:
                 # Use custom path for storage
                 storage = GenericJsonStorage(Path(custom_path), ClaudeCredentials)
-                manager = ClaudeApiTokenManager(storage=storage)
+                manager = await self.create_token_manager(storage=storage)
             else:
                 # Use default storage
-                manager = ClaudeApiTokenManager()
+                manager = await self.create_token_manager()
 
             return await manager.save_credentials(credentials)
         except Exception as e:
@@ -348,14 +349,10 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
             if custom_path:
                 # Load from custom path
                 storage = GenericJsonStorage(Path(custom_path), ClaudeCredentials)
-                manager = await ClaudeApiTokenManager.create(
-                    storage=storage, http_client=self.http_client
-                )
+                manager = await self.create_token_manager(storage=storage)
             else:
                 # Load from default storage
-                manager = await ClaudeApiTokenManager.create(
-                    http_client=self.http_client
-                )
+                manager = await self.create_token_manager()
 
             credentials = await manager.load_credentials()
 
@@ -381,8 +378,10 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
             )
             return None
 
-    async def create_token_manager(self, storage: Any | None = None) -> Any:
-        """Create and return the token manager instance.
+    async def create_token_manager(
+        self, storage: Any | None = None
+    ) -> "ClaudeApiTokenManager":
+        """Create token manager with proper dependency injection.
 
         Provided to allow core/CLI code to obtain a manager without
         importing plugin classes directly.
@@ -390,7 +389,9 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         from .manager import ClaudeApiTokenManager
 
         return await ClaudeApiTokenManager.create(
-            storage=storage, http_client=self.http_client
+            storage=storage,
+            http_client=self.http_client,
+            oauth_provider=self,  # Inject self as protocol
         )
 
     def _extract_standard_profile(

@@ -15,14 +15,14 @@ The CCProxy API is a reverse proxy to api.anthropic.com that provides both Anthr
 
 ### Base URLs by Mode
 ```
-Claude Code Mode: http://localhost:8000/v1/
-API Mode:         http://localhost:8000/api/v1/
+Claude SDK Mode: http://localhost:8000/claude/sdk/v1/
+Claude API Mode: http://localhost:8000/claude/v1/
 ```
 
 ### Messages Endpoint
 ```bash
-# Claude Code mode (default) - with all tools
-curl -X POST http://localhost:8000/v1/messages \
+# Claude SDK mode - with all tools
+curl -X POST http://localhost:8000/claude/sdk/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -32,8 +32,8 @@ curl -X POST http://localhost:8000/v1/messages \
     ]
   }'
 
-# API mode - direct proxy for full control
-curl -X POST http://localhost:8000/api/v1/messages \
+# Claude API mode - direct proxy for full control
+curl -X POST http://localhost:8000/claude/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -48,14 +48,15 @@ curl -X POST http://localhost:8000/api/v1/messages \
 
 ### Base URLs by Mode
 ```
-Claude Code Mode: http://localhost:8000/v1/
-API Mode:         http://localhost:8000/api/v1/
+Claude SDK Mode: http://localhost:8000/claude/sdk/v1/
+Claude API Mode: http://localhost:8000/claude/v1/
+Codex (OpenAI):  http://localhost:8000/codex/v1/
 ```
 
 ### Chat Completions
 ```bash
-# Claude Code mode (default) - with all tools
-curl -X POST http://localhost:8000/v1/chat/completions \
+# Claude SDK mode - with all tools
+curl -X POST http://localhost:8000/claude/sdk/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -64,8 +65,8 @@ curl -X POST http://localhost:8000/v1/chat/completions \
     ]
   }'
 
-# API mode - direct proxy for full control
-curl -X POST http://localhost:8000/api/v1/chat/completions \
+# Claude API mode - direct proxy for full control
+curl -X POST http://localhost:8000/claude/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -73,6 +74,30 @@ curl -X POST http://localhost:8000/api/v1/chat/completions \
       {"role": "user", "content": "Hello, Claude!"}
     ]
   }'
+
+### Codex (OpenAI) Examples
+
+```bash
+# OpenAI Chat Completions via Codex
+curl -X POST http://localhost:8000/codex/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5",
+    "messages": [
+      {"role": "user", "content": "Hello from Codex!"}
+    ]
+  }'
+
+# OpenAI Responses API via Codex
+curl -X POST http://localhost:8000/codex/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5",
+    "input": [
+      {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}
+    ]
+  }'
+```
 ```
 
 ## Supported Models

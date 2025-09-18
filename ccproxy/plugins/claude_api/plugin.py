@@ -318,7 +318,7 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
     # Provide credentials manager so HTTP adapter receives an auth manager
     credentials_manager_class = ClaudeApiTokenManager
     routers = [
-        RouterSpec(router=claude_api_router, prefix="/api", tags=["claude-api"]),
+        RouterSpec(router=claude_api_router, prefix="/claude", tags=["claude-api"]),
     ]
     # OAuth provider is optional because the token manager can operate
     # without a globally-registered auth provider. When present, it enables

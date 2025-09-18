@@ -8,9 +8,13 @@ from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from fastapi import HTTPException, Request
+from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response, StreamingResponse
 
+from ccproxy.config.utils import OPENAI_CHAT_COMPLETIONS_PATH
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.core.request_context import RequestContext
+from ccproxy.llms.streaming import OpenAIStreamProcessor
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.streaming import DeferredStreaming
 
@@ -22,6 +26,7 @@ from .auth import NoOpAuthManager
 from .config import ClaudeSDKSettings
 from .handler import ClaudeSDKHandler
 from .manager import SessionManager
+from .models import MessageResponse
 from .transformers.request import ClaudeSDKRequestTransformer
 from .transformers.response import ClaudeSDKResponseTransformer
 
@@ -151,8 +156,6 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
 
         # Check if format conversion is needed (OpenAI to Anthropic)
         # The endpoint will contain the path after the prefix, e.g., "/v1/chat/completions"
-        from ccproxy.config.utils import OPENAI_CHAT_COMPLETIONS_PATH
-
         needs_conversion = endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH)
         if needs_conversion and self.format_adapter:
             request_data = await self.format_adapter.adapt_request(request_data)
@@ -210,7 +213,6 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
             )
 
         # Get RequestContext - it must exist during the app request lifecycle
-        from ccproxy.core.request_context import RequestContext
 
         request_context: RequestContext | None = RequestContext.get_current()
         if not request_context:
@@ -283,8 +285,6 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
                     try:
                         if needs_conversion:
                             # Use OpenAIStreamProcessor to convert Claude SSE to OpenAI SSE format
-                            from ccproxy.llms.streaming import OpenAIStreamProcessor
-
                             # Create processor with SSE output format
                             processor = OpenAIStreamProcessor(
                                 model=model,
@@ -364,8 +364,6 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
                 )
             else:
                 # Convert MessageResponse to dict for JSON response
-                from .models import MessageResponse
-
                 if isinstance(result, MessageResponse):
                     response_data = result.model_dump()
                 else:
@@ -460,8 +458,6 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
             **request.scope,
             "_body": modified_body,
         }
-
-        from starlette.requests import Request as StarletteRequest
 
         modified_request = StarletteRequest(
             scope=modified_scope,

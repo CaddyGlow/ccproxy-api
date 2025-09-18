@@ -71,7 +71,7 @@ repos:
           - pyjwt>=2.10.0
           - sortedcontainers>=2.4.0
         args: [--config-file=pyproject.toml]
-        exclude: ^(docs/|examples/)
+        exclude: ^(docs/|examples/|scripts/)
 
   # Biome for TypeScript/JavaScript (dashboard)
   # - repo: local

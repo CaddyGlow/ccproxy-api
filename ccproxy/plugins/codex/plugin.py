@@ -349,7 +349,7 @@ class CodexFactory(BaseProviderPluginFactory):
     # Provide credentials manager so HTTP adapter receives an auth manager
     credentials_manager_class = CodexTokenManager
     routers = [
-        RouterSpec(router=codex_router, prefix="/api/codex"),
+        RouterSpec(router=codex_router, prefix="/codex"),
     ]
     dependencies = ["oauth_codex"]
     optional_requires = ["pricing"]
