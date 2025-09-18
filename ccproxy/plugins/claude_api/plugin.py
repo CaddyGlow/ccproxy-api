@@ -18,17 +18,15 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
+from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
 from ccproxy.services.adapters.simple_converters import (
     convert_anthropic_to_openai_response,
-    convert_anthropic_to_openai_responses_request,
-    convert_anthropic_to_openai_responses_response,
     convert_anthropic_to_openai_stream,
     convert_openai_responses_to_anthropic_request,
     convert_openai_responses_to_anthropic_response,
     convert_openai_to_anthropic_request,
 )
-from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
 from .adapter import ClaudeAPIAdapter
 from .config import ClaudeAPISettings
@@ -352,22 +350,11 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
             priority=100,  # Lower priority than SDK plugin
             description="OpenAI Responses to Anthropic Messages (SimpleFormatAdapter)",
         ),
-        FormatAdapterSpec(
-            from_format=FORMAT_ANTHROPIC_MESSAGES,
-            to_format=FORMAT_OPENAI_RESPONSES,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_anthropic_to_openai_responses_request,
-                response=convert_anthropic_to_openai_responses_response,
-                name="anthropic_to_openai_responses_claude_api",
-            ),
-            priority=100,  # Lower priority than SDK plugin
-            description="Anthropic Messages to OpenAI Responses (SimpleFormatAdapter)",
-        ),
     ]
 
     # Define requirements for adapters this plugin needs
     requires_format_adapters: list[FormatPair] = [
-        # All needed adapters are now provided by this plugin itself
+        # Core-provided adapters handle remaining dependencies
     ]
     tasks = [
         TaskSpec(

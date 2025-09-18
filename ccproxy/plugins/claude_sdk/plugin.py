@@ -5,7 +5,6 @@ from typing import Any
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
     FORMAT_OPENAI_CHAT,
-    FORMAT_OPENAI_RESPONSES,
 )
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
@@ -18,13 +17,13 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
+from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
 from ccproxy.services.adapters.simple_converters import (
     convert_anthropic_to_openai_response,
     convert_anthropic_to_openai_stream,
     convert_openai_to_anthropic_request,
 )
-from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import ClaudeSDKAdapter
 from .config import ClaudeSDKSettings
@@ -176,10 +175,8 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         )
     ]
 
-    # Dependencies: anthropic.messages -> openai.responses handled by core
-    requires_format_adapters: list[FormatPair] = [
-        (FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_RESPONSES),
-    ]
+    # Dependencies: All required adapters now provided by core
+    requires_format_adapters: list[FormatPair] = []
 
     tasks = [
         TaskSpec(

@@ -6,7 +6,7 @@ create and configure service instances according to their interfaces.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import httpx
 import structlog
@@ -17,15 +17,17 @@ from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.client import HTTPClientFactory
 from ccproxy.http.pool import HTTPPoolManager
-from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
-from ccproxy.services.adapters.simple_converters import convert_anthropic_to_openai_response
 from ccproxy.llms.formatters.formatter_registry import (
     FormatterRegistry,
     iter_registered_formatters,
     load_builtin_formatter_modules,
 )
 from ccproxy.scheduler.registry import TaskRegistry
+from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
 from ccproxy.services.adapters.format_registry import FormatRegistry
+from ccproxy.services.adapters.simple_converters import (
+    convert_anthropic_to_openai_response,
+)
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
@@ -39,6 +41,18 @@ if TYPE_CHECKING:
     from ccproxy.services.container import ServiceContainer
 
 logger = structlog.get_logger(__name__)
+
+
+class _CoreAdapterSpec(TypedDict):
+    """Type definition for core adapter specification dictionary."""
+
+    from_format: str
+    to_format: str
+    request: Any  # Format converter function
+    response: Any  # Format converter function
+    stream: Any  # Format converter function
+    error: Any  # Error converter function
+    name: str
 
 
 class ConcreteServiceFactory:
@@ -251,7 +265,131 @@ class ConcreteServiceFactory:
     def _register_core_format_adapters(
         self, registry: FormatRegistry, settings: Settings | None = None
     ) -> None:
-        pass
+        """Register essential format adapters provided by core.
+
+        Registers commonly-needed format conversions to prevent plugin duplication
+        and ensure required adapters are available for plugin dependencies.
+        """
+        from ccproxy.core.constants import (
+            FORMAT_ANTHROPIC_MESSAGES,
+            FORMAT_OPENAI_CHAT,
+            FORMAT_OPENAI_RESPONSES,
+        )
+        from ccproxy.services.adapters.simple_converters import (
+            convert_anthropic_to_openai_error,
+            convert_anthropic_to_openai_request,
+            convert_anthropic_to_openai_response,
+            convert_anthropic_to_openai_responses_error,
+            convert_anthropic_to_openai_responses_request,
+            convert_anthropic_to_openai_responses_response,
+            convert_anthropic_to_openai_responses_stream,
+            convert_anthropic_to_openai_stream,
+            convert_openai_chat_to_openai_responses_error,
+            convert_openai_chat_to_openai_responses_request,
+            convert_openai_chat_to_openai_responses_response,
+            convert_openai_chat_to_openai_responses_stream,
+            convert_openai_responses_to_anthropic_error,
+            convert_openai_responses_to_anthropic_request,
+            convert_openai_responses_to_anthropic_response,
+            convert_openai_responses_to_anthropic_stream,
+            convert_openai_responses_to_openai_chat_error,
+            convert_openai_responses_to_openai_chat_request,
+            convert_openai_responses_to_openai_chat_response,
+            convert_openai_responses_to_openai_chat_stream,
+            convert_openai_to_anthropic_error,
+            convert_openai_to_anthropic_request,
+            convert_openai_to_anthropic_response,
+            convert_openai_to_anthropic_stream,
+        )
+
+        # Define core format adapter specifications
+        core_adapter_specs: list[_CoreAdapterSpec] = [
+            # Most commonly required: Anthropic ↔ OpenAI Responses
+            {
+                "from_format": FORMAT_ANTHROPIC_MESSAGES,
+                "to_format": FORMAT_OPENAI_RESPONSES,
+                "request": convert_anthropic_to_openai_responses_request,
+                "response": convert_anthropic_to_openai_responses_response,
+                "stream": convert_anthropic_to_openai_responses_stream,
+                "error": convert_anthropic_to_openai_responses_error,
+                "name": "core_anthropic_to_openai_responses",
+            },
+            {
+                "from_format": FORMAT_OPENAI_RESPONSES,
+                "to_format": FORMAT_ANTHROPIC_MESSAGES,
+                "request": convert_openai_responses_to_anthropic_request,
+                "response": convert_openai_responses_to_anthropic_response,
+                "stream": convert_openai_responses_to_anthropic_stream,
+                "error": convert_openai_responses_to_anthropic_error,
+                "name": "core_openai_responses_to_anthropic",
+            },
+            # OpenAI Chat ↔ Responses (needed by Codex plugin)
+            {
+                "from_format": FORMAT_OPENAI_CHAT,
+                "to_format": FORMAT_OPENAI_RESPONSES,
+                "request": convert_openai_chat_to_openai_responses_request,
+                "response": convert_openai_chat_to_openai_responses_response,
+                "stream": convert_openai_chat_to_openai_responses_stream,
+                "error": convert_openai_chat_to_openai_responses_error,
+                "name": "core_openai_chat_to_responses",
+            },
+            # Reverse: OpenAI Responses -> OpenAI Chat
+            {
+                "from_format": FORMAT_OPENAI_RESPONSES,
+                "to_format": FORMAT_OPENAI_CHAT,
+                "request": convert_openai_responses_to_openai_chat_request,
+                "response": convert_openai_responses_to_openai_chat_response,
+                "stream": convert_openai_responses_to_openai_chat_stream,
+                "error": convert_openai_responses_to_openai_chat_error,
+                "name": "core_openai_responses_to_chat",
+            },
+            # Anthropic ↔ OpenAI Chat (commonly needed for proxying)
+            {
+                "from_format": FORMAT_ANTHROPIC_MESSAGES,
+                "to_format": FORMAT_OPENAI_CHAT,
+                "request": convert_anthropic_to_openai_request,
+                "response": convert_anthropic_to_openai_response,
+                "stream": convert_anthropic_to_openai_stream,
+                "error": convert_anthropic_to_openai_error,
+                "name": "core_anthropic_to_openai_chat",
+            },
+            # Reverse: OpenAI Chat -> Anthropic
+            {
+                "from_format": FORMAT_OPENAI_CHAT,
+                "to_format": FORMAT_ANTHROPIC_MESSAGES,
+                "request": convert_openai_to_anthropic_request,
+                "response": convert_openai_to_anthropic_response,
+                "stream": convert_openai_to_anthropic_stream,
+                "error": convert_openai_to_anthropic_error,
+                "name": "core_openai_chat_to_anthropic",
+            },
+        ]
+
+        # Register each core adapter
+        for spec in core_adapter_specs:
+            adapter = SimpleFormatAdapter(
+                request=spec["request"],
+                response=spec["response"],
+                stream=spec["stream"],
+                error=spec["error"],
+                name=spec["name"],
+            )
+            registry.register(
+                from_format=spec["from_format"],
+                to_format=spec["to_format"],
+                adapter=adapter,
+                plugin_name="core",
+            )
+
+        logger.info(
+            "core_format_adapters_registered",
+            count=len(core_adapter_specs),
+            adapters=[
+                f"{spec['from_format']}->{spec['to_format']}"
+                for spec in core_adapter_specs
+            ],
+            category="format",
+        )
 
     def create_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
         """Create background hook thread manager instance."""

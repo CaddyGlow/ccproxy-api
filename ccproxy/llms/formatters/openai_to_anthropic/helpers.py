@@ -1125,12 +1125,16 @@ def convert__openai_chat_to_anthropic_messages__stream(
                 if choice.get("delta") and choice["delta"].get("content"):
                     content = choice["delta"]["content"]
                 finish_reason = choice.get("finish_reason")
-                tool_calls = choice.get("delta", {}).get("tool_calls") or choice.get("tool_calls")
+                tool_calls = choice.get("delta", {}).get("tool_calls") or choice.get(
+                    "tool_calls"
+                )
             else:
                 if choice.delta and choice.delta.content:
                     content = choice.delta.content
                 finish_reason = choice.finish_reason
-                tool_calls = getattr(choice.delta, "tool_calls", None) or getattr(choice, "tool_calls", None)
+                tool_calls = getattr(choice.delta, "tool_calls", None) or getattr(
+                    choice, "tool_calls", None
+                )
 
             if content:
                 accumulated_content += content
@@ -1171,8 +1175,13 @@ def convert__openai_chat_to_anthropic_messages__stream(
                         fn = getattr(tc, "function", None)
                         tool_id = getattr(tc, "id", None) or f"call_{i}"
                         name = getattr(fn, "name", None) if fn is not None else None
-                        args_raw = getattr(fn, "arguments", None) if fn is not None else None
-                    from ccproxy.llms.formatters.shared.utils import strict_parse_tool_arguments
+                        args_raw = (
+                            getattr(fn, "arguments", None) if fn is not None else None
+                        )
+                    from ccproxy.llms.formatters.shared.utils import (
+                        strict_parse_tool_arguments,
+                    )
+
                     args = strict_parse_tool_arguments(args_raw)
                     yield anthropic_models.ContentBlockStartEvent(
                         type="content_block_start",
@@ -1203,6 +1212,7 @@ def convert__openai_chat_to_anthropic_messages__stream(
                 from ccproxy.llms.formatters.shared.utils import (
                     map_openai_finish_to_anthropic_stop,
                 )
+
                 stop_reason = map_openai_finish_to_anthropic_stop(finish_reason)
 
                 # Get usage if available

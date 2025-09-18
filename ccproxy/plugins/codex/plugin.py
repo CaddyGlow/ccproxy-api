@@ -11,11 +11,13 @@ from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
     BaseProviderPluginFactory,
     FormatAdapterSpec,
+    FormatPair,
     PluginContext,
     PluginManifest,
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.declaration import RouterSpec
+from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
 from ccproxy.services.adapters.simple_converters import (
     convert_anthropic_to_openai_responses_request,
@@ -29,7 +31,6 @@ from ccproxy.services.adapters.simple_converters import (
     convert_openai_responses_to_openai_chat_response,
     convert_openai_responses_to_openai_chat_stream,
 )
-from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
 from .adapter import CodexAdapter
 from .config import CodexSettings
@@ -400,6 +401,12 @@ class CodexFactory(BaseProviderPluginFactory):
             priority=50,  # Medium priority
             description="OpenAI Responses to Anthropic Messages (SimpleFormatAdapter)",
         ),
+    ]
+
+    # Define requirements for adapters this plugin needs
+    requires_format_adapters: list[FormatPair] = [
+        # Codex can leverage core-provided OpenAI chat ↔ responses conversion
+        (FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES),
     ]
 
     def create_detection_service(self, context: PluginContext) -> CodexDetectionService:

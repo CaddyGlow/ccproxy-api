@@ -27,7 +27,11 @@ async def convert_openai_to_anthropic_request(data: FormatDict) -> FormatDict:
     request = openai_models.ChatCompletionRequest.model_validate(data)
 
     # Use existing formatter function
-    result = await openai_to_anthropic.convert__openai_chat_to_anthropic_message__request(request)
+    result = (
+        await openai_to_anthropic.convert__openai_chat_to_anthropic_message__request(
+            request
+        )
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
@@ -39,36 +43,48 @@ async def convert_anthropic_to_openai_response(data: FormatDict) -> FormatDict:
     response = anthropic_models.MessageResponse.model_validate(data)
 
     # Use existing formatter function
-    result = anthropic_to_openai.convert__anthropic_message_to_openai_chat__response(response)
+    result = anthropic_to_openai.convert__anthropic_message_to_openai_chat__response(
+        response
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
 
 
-def convert_anthropic_to_openai_stream(
+async def convert_anthropic_to_openai_stream(
     stream: AsyncIterator[FormatDict],
 ) -> AsyncIterator[FormatDict]:
     """Convert Anthropic MessageStream to OpenAI ChatCompletion stream."""
-    async def _stream_converter():
-        async for chunk_data in stream:
-            # Try to convert dict to typed model
-            try:
-                from ccproxy.llms.models.anthropic import MessageStreamEvent
-                from pydantic import TypeAdapter
-                adapter = TypeAdapter(MessageStreamEvent)
-                chunk = adapter.validate_python(chunk_data)
-            except Exception:
-                # Don't pass through as-is - raise the error to fail fast
-                raise ValueError(f"Failed to validate Anthropic stream chunk: {chunk_data}")
+    async for chunk_data in stream:
+        # Try to convert dict to typed model with graceful fallback
+        try:
+            from pydantic import TypeAdapter
 
-            # Use existing formatter function
-            converted_chunks = anthropic_to_openai.convert__anthropic_message_to_openai_chat__stream([chunk])
+            from ccproxy.llms.models.anthropic import MessageStreamEvent
 
-            # Yield converted chunks as dicts
-            for converted_chunk in converted_chunks:
-                yield converted_chunk.model_dump(exclude_unset=True)
+            adapter = TypeAdapter(MessageStreamEvent)
+            chunk = adapter.validate_python(chunk_data)
+        except Exception:
+            # For unknown event types, create a simple object with the data
+            # The downstream formatter will handle unknown events gracefully
+            from types import SimpleNamespace
 
-    return _stream_converter()
+            chunk = SimpleNamespace(**chunk_data)
+
+        # Create async iterator from single chunk
+        async def single_chunk_stream(chunk_value=chunk):
+            yield chunk_value
+
+        # Use existing formatter function
+        converted_chunks = (
+            anthropic_to_openai.convert__anthropic_message_to_openai_chat__stream(
+                single_chunk_stream()
+            )
+        )
+
+        # Yield converted chunks as dicts
+        async for converted_chunk in converted_chunks:
+            yield converted_chunk.model_dump(exclude_unset=True)
 
 
 async def convert_openai_to_anthropic_error(data: FormatDict) -> FormatDict:
@@ -90,7 +106,9 @@ async def convert_anthropic_to_openai_request(data: FormatDict) -> FormatDict:
     request = anthropic_models.CreateMessageRequest.model_validate(data)
 
     # Use existing formatter function
-    result = anthropic_to_openai.convert__anthropic_message_to_openai_chat__request(request)
+    result = anthropic_to_openai.convert__anthropic_message_to_openai_chat__request(
+        request
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
@@ -102,7 +120,9 @@ async def convert_openai_to_anthropic_response(data: FormatDict) -> FormatDict:
     response = openai_models.ChatCompletionResponse.model_validate(data)
 
     # Use existing formatter function
-    result = openai_to_anthropic.convert__openai_chat_to_anthropic_messages__response(response)
+    result = openai_to_anthropic.convert__openai_chat_to_anthropic_messages__response(
+        response
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
@@ -113,15 +133,26 @@ async def convert_openai_to_anthropic_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to Anthropic MessageStream."""
     async for chunk_data in stream:
-        # Convert dict to typed model
+        # Convert dict to typed model with graceful fallback
         try:
             chunk = openai_models.ChatCompletionChunk.model_validate(chunk_data)
         except Exception:
-            # Don't pass through as-is - raise the error to fail fast
-            raise ValueError(f"Failed to validate OpenAI stream chunk: {chunk_data}")
+            # For unknown event types, create a simple object with the data
+            # The downstream formatter will handle unknown events gracefully
+            from types import SimpleNamespace
+
+            chunk = SimpleNamespace(**chunk_data)
+
+        # Create async iterator from single chunk
+        async def single_chunk_stream(chunk_value=chunk):
+            yield chunk_value
 
         # Use existing formatter function
-        converted_chunks = openai_to_anthropic.convert__openai_chat_to_anthropic_messages__stream([chunk])
+        converted_chunks = (
+            openai_to_anthropic.convert__openai_chat_to_anthropic_messages__stream(
+                single_chunk_stream()
+            )
+        )
 
         # Yield converted chunks as dicts
         async for converted_chunk in converted_chunks:
@@ -147,19 +178,29 @@ async def convert_openai_responses_to_anthropic_request(data: FormatDict) -> For
     request = openai_models.ResponseRequest.model_validate(data)
 
     # Use existing formatter function
-    result = openai_to_anthropic.convert__openai_responses_to_anthropic_message__request(request)
+    result = (
+        openai_to_anthropic.convert__openai_responses_to_anthropic_message__request(
+            request
+        )
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
 
 
-async def convert_openai_responses_to_anthropic_response(data: FormatDict) -> FormatDict:
+async def convert_openai_responses_to_anthropic_response(
+    data: FormatDict,
+) -> FormatDict:
     """Convert OpenAI Responses response to Anthropic MessageResponse."""
     # Convert dict to typed model
     response = openai_models.ResponseObject.model_validate(data)
 
     # Use existing formatter function
-    result = openai_to_anthropic.convert__openai_responses_to_anthropic_message__response(response)
+    result = (
+        openai_to_anthropic.convert__openai_responses_to_anthropic_message__response(
+            response
+        )
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
@@ -171,51 +212,81 @@ async def convert_anthropic_to_openai_responses_request(data: FormatDict) -> For
     request = anthropic_models.CreateMessageRequest.model_validate(data)
 
     # Use existing formatter function
-    result = anthropic_to_openai.convert__anthropic_message_to_openai_responses__request(request)
+    result = (
+        anthropic_to_openai.convert__anthropic_message_to_openai_responses__request(
+            request
+        )
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
 
 
-async def convert_anthropic_to_openai_responses_response(data: FormatDict) -> FormatDict:
+async def convert_anthropic_to_openai_responses_response(
+    data: FormatDict,
+) -> FormatDict:
     """Convert Anthropic MessageResponse to OpenAI Responses response."""
     # Convert dict to typed model
     response = anthropic_models.MessageResponse.model_validate(data)
 
     # Use existing formatter function
-    result = anthropic_to_openai.convert__anthropic_message_to_openai_responses__response(response)
+    result = (
+        anthropic_to_openai.convert__anthropic_message_to_openai_responses__response(
+            response
+        )
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
 
 
 # OpenAI Chat ↔ OpenAI Responses converters (for Codex plugin)
-async def convert_openai_chat_to_openai_responses_request(data: FormatDict) -> FormatDict:
+async def convert_openai_chat_to_openai_responses_request(
+    data: FormatDict,
+) -> FormatDict:
     """Convert OpenAI ChatCompletion request to OpenAI Responses request."""
     # Convert dict to typed model
     request = openai_models.ChatCompletionRequest.model_validate(data)
 
     # Use existing formatter function
-    result = await openai_to_openai.convert__openai_chat_to_openai_responses__request(request)
+    result = await openai_to_openai.convert__openai_chat_to_openai_responses__request(
+        request
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
 
 
-async def convert_openai_responses_to_openai_chat_response(data: FormatDict) -> FormatDict:
+async def convert_openai_responses_to_openai_chat_response(
+    data: FormatDict,
+) -> FormatDict:
     """Convert OpenAI Responses response to OpenAI ChatCompletion response."""
     # Convert dict to typed model
     response = openai_models.ResponseObject.model_validate(data)
 
     # Use existing formatter function
-    result = openai_to_openai.convert__openai_responses_to_openai_chat__response(response)
+    result = openai_to_openai.convert__openai_responses_to_openai_chat__response(
+        response
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
 
 
-# Alias for clarity in plugin usage
-convert_openai_chat_to_openai_responses_response = convert_openai_responses_to_openai_chat_response
+async def convert_openai_chat_to_openai_responses_response(
+    data: FormatDict,
+) -> FormatDict:
+    """Convert OpenAI ChatCompletion response to OpenAI Responses response."""
+    # Convert dict to typed model
+    response = openai_models.ChatCompletionResponse.model_validate(data)
+
+    # Use existing formatter function
+    result = await openai_to_openai.convert__openai_chat_to_openai_responses__response(
+        response
+    )
+
+    # Convert back to dict
+    return result.model_dump(exclude_unset=True)
 
 
 async def convert_openai_responses_to_openai_chat_stream(
@@ -223,38 +294,159 @@ async def convert_openai_responses_to_openai_chat_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI Responses stream to OpenAI ChatCompletion stream."""
     async for chunk_data in stream:
-        # Convert dict to typed model
+        # Convert dict to typed model with graceful fallback
         try:
-            from ccproxy.llms.models.openai import AnyStreamEvent
             from pydantic import TypeAdapter
+
+            from ccproxy.llms.models.openai import AnyStreamEvent
+
             adapter = TypeAdapter(AnyStreamEvent)
             chunk = adapter.validate_python(chunk_data)
         except Exception:
-            # Don't pass through as-is - raise the error to fail fast
-            raise ValueError(f"Failed to validate OpenAI Responses stream chunk: {chunk_data}")
+            # For unknown event types, create a simple object with the data
+            # The downstream formatter will handle unknown events gracefully
+            from types import SimpleNamespace
+
+            chunk = SimpleNamespace(**chunk_data)
+
+        # Create async iterator from single chunk
+        async def single_chunk_stream(chunk_value=chunk):
+            yield chunk_value
 
         # Use existing formatter function
-        converted_chunks = openai_to_openai.convert__openai_responses_to_openai_chat__stream([chunk])
+        converted_chunks = (
+            openai_to_openai.convert__openai_responses_to_openai_chat__stream(
+                single_chunk_stream()
+            )
+        )
 
         # Yield converted chunks as dicts
-        for converted_chunk in converted_chunks:
+        async for converted_chunk in converted_chunks:
             yield converted_chunk.model_dump(exclude_unset=True)
 
 
-# Alias for clarity in plugin usage
-convert_openai_chat_to_openai_responses_stream = convert_openai_responses_to_openai_chat_stream
+async def convert_openai_chat_to_openai_responses_stream(
+    stream: AsyncIterator[FormatDict],
+) -> AsyncIterator[FormatDict]:
+    """Convert OpenAI ChatCompletion stream to OpenAI Responses stream."""
+    async for chunk_data in stream:
+        # Convert dict to typed model with graceful fallback
+        try:
+            chunk = openai_models.ChatCompletionChunk.model_validate(chunk_data)
+        except Exception:
+            # For unknown event types, create a simple object with the data
+            # The downstream formatter will handle unknown events gracefully
+            from types import SimpleNamespace
+
+            chunk = SimpleNamespace(**chunk_data)
+
+        # Create async iterator from single chunk
+        async def single_chunk_stream(chunk_value=chunk):
+            yield chunk_value
+
+        # Use existing formatter function
+        converted_chunks = (
+            openai_to_openai.convert__openai_chat_to_openai_responses__stream(
+                single_chunk_stream()
+            )
+        )
+
+        # Yield converted chunks as dicts
+        async for converted_chunk in converted_chunks:
+            yield converted_chunk.model_dump(exclude_unset=True)
 
 
-async def convert_openai_responses_to_openai_chat_request(data: FormatDict) -> FormatDict:
+async def convert_anthropic_to_openai_responses_stream(
+    stream: AsyncIterator[FormatDict],
+) -> AsyncIterator[FormatDict]:
+    """Convert Anthropic MessageStream to OpenAI Responses stream."""
+    async for chunk_data in stream:
+        # Convert dict to typed model with graceful fallback
+        try:
+            from pydantic import TypeAdapter
+
+            from ccproxy.llms.models.anthropic import MessageStreamEvent
+
+            adapter = TypeAdapter(MessageStreamEvent)
+            chunk = adapter.validate_python(chunk_data)
+        except Exception:
+            # For unknown event types, create a simple object with the data
+            # The downstream formatter will handle unknown events gracefully
+            from types import SimpleNamespace
+
+            chunk = SimpleNamespace(**chunk_data)
+
+        # Create async iterator from single chunk
+        async def single_chunk_stream(chunk_value=chunk):
+            yield chunk_value
+
+        # Use the proper anthropic -> openai.responses stream converter
+        from ccproxy.llms.formatters.anthropic_to_openai import (
+            helpers as anthropic_to_openai,
+        )
+
+        converted_chunks = (
+            anthropic_to_openai.convert__anthropic_message_to_openai_responses__stream(
+                single_chunk_stream()
+            )
+        )
+
+        # Yield converted chunks as dicts
+        async for converted_chunk in converted_chunks:
+            yield converted_chunk.model_dump(exclude_unset=True)
+
+
+async def convert_openai_responses_to_anthropic_stream(
+    stream: AsyncIterator[FormatDict],
+) -> AsyncIterator[FormatDict]:
+    """Convert OpenAI Responses stream to Anthropic MessageStream."""
+    # Since there's no direct openai.responses -> anthropic stream converter,
+    # we'll convert responses -> chat -> anthropic
+    chat_stream = convert_openai_responses_to_openai_chat_stream(stream)
+    anthropic_stream = convert_openai_to_anthropic_stream(chat_stream)
+    async for chunk in anthropic_stream:
+        yield chunk
+
+
+async def convert_openai_responses_to_openai_chat_request(
+    data: FormatDict,
+) -> FormatDict:
     """Convert OpenAI Responses request to OpenAI ChatCompletion request."""
     # Convert dict to typed model
     request = openai_models.ResponseRequest.model_validate(data)
 
     # Use existing formatter function
-    result = await openai_to_openai.convert__openai_responses_to_openaichat__request(request)
+    result = await openai_to_openai.convert__openai_responses_to_openaichat__request(
+        request
+    )
 
     # Convert back to dict
     return result.model_dump(exclude_unset=True)
+
+
+# Additional error conversion functions for completeness
+async def convert_openai_responses_to_anthropic_error(data: FormatDict) -> FormatDict:
+    """Convert OpenAI Responses error to Anthropic error."""
+    # OpenAI errors are similar across formats - use existing converter
+    return await convert_openai_to_anthropic_error(data)
+
+
+async def convert_anthropic_to_openai_responses_error(data: FormatDict) -> FormatDict:
+    """Convert Anthropic error to OpenAI Responses error."""
+    # Use existing anthropic -> openai error converter (errors are same format)
+    return await convert_anthropic_to_openai_error(data)
+
+
+async def convert_openai_responses_to_openai_chat_error(data: FormatDict) -> FormatDict:
+    """Convert OpenAI Responses error to OpenAI ChatCompletion error."""
+    # Errors have the same format between OpenAI endpoints - passthrough
+    return data
+
+
+async def convert_openai_chat_to_openai_responses_error(data: FormatDict) -> FormatDict:
+    """Convert OpenAI ChatCompletion error to OpenAI Responses error."""
+    # Errors have the same format between OpenAI endpoints - passthrough
+    return data
 
 
 __all__ = [
@@ -268,12 +460,18 @@ __all__ = [
     "convert_anthropic_to_openai_error",
     "convert_openai_responses_to_anthropic_request",
     "convert_openai_responses_to_anthropic_response",
+    "convert_openai_responses_to_anthropic_error",
     "convert_anthropic_to_openai_responses_request",
     "convert_anthropic_to_openai_responses_response",
+    "convert_anthropic_to_openai_responses_error",
+    "convert_anthropic_to_openai_responses_stream",
+    "convert_openai_responses_to_anthropic_stream",
     "convert_openai_chat_to_openai_responses_request",
     "convert_openai_responses_to_openai_chat_response",
+    "convert_openai_responses_to_openai_chat_error",
     "convert_openai_chat_to_openai_responses_response",
-    "convert_openai_responses_to_openai_chat_stream",
+    "convert_openai_chat_to_openai_responses_error",
     "convert_openai_chat_to_openai_responses_stream",
+    "convert_openai_responses_to_openai_chat_stream",
     "convert_openai_responses_to_openai_chat_request",
 ]

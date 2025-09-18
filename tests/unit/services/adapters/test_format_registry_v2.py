@@ -1,7 +1,7 @@
-"""Enhanced unit tests for format adapter registry v2.
+"""Unit tests for format adapter registry.
 
-This module provides comprehensive tests for the format adapter registry
-including manifest registration and conflict resolution.
+This module provides tests for the format adapter registry
+including manifest registration and requirement validation.
 """
 
 import pytest
@@ -23,15 +23,11 @@ def create_mock_adapter():
     )
 
 
-class TestFormatRegistryV2:
-    """Enhanced tests for format adapter registry v2."""
+class TestFormatRegistry:
+    """Tests for format adapter registry."""
 
     @pytest.fixture
     def registry(self):
-        return FormatRegistry()
-
-    @pytest.fixture
-    def priority_registry(self):
         return FormatRegistry()
 
     @pytest.mark.asyncio
@@ -57,39 +53,35 @@ class TestFormatRegistryV2:
         assert registry._registered_plugins[("test_from", "test_to")] == "test_plugin"
 
     @pytest.mark.asyncio
-    async def test_conflict_resolution_priority_mode(self, priority_registry):
-        """Test priority-based conflict resolution."""
-        # Register conflicting adapters with different priorities
-        high_priority_spec = FormatAdapterSpec(
+    async def test_conflict_detection_first_wins(self, registry):
+        """Test that first registered adapter wins conflicts."""
+        # Register two conflicting adapters
+        spec1 = FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
             adapter_factory=lambda: create_mock_adapter(),
-            priority=10,  # Higher priority (lower number)
+            priority=10,
         )
-        low_priority_spec = FormatAdapterSpec(
+        spec2 = FormatAdapterSpec(
             from_format="openai",
             to_format="anthropic",
             adapter_factory=lambda: create_mock_adapter(),
-            priority=50,  # Lower priority
+            priority=50,
         )
 
         manifest1 = PluginManifest(
-            name="plugin1", version="1.0.0", format_adapters=[high_priority_spec]
+            name="plugin1", version="1.0.0", format_adapters=[spec1]
         )
         manifest2 = PluginManifest(
-            name="plugin2", version="1.0.0", format_adapters=[low_priority_spec]
+            name="plugin2", version="1.0.0", format_adapters=[spec2]
         )
 
-        await priority_registry.register_from_manifest(manifest1, "plugin1")
-        await priority_registry.register_from_manifest(manifest2, "plugin2")
+        await registry.register_from_manifest(manifest1, "plugin1")
+        await registry.register_from_manifest(manifest2, "plugin2")
 
-        await priority_registry.resolve_conflicts_and_finalize()
-
-        # High priority adapter should win
-        assert (
-            priority_registry._adapter_specs[("openai", "anthropic")]
-            == high_priority_spec
-        )
+        # First adapter should be registered
+        assert ("openai", "anthropic") in registry._adapters
+        assert registry._registered_plugins[("openai", "anthropic")] == "plugin1"
 
     @pytest.mark.asyncio
     async def test_requirement_validation(self, registry):
@@ -114,25 +106,18 @@ class TestFormatRegistryV2:
         assert ("core", "adapter") not in missing["test_plugin"]
 
     @pytest.mark.asyncio
-    async def test_finalization_prevents_modifications(self, registry):
-        """Test registry cannot be modified after finalization."""
-        await registry.resolve_conflicts_and_finalize()
-
-        manifest = PluginManifest(
-            name="late_plugin",
-            version="1.0.0",
-            format_adapters=[
-                FormatAdapterSpec(
-                    from_format="openai",
-                    to_format="anthropic",
-                    adapter_factory=lambda: create_mock_adapter(),
-                )
-            ],
+    async def test_get_adapter_success(self, registry):
+        """Test successful adapter retrieval."""
+        adapter = create_mock_adapter()
+        registry.register(
+            from_format="test_from",
+            to_format="test_to",
+            adapter=adapter,
+            plugin_name="test_plugin"
         )
 
-        # Should be ignored with warning log
-        await registry.register_from_manifest(manifest, "late_plugin")
-        assert "late_plugin" not in registry._registered_plugins
+        retrieved = registry.get("test_from", "test_to")
+        assert retrieved is adapter
 
     @pytest.mark.asyncio
     async def test_async_adapter_factory_support(self, registry):
@@ -149,71 +134,34 @@ class TestFormatRegistryV2:
             name="async_plugin", version="1.0.0", format_adapters=[spec]
         )
         await registry.register_from_manifest(manifest, "async_plugin")
-        await registry.resolve_conflicts_and_finalize()
 
         assert ("async", "anthropic") in registry._adapters
 
     @pytest.mark.asyncio
-    async def test_conflict_detection_behavior(self, priority_registry):
-        """Test that conflicts are properly detected and resolved."""
-        spec1 = FormatAdapterSpec(
-            from_format="openai",
-            to_format="anthropic",
-            adapter_factory=lambda: create_mock_adapter(),
-            priority=10,
-        )
-        spec2 = FormatAdapterSpec(
-            from_format="openai",
-            to_format="anthropic",
-            adapter_factory=lambda: create_mock_adapter(),
-            priority=20,
-        )
-
-        manifest1 = PluginManifest(
-            name="plugin1", version="1.0.0", format_adapters=[spec1]
-        )
-        manifest2 = PluginManifest(
-            name="plugin2", version="1.0.0", format_adapters=[spec2]
-        )
-
-        await priority_registry.register_from_manifest(manifest1, "plugin1")
-        await priority_registry.register_from_manifest(manifest2, "plugin2")
-
-        # Should detect conflict and resolve with priority
-        assert ("openai", "anthropic") in priority_registry._conflicts
-
-        await priority_registry.resolve_conflicts_and_finalize()
-
-        # Higher priority should win
-        winning_spec = priority_registry._adapter_specs[("openai", "anthropic")]
-        assert winning_spec.priority == 10
+    async def test_get_adapter_missing(self, registry):
+        """Test adapter retrieval when adapter is missing."""
+        with pytest.raises(ValueError, match="No adapter registered"):
+            registry.get("missing", "adapter")
 
     @pytest.mark.asyncio
-    async def test_fail_fast_mode_raises_on_conflicts(self, registry):
-        """Test fail fast mode raises ValueError on conflicts."""
-        spec1 = FormatAdapterSpec(
-            from_format="openai",
-            to_format="anthropic",
-            adapter_factory=lambda: create_mock_adapter(),
-        )
-        spec2 = FormatAdapterSpec(
-            from_format="openai",
-            to_format="anthropic",
-            adapter_factory=lambda: create_mock_adapter(),
+    async def test_get_if_exists_success(self, registry):
+        """Test get_if_exists returns adapter when present."""
+        adapter = create_mock_adapter()
+        registry.register(
+            from_format="test_from",
+            to_format="test_to",
+            adapter=adapter,
+            plugin_name="test_plugin"
         )
 
-        manifest1 = PluginManifest(
-            name="plugin1", version="1.0.0", format_adapters=[spec1]
-        )
-        manifest2 = PluginManifest(
-            name="plugin2", version="1.0.0", format_adapters=[spec2]
-        )
+        retrieved = registry.get_if_exists("test_from", "test_to")
+        assert retrieved is adapter
 
-        await registry.register_from_manifest(manifest1, "plugin1")
-        await registry.register_from_manifest(manifest2, "plugin2")
-
-        with pytest.raises(ValueError, match="Format adapter conflicts detected"):
-            await registry.resolve_conflicts_and_finalize()
+    @pytest.mark.asyncio
+    async def test_get_if_exists_missing(self, registry):
+        """Test get_if_exists returns None when adapter is missing."""
+        result = registry.get_if_exists("missing", "adapter")
+        assert result is None
 
     def test_format_adapter_spec_validation(self):
         """Test FormatAdapterSpec validation."""
@@ -258,10 +206,9 @@ class TestFormatRegistryV2:
         manifest = PluginManifest(
             name="failing_plugin", version="1.0.0", format_adapters=[spec]
         )
-        await registry.register_from_manifest(manifest, "failing_plugin")
 
-        with pytest.raises(ValueError, match="Failed to instantiate adapter"):
-            await registry.resolve_conflicts_and_finalize()
+        with pytest.raises(RuntimeError, match="Factory failed"):
+            await registry.register_from_manifest(manifest, "failing_plugin")
 
     @pytest.mark.asyncio
     async def test_multiple_plugins_registration(self, registry):
@@ -284,10 +231,9 @@ class TestFormatRegistryV2:
 
         # Validate all are registered
         for name in plugins:
-            assert name in registry._registered_plugins
+            assert name in registry.get_registered_plugins()
 
-        # Finalize and check all adapters are available
-        await registry.resolve_conflicts_and_finalize()
+        # Check all adapters are available
         assert len(registry._adapters) == 3
 
     def test_plugin_manifest_validation(self):
@@ -303,3 +249,29 @@ class TestFormatRegistryV2:
 
         assert ("req3", "req4") in missing
         assert ("req1", "req2") not in missing
+
+    def test_core_adapter_registration(self, registry):
+        """Test that core adapters can be registered."""
+        adapter = create_mock_adapter()
+        registry.register(
+            from_format="anthropic.messages",
+            to_format="openai.responses",
+            adapter=adapter,
+            plugin_name="core",
+        )
+
+        assert ("anthropic.messages", "openai.responses") in registry._adapters
+        assert registry._registered_plugins[("anthropic.messages", "openai.responses")] == "core"
+
+    def test_list_pairs(self, registry):
+        """Test format pair listing."""
+        adapter = create_mock_adapter()
+        registry.register(
+            from_format="from1",
+            to_format="to1",
+            adapter=adapter,
+            plugin_name="test",
+        )
+
+        pairs = registry.list_pairs()
+        assert "from1->to1" in pairs

@@ -16,17 +16,7 @@ from ccproxy.core.plugins import (
     PluginManifest,
     ProviderPluginRuntime,
 )
-from ccproxy.core.plugins.declaration import FormatAdapterSpec, RouterSpec
-from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
-from ccproxy.services.adapters.simple_converters import (
-    convert_anthropic_to_openai_request,
-    convert_anthropic_to_openai_response,
-    convert_anthropic_to_openai_stream,
-    convert_openai_responses_to_anthropic_request,
-    convert_openai_responses_to_openai_chat_request,
-    convert_openai_responses_to_openai_chat_response,
-    convert_openai_responses_to_openai_chat_stream,
-)
+from ccproxy.core.plugins.declaration import FormatPair, RouterSpec
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import CopilotAdapter
@@ -151,43 +141,16 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
     #     ),  # Provided by core OpenAI adapter for /v1/messages endpoint
     # ]
 
-    format_adapters = [
-        # Normalize provider's raw OpenAI-like stream to canonical OpenAI
-        FormatAdapterSpec(
-            from_format=FORMAT_ANTHROPIC_MESSAGES,
-            to_format=FORMAT_OPENAI_CHAT,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_anthropic_to_openai_request,
-                response=convert_anthropic_to_openai_response,
-                stream=convert_anthropic_to_openai_stream,
-                name="anthropic_to_openai_copilot",
-            ),
-            priority=100,
-            description="Anthropic Messages to OpenAI ChatCompletions (SimpleFormatAdapter)",
-        ),
-        FormatAdapterSpec(
-            from_format=FORMAT_OPENAI_RESPONSES,
-            to_format=FORMAT_ANTHROPIC_MESSAGES,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_openai_responses_to_anthropic_request,
-                name="openai_responses_to_anthropic_copilot",
-            ),
-            priority=50,  # Medium priority
-            description="OpenAI Responses to Anthropic Messages (SimpleFormatAdapter)",
-        ),
-        # Add Response API ↔ OpenAI adapter for /v1/responses endpoint
-        FormatAdapterSpec(
-            from_format=FORMAT_OPENAI_RESPONSES,
-            to_format=FORMAT_OPENAI_CHAT,
-            adapter_factory=lambda: SimpleFormatAdapter(
-                request=convert_openai_responses_to_openai_chat_request,
-                response=convert_openai_responses_to_openai_chat_response,
-                stream=convert_openai_responses_to_openai_chat_stream,
-                name="openai_responses_to_chat_copilot",
-            ),
-            priority=90,  # Very high priority for direct conversion
-            description="OpenAI Responses to OpenAI ChatCompletions (SimpleFormatAdapter)",
-        ),
+    # Define format adapter requirements (all provided by core)
+    requires_format_adapters: list[FormatPair] = [
+        # Primary format conversion for Copilot endpoints
+        (FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_CHAT),
+        (FORMAT_OPENAI_CHAT, FORMAT_ANTHROPIC_MESSAGES),
+        # OpenAI Responses API support
+        (FORMAT_OPENAI_RESPONSES, FORMAT_ANTHROPIC_MESSAGES),
+        (FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_RESPONSES),
+        (FORMAT_OPENAI_RESPONSES, FORMAT_OPENAI_CHAT),
+        (FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES),
     ]
 
     def create_context(self, core_services: Any) -> PluginContext:
