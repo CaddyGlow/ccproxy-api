@@ -127,10 +127,6 @@ async def stream_permissions(
 
     return EventSourceResponse(
         event_generator(request),
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-        },
     )
 
 

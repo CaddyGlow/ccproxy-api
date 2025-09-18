@@ -158,8 +158,6 @@ class DeferredStreaming(StreamingResponse):
             )
             final_headers: dict[str, str] = {
                 **upstream_headers,
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",  # Disable nginx buffering
                 "Content-Type": content_type_header
                 or (self.media_type or "text/event-stream"),
             }

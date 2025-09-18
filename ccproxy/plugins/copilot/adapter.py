@@ -89,7 +89,6 @@ class CopilotAdapter(BaseHTTPAdapter):
                     ):
                         payload["created"] = int(time.time())
                         body = json.dumps(payload).encode()
-                        response_headers["content-length"] = str(len(body))
                         return Response(
                             content=body,
                             status_code=response.status_code,
@@ -110,7 +109,6 @@ class CopilotAdapter(BaseHTTPAdapter):
                 normalized = self._normalize_response_payload(payload)
                 if normalized is not None:
                     body = json.dumps(normalized).encode()
-                    response_headers["content-length"] = str(len(body))
                     return Response(
                         content=body,
                         status_code=response.status_code,

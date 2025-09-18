@@ -247,8 +247,6 @@ class BaseHTTPAdapter(BaseAdapter):
                         stage=stage,
                     )
                     body_bytes = self._encode_json_body(payload)
-                    if "content-length" in response.headers:
-                        response.headers["content-length"] = str(len(body_bytes))
                     return Response(
                         content=body_bytes,
                         status_code=provider_response.status_code,

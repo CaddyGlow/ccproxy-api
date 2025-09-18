@@ -1,7 +1,5 @@
 """Server header middleware to set default server and date headers for non-proxy routes."""
 
-from email.utils import formatdate
-
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
@@ -34,16 +32,10 @@ class ServerHeaderMiddleware:
 
                 # Check if headers already exist
                 has_server = any(header[0].lower() == b"server" for header in headers)
-                has_date = any(header[0].lower() == b"date" for header in headers)
 
                 # Add server header if missing
                 if not has_server:
                     headers.append((b"server", self.server_name.encode()))
-
-                # Add date header if missing
-                if not has_date:
-                    date_str = formatdate(timeval=None, localtime=False, usegmt=True)
-                    headers.append((b"date", date_str.encode()))
 
                 message["headers"] = headers
 

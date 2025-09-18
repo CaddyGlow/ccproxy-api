@@ -213,10 +213,8 @@ class CodexAdapter(BaseHTTPAdapter):
                         },
                     )
 
-                # Filter headers and rebuild response without content-length
+                # Filter headers and rebuild response; Content-Length will be added by ProxyResponse
                 headers_out = filter_response_headers(dict(buffered_response.headers))
-                if "content-length" in headers_out:
-                    del headers_out["content-length"]
                 return Response(
                     content=converted_body,
                     status_code=buffered_response.status_code,

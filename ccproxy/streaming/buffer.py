@@ -767,7 +767,6 @@ class StreamingBufferService:
                 "transfer-encoding",
                 "connection",
                 "cache-control",
-                "x-accel-buffering",
                 "content-length",
             }:
                 final_headers[key] = value

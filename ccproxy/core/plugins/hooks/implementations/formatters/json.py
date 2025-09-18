@@ -142,7 +142,6 @@ class JSONFormatter:
             "api-key",
             "cookie",
             "x-auth-token",
-            "x-access-token",
             "x-secret-key",
         }
 

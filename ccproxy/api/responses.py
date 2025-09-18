@@ -51,32 +51,31 @@ class ProxyResponse(Response):
         This method intercepts the response sending process to ensure
         that our headers are not overridden by the server.
         """
-        # Ensure we include all original headers, including 'server'
-        headers_list = []
-        seen_headers = set()
+        # Build headers preserving original case, avoiding unsafe/duplicate ones
+        headers_list: list[tuple[bytes, bytes]] = []
+        seen_lower: set[str] = set()
 
-        # Add all headers from the response, but skip content-length
-        # as we'll recalculate it based on actual body
-        for name, value in self._preserve_headers.items():
-            lower_name = name.lower()
-            # Skip content-length and transfer-encoding as we'll set them correctly
-            if (
-                lower_name not in ["content-length", "transfer-encoding"]
-                and lower_name not in seen_headers
-            ):
-                headers_list.append((lower_name.encode(), value.encode()))
-                seen_headers.add(lower_name)
+        for name, value in (self._preserve_headers or {}).items():
+            lower = name.lower()
+            # Skip unsafe or computed headers
+            if lower in {"content-length", "transfer-encoding"}:
+                continue
+            # Avoid duplicates case-insensitively
+            if lower in seen_lower:
+                continue
+            headers_list.append((name.encode(), str(value).encode()))
+            seen_lower.add(lower)
 
-        # Always set correct content-length based on actual body
-        if self.body:
-            headers_list.append((b"content-length", str(len(self.body)).encode()))
-        else:
-            headers_list.append((b"content-length", b"0"))
+        # Add computed Content-Type if missing
+        if (
+            self.media_type
+            and not any(h[0].lower() == b"content-type" for h in headers_list)
+        ):
+            headers_list.append((b"Content-Type", self.media_type.encode()))
 
-        # Ensure we have content-type
-        has_content_type = any(h[0] == b"content-type" for h in headers_list)
-        if not has_content_type and self.media_type:
-            headers_list.append((b"content-type", self.media_type.encode()))
+        # Always append correct Content-Length based on actual body
+        body_len = len(self.body or b"") if isinstance(self.body, (bytes, bytearray)) else 0
+        headers_list.append((b"Content-Length", str(body_len).encode()))
 
         # Debug logging only; avoid noisy error-level logs for normal responses
         # logger.debug("proxy_response_headers", headers=headers_list)
