@@ -4,8 +4,12 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
+import ccproxy.core.logging
 from ccproxy.llms.formatters.formatter_registry import formatter
 from ccproxy.llms.models import openai as openai_models
+
+
+logger = ccproxy.core.logging.get_logger(__name__)
 
 
 @formatter("openai.responses", "openai.completions", "usage")
@@ -79,10 +83,7 @@ def convert__openai_completion_usage_to_openai_responses__usage(
 async def convert__openai_responses_to_openaichat__request(
     request: openai_models.ResponseRequest,
 ) -> openai_models.ChatCompletionRequest:
-    from structlog import get_logger
-
-    _log = get_logger(__name__)
-    _log = _log.bind(category="formatter", converter="responses_to_chat_request")
+    _log = logger.bind(category="formatter", converter="responses_to_chat_request")
     system_message: str | None = request.instructions
     messages: list[dict[str, Any]] = []
 
@@ -285,7 +286,7 @@ def convert__openai_responses_to_openai_chat__stream(
                 continue
 
             if evt.type == "response.created":
-                model_id = getattr(evt.response, "model", "")
+                model_id = getattr(getattr(evt, "response", None), "model", "")
             elif evt.type == "response.output_text.delta":
                 delta = getattr(evt, "delta", None) or ""
                 if delta:
@@ -351,12 +352,14 @@ def convert__openai_chat_to_openai_responses__stream(
     response.completed when stream ends.
     """
 
-    async def generator():
-        from structlog import get_logger
-
-        log = get_logger(__name__).bind(
-            category="formatter", converter="chat_to_responses_stream"
-        )
+    async def generator() -> AsyncGenerator[
+        openai_models.ResponseCreatedEvent
+        | openai_models.ResponseInProgressEvent
+        | openai_models.ResponseCompletedEvent
+        | openai_models.ResponseOutputTextDeltaEvent,
+        None,
+    ]:
+        log = logger.bind(category="formatter", converter="chat_to_responses_stream")
 
         created_sent = False
         response_id = "chat-to-resp"

@@ -5,6 +5,7 @@
 """
 
 import asyncio
+from collections.abc import AsyncGenerator
 
 import pytest
 import structlog
@@ -12,8 +13,7 @@ from httpx import ASGITransport, AsyncClient
 
 from ccproxy.api.app import create_app
 from ccproxy.api.bootstrap import create_service_container
-from ccproxy.config.core import ServerSettings
-from ccproxy.config.settings import Settings
+from ccproxy.config import LoggingSettings, ServerSettings, Settings
 from ccproxy.services.container import ServiceContainer
 from tests.smoketest.mock_util import is_record_mode, make_mock_middleware
 
@@ -22,10 +22,11 @@ pytestmark = pytest.mark.smoketest
 
 
 @pytest.fixture
-async def client() -> AsyncClient:
+async def client() -> AsyncGenerator[AsyncClient, None]:
     # Configure settings
     settings = Settings()
-    settings.server = ServerSettings(log_level="DEBUG")
+    settings.logging = LoggingSettings(level="DEBUG")
+    settings.server = ServerSettings()
     settings.enable_plugins = True
     settings.plugins_disable_local_discovery = False
 
@@ -56,19 +57,21 @@ async def client() -> AsyncClient:
     app.middleware("http")(make_mock_middleware(route_map))
 
     transport = ASGITransport(app=app)
-    async with app.router.lifespan_context(app):
-        async with AsyncClient(transport=transport, base_url="http://testserver") as c:
-            # In record mode, wait for real startup to be ready
-            if is_record_mode():
-                for _ in range(50):
-                    try:
-                        r = await c.get("/health")
-                        if r.status_code == 200:
-                            break
-                    except Exception:
-                        pass
-                    await asyncio.sleep(0.1)
-            yield c
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(transport=transport, base_url="http://testserver") as c,
+    ):
+        # In record mode, wait for real startup to be ready
+        if is_record_mode():
+            for _ in range(50):
+                try:
+                    r = await c.get("/health")
+                    if r.status_code == 200:
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+        yield c
 
 
 class TestSmokeMocks:

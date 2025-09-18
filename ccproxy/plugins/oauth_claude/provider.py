@@ -12,15 +12,15 @@ from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFiel
 from ccproxy.auth.oauth.registry import CliAuthConfig, FlowType, OAuthProviderInfo
 from ccproxy.auth.storage.generic import GenericJsonStorage
 
+
 if TYPE_CHECKING:
     from ccproxy.services.cli_detection import CLIDetectionService
 
-from .manager import ClaudeApiTokenManager
-from .models import ClaudeCredentials
 from ccproxy.core.logging import get_plugin_logger
 
 from .client import ClaudeOAuthClient
 from .config import ClaudeOAuthConfig
+from .manager import ClaudeApiTokenManager
 from .models import ClaudeCredentials, ClaudeProfileInfo
 from .storage import ClaudeOAuthStorage
 

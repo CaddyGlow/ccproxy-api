@@ -2,17 +2,20 @@ import contextlib
 import json
 import uuid
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import Request
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.core.constants import (
     FORMAT_OPENAI_CHAT,
     FORMAT_OPENAI_RESPONSES,
 )
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.services.adapters.chain_composer import compose_from_chain
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
+from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming import DeferredStreaming, StreamingBufferService
 from ccproxy.utils.headers import (
     extract_request_headers,
@@ -57,9 +60,7 @@ class CodexAdapter(BaseHTTPAdapter):
         # Determine client streaming intent from body flag (fallback to False)
         wants_stream = False
         try:
-            import json as _json
-
-            data = _json.loads(body.decode()) if body else {}
+            data = json.loads(body.decode()) if body else {}
             wants_stream = bool(data.get("stream", False))
         except Exception:  # Malformed/missing JSON -> assume non-streaming
             wants_stream = False
@@ -100,8 +101,6 @@ class CodexAdapter(BaseHTTPAdapter):
                     )
                     body = self._encode_json_body(request_payload)
                 except Exception as e:
-                    from starlette.responses import JSONResponse
-
                     logger.error(
                         "codex_format_chain_request_failed",
                         error=str(e),
@@ -130,8 +129,6 @@ class CodexAdapter(BaseHTTPAdapter):
             )
 
             # 2) Build handler config using composed adapter from format_chain (unified path)
-            from ccproxy.services.adapters.chain_composer import compose_from_chain
-            from ccproxy.services.handler_config import HandlerConfig
 
             composed_adapter = (
                 compose_from_chain(
@@ -183,8 +180,14 @@ class CodexAdapter(BaseHTTPAdapter):
             if ctx.format_chain and len(ctx.format_chain) > 1:
                 mode = "error" if buffered_response.status_code >= 400 else "response"
                 try:
+                    # Ensure body is bytes for _decode_json_body
+                    body_bytes = (
+                        buffered_response.body
+                        if isinstance(buffered_response.body, bytes)
+                        else bytes(buffered_response.body)
+                    )
                     response_payload = self._decode_json_body(
-                        buffered_response.body, context=f"codex_{mode}"
+                        body_bytes, context=f"codex_{mode}"
                     )
                     response_payload = await self._apply_format_chain(
                         data=response_payload,
@@ -200,8 +203,6 @@ class CodexAdapter(BaseHTTPAdapter):
                         exc_info=e,
                         category="transform",
                     )
-                    from starlette.responses import JSONResponse
-
                     return JSONResponse(
                         status_code=502,
                         content={
@@ -380,23 +381,32 @@ class CodexAdapter(BaseHTTPAdapter):
                 )
                 body = self._encode_json_body(request_payload)
             except Exception as e:
-                from starlette.responses import JSONResponse
-
                 logger.error(
                     "codex_format_chain_request_failed",
                     error=str(e),
                     exc_info=e,
                     category="transform",
                 )
-                return JSONResponse(
+                # Convert error to streaming response
+
+                error_content = {
+                    "error": {
+                        "type": "invalid_request_error",
+                        "message": "Failed to convert request using format chain",
+                        "details": str(e),
+                    }
+                }
+                error_bytes = json.dumps(error_content).encode("utf-8")
+
+                async def error_generator() -> (
+                    Any
+                ):  # AsyncGenerator[bytes, None] would be more specific
+                    yield error_bytes
+
+                return StreamingResponse(
+                    content=error_generator(),
                     status_code=400,
-                    content={
-                        "error": {
-                            "type": "invalid_request_error",
-                            "message": "Failed to convert request using format chain",
-                            "details": str(e),
-                        }
-                    },
+                    media_type="application/json",
                 )
 
         # Provider-specific preparation (adds auth, sets stream=true)
@@ -416,8 +426,6 @@ class CodexAdapter(BaseHTTPAdapter):
             except Exception:
                 streaming_format_adapter = None
 
-        from ccproxy.services.handler_config import HandlerConfig
-
         handler_config = HandlerConfig(
             supports_streaming=True,
             request_transformer=None,
@@ -426,8 +434,6 @@ class CodexAdapter(BaseHTTPAdapter):
         )
 
         target_url = await self.get_target_url(endpoint)
-
-        from urllib.parse import urlparse
 
         parsed_url = urlparse(target_url)
         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -482,7 +488,8 @@ class CodexAdapter(BaseHTTPAdapter):
                 self.detection_service.get_system_prompt()
             )  # returns {"instructions": str} or {}
             if injection and isinstance(injection.get("instructions"), str):
-                return injection["instructions"]
+                instructions: str = injection["instructions"]
+                return instructions
         raise ValueError("No instructions available from detection service")
 
     def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:

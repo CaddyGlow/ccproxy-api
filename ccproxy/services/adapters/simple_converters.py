@@ -11,11 +11,23 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from ccproxy.core import logging
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES as ANTHROPIC_MESSAGES,
+)
+from ccproxy.core.constants import (
+    FORMAT_OPENAI_CHAT as OPENAI_CHAT,
+)
+from ccproxy.core.constants import (
+    FORMAT_OPENAI_RESPONSES as OPENAI_RESPONSES,
+)
 from ccproxy.llms.formatters.anthropic_to_openai import helpers as anthropic_to_openai
 from ccproxy.llms.formatters.openai_to_anthropic import helpers as openai_to_anthropic
 from ccproxy.llms.formatters.openai_to_openai import helpers as openai_to_openai
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
+
+from .format_adapter import SimpleFormatAdapter
+from .format_registry import FormatRegistry
 
 
 FormatDict = dict[str, Any]
@@ -55,7 +67,7 @@ async def _convert_stream_single_chunk(
     """
     chunk = _safe_validate(validator_model, chunk_data)
 
-    async def _one():
+    async def _one() -> AsyncIterator[Any]:
         yield chunk
 
     converted_chunks = converter(_one())
@@ -93,7 +105,8 @@ async def convert_openai_to_anthropic_request(data: FormatDict) -> FormatDict:
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_anthropic_to_openai_response(data: FormatDict) -> FormatDict:
@@ -107,7 +120,8 @@ async def convert_anthropic_to_openai_response(data: FormatDict) -> FormatDict:
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_anthropic_to_openai_stream(
@@ -133,7 +147,8 @@ async def convert_openai_to_anthropic_error(data: FormatDict) -> FormatDict:
     result = openai_to_anthropic.convert__openai_to_anthropic__error(error)
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 # Anthropic to OpenAI converters (reverse direction, if needed)
@@ -148,7 +163,8 @@ async def convert_anthropic_to_openai_request(data: FormatDict) -> FormatDict:
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_openai_to_anthropic_response(data: FormatDict) -> FormatDict:
@@ -162,7 +178,8 @@ async def convert_openai_to_anthropic_response(data: FormatDict) -> FormatDict:
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_openai_to_anthropic_stream(
@@ -186,7 +203,8 @@ async def convert_anthropic_to_openai_error(data: FormatDict) -> FormatDict:
     result = anthropic_to_openai.convert__anthropic_to_openai__error(error)
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 # OpenAI Responses format converters (for Codex plugin)
@@ -203,7 +221,8 @@ async def convert_openai_responses_to_anthropic_request(data: FormatDict) -> For
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_openai_responses_to_anthropic_response(
@@ -221,7 +240,8 @@ async def convert_openai_responses_to_anthropic_response(
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_anthropic_to_openai_responses_request(data: FormatDict) -> FormatDict:
@@ -237,7 +257,8 @@ async def convert_anthropic_to_openai_responses_request(data: FormatDict) -> For
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_anthropic_to_openai_responses_response(
@@ -255,7 +276,8 @@ async def convert_anthropic_to_openai_responses_response(
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 # OpenAI Chat ↔ OpenAI Responses converters (for Codex plugin)
@@ -272,7 +294,8 @@ async def convert_openai_chat_to_openai_responses_request(
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_openai_responses_to_openai_chat_response(
@@ -288,7 +311,8 @@ async def convert_openai_responses_to_openai_chat_response(
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_openai_chat_to_openai_responses_response(
@@ -304,7 +328,8 @@ async def convert_openai_chat_to_openai_responses_response(
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 async def convert_openai_responses_to_openai_chat_stream(
@@ -376,7 +401,8 @@ async def convert_openai_responses_to_openai_chat_request(
     )
 
     # Convert back to dict
-    return result.model_dump(exclude_unset=True)
+    result_dict: FormatDict = result.model_dump(exclude_unset=True)
+    return result_dict
 
 
 # Passthrough and additional error conversion functions
@@ -433,22 +459,6 @@ __all__ = [
 ]
 
 # Centralized pair→stage mapping and registration helpers
-
-from ccproxy.core.constants import (
-    FORMAT_ANTHROPIC_MESSAGES as ANTHROPIC_MESSAGES,
-)
-from ccproxy.core.constants import (
-    FORMAT_OPENAI_CHAT as OPENAI_CHAT,
-)
-from ccproxy.core.constants import (
-    FORMAT_OPENAI_RESPONSES as OPENAI_RESPONSES,
-)
-
-from .format_adapter import SimpleFormatAdapter
-from .format_registry import FormatRegistry
-
-
-# Canonical format names imported from core constants
 
 
 def get_converter_map() -> dict[tuple[str, str], dict[str, Any]]:

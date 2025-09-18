@@ -72,9 +72,7 @@ async def codex_chat_completions(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    return await handle_codex_request(
-        request, adapter, UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS
-    )
+    return await handle_codex_request(request, adapter)
 
 
 @router.post("/{session_id}/chat/completions", response_model=None)
@@ -146,7 +144,7 @@ async def codex_v1_messages(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    return await handle_codex_request(request, adapter, "/v1/messages")
+    return await handle_codex_request(request, adapter)
 
 
 @router.post("/{session_id}/v1/messages", response_model=None)
@@ -160,6 +158,4 @@ async def codex_v1_messages_with_session(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    return await handle_codex_request(
-        request, adapter, "/{session_id}/v1/messages", session_id
-    )
+    return await handle_codex_request(request, adapter)

@@ -1,19 +1,21 @@
+from collections.abc import AsyncGenerator
+
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from ccproxy.api.app import create_app, initialize_plugins_startup
 from ccproxy.api.bootstrap import create_service_container
-from ccproxy.config.settings import Settings
+from ccproxy.config import LoggingSettings, Settings
+from ccproxy.core.logging import setup_logging
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.api]
 
 
 @pytest_asyncio.fixture(scope="module")
-async def plugins_status_client():
+async def plugins_status_client() -> AsyncGenerator[AsyncClient, None]:
     """Module-scoped client for plugins status tests - optimized for speed."""
-    from ccproxy.core.logging import setup_logging
 
     # Set up minimal logging for speed
     setup_logging(json_logs=False, log_level_name="ERROR")
@@ -25,11 +27,11 @@ async def plugins_status_client():
             # Enable metrics to ensure a system plugin is present
             "metrics": {"enabled": True, "metrics_endpoint_enabled": True},
         },
-        logging={
-            "level": "ERROR",  # Minimal logging for speed
-            "enable_plugin_logging": False,
-            "verbose_api": False,
-        },
+        logging=LoggingSettings(
+            level="ERROR",  # Minimal logging for speed
+            enable_plugin_logging=False,
+            verbose_api=False,
+        ),
     )
     # create_app expects a ServiceContainer; build it from settings
     container = create_service_container(settings)
@@ -42,7 +44,7 @@ async def plugins_status_client():
 
 
 @pytest.mark.asyncio
-async def test_plugins_status_types(plugins_status_client) -> None:
+async def test_plugins_status_types(plugins_status_client: AsyncClient) -> None:
     """Test that plugins status endpoint returns proper plugin types."""
     resp = await plugins_status_client.get("/plugins/status")
     assert resp.status_code == 200

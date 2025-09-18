@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.core.request_context import get_request_event_stream
 from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
+
 from .service import AnalyticsService
 
 

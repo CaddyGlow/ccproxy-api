@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any, get_args, get_origin
 
@@ -12,7 +13,33 @@ from ccproxy.llms.formatters.base import BaseAPIAdapter
 from ..models.openai import AnyStreamEvent
 
 
-class AdapterShim(BaseAPIAdapter):
+class DictBasedAdapterProtocol(ABC):
+    """Protocol for adapters that work with dict interfaces."""
+
+    @abstractmethod
+    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Convert a request using dict interface."""
+        pass
+
+    @abstractmethod
+    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
+        """Convert a response using dict interface."""
+        pass
+
+    @abstractmethod
+    def adapt_stream(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Convert a streaming response using dict interface."""
+        pass
+
+    @abstractmethod
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
+        """Convert an error response using dict interface."""
+        pass
+
+
+class AdapterShim(DictBasedAdapterProtocol):
     """Shim that wraps typed adapters to provide legacy dict-based interface.
 
     This allows the new strongly-typed adapters from ccproxy.llms.formatters
@@ -30,7 +57,7 @@ class AdapterShim(BaseAPIAdapter):
         Args:
             typed_adapter: The strongly-typed adapter to wrap
         """
-        super().__init__(name=f"shim_{typed_adapter.name}")
+        self.name = f"shim_{typed_adapter.name}"
         self._typed_adapter = typed_adapter
         # Discovered model types from the typed adapter's generic parameters
         self._request_model: type[BaseModel] | None = None
@@ -119,10 +146,16 @@ class AdapterShim(BaseAPIAdapter):
                 f"Response adaptation failed in {self._typed_adapter.name}: {e}"
             ) from e
 
-    async def adapt_stream(
+    def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Convert streaming response using shim."""
+        return self._adapt_stream_impl(stream)
+
+    async def _adapt_stream_impl(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Internal implementation for stream adaptation."""
 
         async def typed_stream() -> AsyncGenerator[BaseModel, None]:
             """Convert dict stream to typed stream."""

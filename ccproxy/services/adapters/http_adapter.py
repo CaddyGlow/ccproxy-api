@@ -2,14 +2,17 @@ import contextlib
 import json
 from abc import abstractmethod
 from typing import Any, Literal, cast
+from urllib.parse import urlparse
 
 import httpx
-from fastapi import Request
-from starlette.responses import Response, StreamingResponse
+from fastapi import HTTPException, Request
+from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.models.provider import ProviderConfig
 from ccproxy.services.adapters.base import BaseAdapter
+from ccproxy.services.adapters.chain_composer import compose_from_chain
+from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming import DeferredStreaming
 from ccproxy.streaming.handler import StreamingHandler
 from ccproxy.utils.headers import extract_request_headers, filter_response_headers
@@ -122,8 +125,6 @@ class BaseHTTPAdapter(BaseAdapter):
                     endpoint=endpoint,
                     category="transform",
                 )
-                from starlette.responses import JSONResponse
-
                 return JSONResponse(
                     status_code=400,
                     content={
@@ -164,8 +165,6 @@ class BaseHTTPAdapter(BaseAdapter):
                     exc_info=e,
                     category="transform",
                 )
-                from starlette.responses import JSONResponse
-
                 return JSONResponse(
                     status_code=400,
                     content={
@@ -263,8 +262,6 @@ class BaseHTTPAdapter(BaseAdapter):
                         category="transform",
                     )
                     # Return proper error instead of potentially malformed response
-                    from starlette.responses import JSONResponse
-
                     return JSONResponse(
                         status_code=500,
                         content={
@@ -342,11 +339,9 @@ class BaseHTTPAdapter(BaseAdapter):
                     exc_info=e,
                     category="transform",
                 )
-                from starlette.responses import JSONResponse
-
-                return JSONResponse(
+                raise HTTPException(
                     status_code=400,
-                    content={
+                    detail={
                         "error": {
                             "type": "invalid_request_error",
                             "message": "Failed to convert streaming request using format chain",
@@ -389,9 +384,6 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Build handler config for streaming with a composed format adapter derived from chain
         # Import here to avoid circular imports
-        from ccproxy.services.adapters.chain_composer import compose_from_chain
-        from ccproxy.services.handler_config import HandlerConfig
-
         composed_adapter = (
             compose_from_chain(registry=self.format_registry, chain=ctx.format_chain)
             if self.format_registry and ctx.format_chain
@@ -409,8 +401,6 @@ class BaseHTTPAdapter(BaseAdapter):
         target_url = await self.get_target_url(endpoint)
 
         # Get HTTP client from pool manager with base URL for hook integration
-        from urllib.parse import urlparse
-
         parsed_url = urlparse(target_url)
         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
 
@@ -538,19 +528,6 @@ class BaseHTTPAdapter(BaseAdapter):
             return json.dumps(data).encode()
         except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
             raise ValueError(f"Failed to serialize format chain output: {exc}") from exc
-
-    async def _convert_streaming_response(
-        self,
-        response: StreamingResponse,
-        format_chain: list[str],
-        ctx: Any,
-    ) -> StreamingResponse:
-        logger.debug(
-            "streaming_format_chain_passthrough",
-            reason="conversion handled by streaming handler",
-            format_chain=format_chain,
-        )
-        return response
 
     async def _execute_http_request(
         self, method: str, url: str, headers: dict[str, str], body: bytes

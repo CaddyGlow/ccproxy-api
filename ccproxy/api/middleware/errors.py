@@ -1,5 +1,6 @@
 """Error handling middleware for CCProxy API Server."""
 
+import traceback
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -373,8 +374,6 @@ def setup_error_handlers(app: FastAPI) -> None:
             )
         else:
             # Log with basic stack trace (no local variables)
-            import traceback
-
             stack_trace = traceback.format_exc(limit=5)  # Limit to 5 frames
 
             logger.error(

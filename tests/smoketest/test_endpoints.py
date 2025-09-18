@@ -5,6 +5,7 @@ debug logging to avoid race conditions during initialization.
 """
 
 import asyncio
+from collections.abc import AsyncGenerator
 
 import httpx
 import pytest
@@ -13,8 +14,7 @@ from httpx import ASGITransport, AsyncClient
 
 from ccproxy.api.app import create_app
 from ccproxy.api.bootstrap import create_service_container
-from ccproxy.config.core import ServerSettings
-from ccproxy.config.settings import Settings
+from ccproxy.config import LoggingSettings, ServerSettings, Settings
 from ccproxy.services.container import ServiceContainer
 
 
@@ -23,11 +23,12 @@ pytestmark = pytest.mark.smoketest
 
 
 @pytest.fixture(scope="function")
-async def smoke_client() -> AsyncClient:
+async def smoke_client() -> AsyncGenerator[AsyncClient]:
     """One in‑process AsyncClient for all smoketests with full startup and debug logs."""
     # Enable detailed logs and plugins
     settings = Settings()
-    settings.server = ServerSettings(log_level="DEBUG")
+    settings.logging = LoggingSettings(level="DEBUG")
+    settings.server = ServerSettings()
     settings.enable_plugins = True
     settings.plugins_disable_local_discovery = False
 
@@ -46,17 +47,19 @@ async def smoke_client() -> AsyncClient:
     transport = ASGITransport(app=app)
 
     # Run lifespan and client per test (function-scoped loop compatibility)
-    async with app.router.lifespan_context(app):
-        async with AsyncClient(transport=transport, base_url="http://testserver") as c:
-            for _ in range(50):
-                try:
-                    r = await c.get("/health")
-                    if r.status_code == 200:
-                        break
-                except Exception:
-                    pass
-                await asyncio.sleep(0.1)
-            yield c
+    async with (
+        app.router.lifespan_context(app),
+        AsyncClient(transport=transport, base_url="http://testserver") as c,
+    ):
+        for _ in range(50):
+            try:
+                r = await c.get("/health")
+                if r.status_code == 200:
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(0.1)
+        yield c
 
 
 class TestSmokeTests:

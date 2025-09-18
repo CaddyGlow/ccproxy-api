@@ -43,7 +43,7 @@ async def claude_sdk_messages(
 
 
 @router.post("/v1/chat/completions", response_model=None)
-@base_format(FORMAT_OPENAI_CHAT)
+@with_format_chain([FORMAT_OPENAI_CHAT], endpoint="/v1/chat/completions")
 async def claude_sdk_chat_completions(
     request: Request,
     auth: ConditionalAuthDep,
@@ -53,7 +53,7 @@ async def claude_sdk_chat_completions(
 
 
 @router.post("/{session_id}/v1/messages", response_model=None)
-@base_format(FORMAT_ANTHROPIC_MESSAGES)
+@with_format_chain([FORMAT_ANTHROPIC_MESSAGES], endpoint="/{session_id}/v1/messages")
 async def claude_sdk_messages_with_session(
     request: Request,
     session_id: str,
@@ -67,7 +67,7 @@ async def claude_sdk_messages_with_session(
 
 
 @router.post("/{session_id}/v1/chat/completions", response_model=None)
-@base_format(FORMAT_OPENAI_CHAT)
+@with_format_chain([FORMAT_OPENAI_CHAT], endpoint="/{session_id}/v1/chat/completions")
 async def claude_sdk_chat_completions_with_session(
     request: Request,
     session_id: str,

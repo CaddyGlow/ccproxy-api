@@ -1,3 +1,4 @@
+import contextlib
 import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -5,6 +6,7 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel
 
+import ccproxy.core.logging
 from ccproxy.llms.formatters.formatter_registry import formatter
 from ccproxy.llms.formatters.shared.constants import (
     ANTHROPIC_TO_OPENAI_ERROR_TYPE,
@@ -13,6 +15,8 @@ from ccproxy.llms.formatters.shared.constants import (
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
 
+
+logger = ccproxy.core.logging.get_logger(__name__)
 
 FinishReason = Literal["stop", "length", "tool_calls"]
 
@@ -165,18 +169,14 @@ async def convert__anthropic_message_to_openai_responses__stream(
 
         if not first_logged:
             first_logged = True
-            try:
-                from structlog import get_logger
-
-                get_logger(__name__).bind(
+            with contextlib.suppress(Exception):
+                logger.bind(
                     category="formatter", converter="anthropic_to_responses_stream"
                 ).debug(
                     "anthropic_stream_first_chunk",
                     typed=isinstance(evt, dict) is False,
                     evt_type=evt_type,
                 )
-            except Exception:
-                pass
 
         if evt_type == "message_start":
             if isinstance(evt, dict):
@@ -185,9 +185,15 @@ async def convert__anthropic_message_to_openai_responses__stream(
                 response_id = msg.get("id") or ""
                 content_blocks = msg.get("content") or []
             else:
-                model_id = evt.message.model or ""
-                response_id = evt.message.id or ""
-                content_blocks = evt.message.content or []
+                # Type guard: only MessageStartEvent has .message attribute
+                if hasattr(evt, "message"):
+                    model_id = evt.message.model or ""
+                    response_id = evt.message.id or ""
+                    content_blocks = evt.message.content or []
+                else:
+                    model_id = ""
+                    response_id = ""
+                    content_blocks = []
             yield openai_models.ResponseCreatedEvent(
                 type="response.created",
                 sequence_number=sequence_counter,
@@ -269,20 +275,20 @@ async def convert__anthropic_message_to_openai_responses__stream(
                 delta = evt.get("delta", {})
                 text = delta.get("text") if isinstance(delta, dict) else None
             else:
-                text = getattr(getattr(evt, "delta", None), "text", None)
+                # Type guard: only ContentBlockDeltaEvent has .delta attribute
+                text = None
+                if hasattr(evt, "delta") and evt.delta is not None:
+                    # TextDelta has .text attribute, MessageDelta does not
+                    text = getattr(evt.delta, "text", None)
             if text:
                 # Debug first few characters to confirm emission
-                try:
-                    from structlog import get_logger
-
-                    get_logger(__name__).bind(
+                with contextlib.suppress(Exception):
+                    logger.bind(
                         category="formatter", converter="anthropic_to_responses_stream"
                     ).debug(
                         "anthropic_delta_emitted",
                         preview=text[:20],
                     )
-                except Exception:
-                    pass
                 sequence_counter += 1
                 yield openai_models.ResponseOutputTextDeltaEvent(
                     type="response.output_text.delta",
@@ -314,7 +320,7 @@ async def convert__anthropic_message_to_openai_responses__stream(
                             )
                             if isinstance(evt, dict)
                             else convert__anthropic_usage_to_openai_responses__usage(
-                                evt.usage
+                                getattr(evt, "usage", None)
                             ),
                         )
                         if (
@@ -333,7 +339,10 @@ async def convert__anthropic_message_to_openai_responses__stream(
                     delta.get("stop_reason") if isinstance(delta, dict) else None
                 )
             else:
-                stop_reason = evt.delta.stop_reason if evt.delta else None
+                # Type guard: only MessageDeltaEvent has .delta attribute
+                stop_reason = None
+                if hasattr(evt, "delta") and evt.delta is not None:
+                    stop_reason = getattr(evt.delta, "stop_reason", None)
             if stop_reason == "refusal":
                 sequence_counter += 1
                 yield openai_models.ResponseRefusalDoneEvent(
@@ -500,7 +509,11 @@ def convert__anthropic_message_to_openai_chat__stream(
                     message = evt.get("message", {})
                     model_id = message.get("model", "") if message else ""
                 else:
-                    model_id = evt.message.model or ""
+                    # Type guard: only MessageStartEvent has .message attribute
+                    if hasattr(evt, "message"):
+                        model_id = evt.message.model or ""
+                    else:
+                        model_id = ""
             elif evt_type == "content_block_start":
                 # OpenAI doesn't have equivalent, but we can emit an empty delta to start the stream
                 yield openai_models.ChatCompletionChunk(
@@ -524,7 +537,11 @@ def convert__anthropic_message_to_openai_chat__stream(
                     delta = evt.get("delta", {})
                     text = delta.get("text") if delta else None
                 else:
-                    text = evt.delta.text if evt.delta else None
+                    # Type guard: only ContentBlockDeltaEvent has .delta attribute
+                    text = None
+                    if hasattr(evt, "delta") and evt.delta is not None:
+                        # TextDelta has .text attribute, MessageDelta does not
+                        text = getattr(evt.delta, "text", None)
 
                 if text:
                     yield openai_models.ChatCompletionChunk(
@@ -550,9 +567,16 @@ def convert__anthropic_message_to_openai_chat__stream(
                     usage_prompt = usage.get("input_tokens", 0) if usage else 0
                     usage_completion = usage.get("output_tokens", 0) if usage else 0
                 else:
-                    stop_reason = evt.delta.stop_reason if evt.delta else None
-                    usage_prompt = evt.usage.input_tokens if evt.usage else 0
-                    usage_completion = evt.usage.output_tokens if evt.usage else 0
+                    # Type guard: only MessageDeltaEvent has .delta and .usage attributes
+                    stop_reason = None
+                    if hasattr(evt, "delta") and evt.delta is not None:
+                        stop_reason = getattr(evt.delta, "stop_reason", None)
+
+                    usage_prompt = 0
+                    usage_completion = 0
+                    if hasattr(evt, "usage") and evt.usage is not None:
+                        usage_prompt = getattr(evt.usage, "input_tokens", 0)
+                        usage_completion = getattr(evt.usage, "output_tokens", 0)
 
                 if stop_reason:
                     finish_reason = cast(

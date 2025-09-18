@@ -8,7 +8,7 @@ import os
 import socket
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import FastAPI, Request, Response
 
@@ -481,7 +481,7 @@ class CodexDetectionService:
             else:
                 return obj
 
-        return redact(body)
+        return cast(dict[str, Any] | None, redact(body))
 
     def get_system_prompt(self) -> dict[str, Any]:
         """Return an instructions dict for injection based on cached body_json."""

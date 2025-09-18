@@ -11,10 +11,11 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.core.plugins.hooks import HookEvent, HookManager
 from ccproxy.core.plugins.hooks.base import HookContext
+from ccproxy.llms.streaming import AnthropicSSEFormatter
 
 
 if TYPE_CHECKING:
@@ -597,7 +598,7 @@ class DeferredStreaming(StreamingResponse):
         # Handle both legacy dict-based and new model-based adapters
         if hasattr(adapter, "convert_stream"):
             try:
-                adapted_stream = adapter.convert_stream(json_stream)  # type: ignore[attr-defined]
+                adapted_stream = adapter.convert_stream(json_stream)
             except Exception as e:
                 logger.error(
                     "adapter_stream_conversion_failed",
@@ -607,8 +608,6 @@ class DeferredStreaming(StreamingResponse):
                     category="transform",
                 )
                 # Return a proper error response instead of malformed passthrough
-                from starlette.responses import JSONResponse
-
                 error_response = JSONResponse(
                     status_code=500,
                     content={
@@ -737,8 +736,6 @@ class DeferredStreaming(StreamingResponse):
         Args:
             json_stream: Stream of JSON objects after format conversion
         """
-        from ccproxy.llms.streaming import AnthropicSSEFormatter
-
         formatter = AnthropicSSEFormatter()
         request_id = None
         if self.request_context and hasattr(self.request_context, "request_id"):

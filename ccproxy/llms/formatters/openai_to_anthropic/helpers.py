@@ -3,13 +3,15 @@
 import json
 import re
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from ccproxy.core.constants import DEFAULT_MAX_TOKENS
 from ccproxy.llms.formatters.formatter_registry import formatter
-from ccproxy.llms.formatters.shared.constants import OPENAI_TO_ANTHROPIC_ERROR_TYPE
+from ccproxy.llms.formatters.shared.constants import (
+    OPENAI_TO_ANTHROPIC_ERROR_TYPE,
+)
 from ccproxy.llms.formatters.shared.utils import (
     map_openai_finish_to_anthropic_stop,
     openai_usage_to_anthropic_usage,
@@ -594,7 +596,7 @@ def convert__openai_responses_to_anthropic_message__request(
                     try:
                         schema_data = (
                             schema_obj.model_dump()
-                            if hasattr(schema_obj, "model_dump")
+                            if schema_obj and hasattr(schema_obj, "model_dump")
                             else schema_obj
                         )
                         inject_schema = json.dumps(schema_data, separators=(",", ":"))
@@ -614,7 +616,7 @@ def convert__openai_responses_to_anthropic_message__request(
     text_instructions: str | None = None
     if isinstance(text_cfg, dict):
         text_instructions = text_cfg.get("instructions")
-    elif hasattr(text_cfg, "instructions"):
+    elif text_cfg and hasattr(text_cfg, "instructions"):
         text_instructions = text_cfg.instructions
 
     if isinstance(text_instructions, str) and text_instructions:
@@ -633,8 +635,8 @@ def convert__openai_responses_to_anthropic_message__request(
             else request.instructions
         )
 
-    reasoning = request.reasoning
-    thinking_cfg = derive_thinking_config(model or "", reasoning)
+    # Skip thinking config for ResponseRequest as it doesn't have the required fields
+    thinking_cfg = None
     if thinking_cfg is not None:
         payload_data["thinking"] = thinking_cfg
         budget = thinking_cfg.get("budget_tokens", 0)
@@ -807,7 +809,7 @@ def convert__openai_responses_to_anthropic_message__response(
         type="message",
         role="assistant",
         model=response.model or "",
-        content=content_blocks,  # type: ignore[arg-type]
+        content=cast(list[anthropic_models.ResponseContentBlock], content_blocks),
         stop_reason="end_turn",
         stop_sequence=None,
         usage=usage,
@@ -826,12 +828,12 @@ async def convert__openai_responses_to_anthropic_messages__stream(
         if hasattr(raw, "root"):
             return _event_to_dict(raw.root)
         if hasattr(raw, "model_dump"):
-            return raw.model_dump(mode="json")  # type: ignore[arg-type]
-        return {}
+            return cast(dict[str, Any], raw.model_dump(mode="json"))
+        return cast(dict[str, Any], {})
 
     def _parse_tool_input(text: str) -> dict[str, Any]:
         if not text:
-            return {}
+            return cast(dict[str, Any], {})
         try:
             parsed = json.loads(text)
             return parsed if isinstance(parsed, dict) else {"arguments": text}
@@ -1052,10 +1054,9 @@ async def convert__openai_responses_to_anthropic_messages__stream(
         yield anthropic_models.MessageDeltaEvent(
             type="message_delta",
             delta=anthropic_models.MessageDelta(
-                stop_reason=final_stop_reason,
+                stop_reason=map_openai_finish_to_anthropic_stop(final_stop_reason),
                 stop_sequence=final_stop_sequence,
             ),
-            index=0,
             usage=usage,
         )
         yield anthropic_models.MessageStopEvent(type="message_stop")
@@ -1236,7 +1237,9 @@ def convert__openai_chat_to_anthropic_messages__stream(
                 # Emit message delta and stop
                 yield anthropic_models.MessageDeltaEvent(
                     type="message_delta",
-                    delta=anthropic_models.MessageDelta(stop_reason=stop_reason),
+                    delta=anthropic_models.MessageDelta(
+                        stop_reason=map_openai_finish_to_anthropic_stop(stop_reason)
+                    ),
                     usage=anthropic_usage,
                 )
                 yield anthropic_models.MessageStopEvent(type="message_stop")
@@ -1312,13 +1315,13 @@ def convert__openai_chat_to_anthropic_messages__response(
                     )
                 )
 
-    content_blocks: list[anthropic_models.ResponseContentBlock] = []  # type: ignore[type-arg]
+    content_blocks: list[anthropic_models.ResponseContentBlock] = []
     if text_content:
         content_blocks.append(
             anthropic_models.TextBlock(type="text", text=text_content)
         )
     # Append tool blocks after text (order matches Responses path patterns)
-    content_blocks.extend(tool_contents)  # type: ignore[arg-type]
+    content_blocks.extend(tool_contents)
 
     # Map usage via shared utility
     usage = openai_usage_to_anthropic_usage(getattr(response, "usage", None))
@@ -1330,8 +1333,8 @@ def convert__openai_chat_to_anthropic_messages__response(
         type="message",
         role="assistant",
         model=getattr(response, "model", "") or "",
-        content=content_blocks,  # type: ignore[arg-type]
-        stop_reason=stop_reason,
+        content=content_blocks,
+        stop_reason=map_openai_finish_to_anthropic_stop(stop_reason),
         stop_sequence=None,
         usage=usage,
     )

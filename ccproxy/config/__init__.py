@@ -1,5 +1,6 @@
 """Configuration module for Claude Proxy API Server."""
 
+from .core import CORSSettings, HTTPSettings, LoggingSettings, ServerSettings
 from .settings import Settings
 from .utils import (
     ConfigValidationError,
@@ -25,4 +26,8 @@ __all__ = [
     "validate_port",
     "validate_timeout",
     "validate_url",
+    "ServerSettings",
+    "LoggingSettings",
+    "HTTPSettings",
+    "CORSSettings",
 ]

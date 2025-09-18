@@ -10,10 +10,11 @@ from fastapi import Depends, HTTPException, Request
 
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import get_logger
-from ccproxy.core.plugins.hooks import HookManager
-from ccproxy.services.container import ServiceContainer
 from ccproxy.core.plugins import PluginRegistry, ProviderPluginRuntime
+from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.services.adapters.base import BaseAdapter
+from ccproxy.services.container import ServiceContainer
+
 
 if TYPE_CHECKING:
     pass
@@ -65,6 +66,7 @@ def get_hook_manager(request: Request) -> HookManager:
 
 def get_plugin_adapter(plugin_name: str) -> Any:
     """Create a dependency function for a specific plugin's adapter."""
+
     def _get_adapter(request: Request) -> BaseAdapter:
         """Get adapter for the specified plugin."""
         if not hasattr(request.app.state, "plugin_registry"):

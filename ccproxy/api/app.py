@@ -29,12 +29,12 @@ from ccproxy.core.plugins import (
 from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.core.plugins.hooks.events import HookEvent
 from ccproxy.core.services import CoreServices
-from ccproxy.services.container import ServiceContainer
 from ccproxy.services.adapters.chain_validation import (
     validate_chains,
     validate_stream_pairs,
 )
 from ccproxy.services.adapters.simple_converters import register_converters
+from ccproxy.services.container import ServiceContainer
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
     check_version_updates_startup,

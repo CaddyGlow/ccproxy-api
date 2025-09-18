@@ -1,6 +1,7 @@
 """Pricing updater for managing periodic refresh of pricing data."""
 
 import json
+import time
 from typing import Any
 
 import httpx
@@ -49,8 +50,6 @@ class PricingUpdater:
         Returns:
             Current pricing data as PricingData model
         """
-        import time
-
         current_time = time.time()
 
         # Return cached pricing if recent and not forced

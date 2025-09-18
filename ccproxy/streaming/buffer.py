@@ -432,15 +432,21 @@ class StreamingBufferService:
             try:
                 parsed_data = handler_config.sse_parser(full_content)
                 if parsed_data is not None:
-                    parsed_data = self._normalize_response_payload(parsed_data)
-                    logger.debug(
-                        "sse_parser_success",
-                        parsed_keys=list(parsed_data.keys())
-                        if isinstance(parsed_data, dict)
-                        else None,
-                        request_id=getattr(request_context, "request_id", None),
-                    )
-                    return parsed_data
+                    normalized_data = self._normalize_response_payload(parsed_data)
+                    if isinstance(normalized_data, dict):
+                        logger.debug(
+                            "sse_parser_success",
+                            parsed_keys=list(normalized_data.keys()),
+                            request_id=getattr(request_context, "request_id", None),
+                        )
+                        return normalized_data
+                    else:
+                        logger.warning(
+                            "sse_parser_normalized_to_non_dict",
+                            type_received=type(normalized_data).__name__,
+                            request_id=getattr(request_context, "request_id", None),
+                        )
+                        return None
                 else:
                     logger.warning(
                         "sse_parser_returned_none",
@@ -459,7 +465,11 @@ class StreamingBufferService:
         try:
             parsed_json = json.loads(full_content.strip())
             if isinstance(parsed_json, dict):
-                return self._normalize_response_payload(parsed_json)
+                normalized_json = self._normalize_response_payload(parsed_json)
+                if isinstance(normalized_json, dict):
+                    return normalized_json
+                else:
+                    return {"data": parsed_json}
             else:
                 # If it's not a dict, wrap it
                 return {"data": parsed_json}
@@ -470,12 +480,13 @@ class StreamingBufferService:
         try:
             parsed_data = self._extract_from_generic_sse(full_content)
             if parsed_data is not None:
-                parsed_data = self._normalize_response_payload(parsed_data)
-                logger.debug(
-                    "generic_sse_parsing_success",
-                    request_id=getattr(request_context, "request_id", None),
-                )
-                return parsed_data
+                normalized_data = self._normalize_response_payload(parsed_data)
+                if isinstance(normalized_data, dict):
+                    logger.debug(
+                        "generic_sse_parsing_success",
+                        request_id=getattr(request_context, "request_id", None),
+                    )
+                    return normalized_data
         except Exception as e:
             logger.debug(
                 "generic_sse_parsing_failed",
@@ -530,9 +541,15 @@ class StreamingBufferService:
         if isinstance(last_json_data, dict) and "response" in last_json_data:
             response_payload = last_json_data["response"]
             if isinstance(response_payload, dict):
-                return self._normalize_response_payload(response_payload)
+                normalized_payload = self._normalize_response_payload(response_payload)
+                if isinstance(normalized_payload, dict):
+                    return normalized_payload
 
-        return self._normalize_response_payload(last_json_data)
+        normalized_data = self._normalize_response_payload(last_json_data)
+        if isinstance(normalized_data, dict):
+            return normalized_data
+
+        return None
 
     def _extract_usage_from_chunks(self, chunks: list[bytes]) -> dict[str, int] | None:
         """Extract token usage from SSE chunks and normalize to Response API shape.

@@ -3,16 +3,20 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 
 if TYPE_CHECKING:
-    import httpx
+    pass
 
 from ccproxy.auth.managers.base import BaseTokenManager
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 
+from .config import ClaudeOAuthConfig
 from .models import ClaudeCredentials, ClaudeProfileInfo, ClaudeTokenWrapper
-from .storage import ClaudeOAuthStorage
+from .provider import ClaudeOAuthProvider
+from .storage import ClaudeOAuthStorage, ClaudeProfileStorage
 
 
 logger = get_plugin_logger()
@@ -43,8 +47,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         # Create default HTTP client if not provided; track ownership
         self._owns_client = False
         if http_client is None:
-            import httpx
-
             http_client = httpx.AsyncClient()
             self._owns_client = True
         self.http_client = http_client
@@ -118,8 +120,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
     async def preload_profile_cache(self) -> None:
         """Load profile from storage asynchronously if available."""
         try:
-            from .storage import ClaudeProfileStorage
-
             profile_storage = ClaudeProfileStorage()
 
             # Only attempt to read if the file exists
@@ -166,7 +166,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
 
         try:
             # Refresh directly using a local OAuth client/provider (no global registry)
-            from .provider import ClaudeOAuthProvider
 
             provider = ClaudeOAuthProvider(http_client=self.http_client)
             new_credentials: ClaudeCredentials = await provider.refresh_access_token(
@@ -217,8 +216,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             if profile is None:
                 # Only read from disk if the profile file exists; no API calls here
                 try:
-                    from .storage import ClaudeProfileStorage
-
                     profile_storage = ClaudeProfileStorage()
                     if profile_storage.file_path.exists():
                         profile = await profile_storage.load_profile()
@@ -347,7 +344,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             return self._profile_cache
 
         # Try to load from .account.json first
-        from .storage import ClaudeProfileStorage
 
         profile_storage = ClaudeProfileStorage()
         profile = await profile_storage.load_profile()
@@ -370,8 +366,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
 
         # Fetch profile from API and save
         try:
-            from .config import ClaudeOAuthConfig
-
             config = ClaudeOAuthConfig()
 
             headers = {
@@ -381,7 +375,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             # Optionally add detection headers if client supports it
             try:
                 # Avoid import cycles by dynamic import
-                from .provider import ClaudeOAuthProvider
 
                 temp_provider = ClaudeOAuthProvider(http_client=self.http_client)
                 if hasattr(temp_provider, "client") and hasattr(
@@ -436,8 +429,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             return profile
 
         except Exception as e:
-            import httpx
-
             if isinstance(e, httpx.HTTPStatusError):
                 logger.error(
                     "claude_profile_api_error",

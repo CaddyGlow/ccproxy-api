@@ -4,6 +4,7 @@ This module provides unified OAuth endpoints that dynamically route
 to the appropriate plugin-based OAuth provider.
 """
 
+import base64
 import secrets
 
 import structlog
@@ -105,8 +106,6 @@ async def initiate_oauth_login(
     code_verifier = None
     if oauth_provider.supports_pkce:
         # Generate PKCE pair
-        import base64
-
         code_verifier = (
             base64.urlsafe_b64encode(secrets.token_bytes(32))
             .decode("utf-8")

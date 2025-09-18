@@ -11,6 +11,7 @@ This module contains data structures for:
 The models are defined using modern Python 3.11 type hints and Pydantic V2 best practices.
 """
 
+import uuid
 from typing import Any, Literal
 
 from pydantic import Field, RootModel, field_validator
@@ -765,6 +766,4 @@ AnyStreamEvent = RootModel[
 # Utility functions
 def generate_responses_id() -> str:
     """Generate an OpenAI-compatible response ID."""
-    import uuid
-
     return f"chatcmpl-{uuid.uuid4().hex[:29]}"

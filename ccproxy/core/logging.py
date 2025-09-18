@@ -1,5 +1,7 @@
+import inspect
 import logging
 import os
+import re
 import shutil
 import sys
 from collections.abc import MutableMapping
@@ -12,6 +14,8 @@ from rich.traceback import Traceback
 from structlog.contextvars import bind_contextvars
 from structlog.stdlib import BoundLogger
 from structlog.typing import ExcInfo, Processor
+
+from ccproxy.core.id_utils import generate_short_id
 
 
 # Custom protocol for BoundLogger with trace method
@@ -232,8 +236,6 @@ class CategoryConsoleRenderer:
             plugin_field = f"{core_color}\033[1m[{'core':<12}]\033[0m "
 
         # Insert fields after the level field in the rendered output
-        import re
-
         # Find the position right after the level field closes with "] "
         level_end_pattern = r"(\[[^\]]*\[[^\]]*m[^\]]*\[[^\]]*m\])\s+"
         match = re.search(level_end_pattern, rendered)
@@ -578,8 +580,6 @@ def get_plugin_logger(name: str | None = None) -> TraceBoundLogger:
     """
     if name is None:
         # Auto-detect caller's module name
-        import inspect
-
         frame = inspect.currentframe()
         if frame and frame.f_back:
             name = frame.f_back.f_globals.get("__name__", "unknown")
@@ -681,8 +681,6 @@ def set_command_context(cmd_id: str | None = None) -> str:
     """
     try:
         if not cmd_id:
-            from ccproxy.core.id_utils import generate_short_id
-
             cmd_id = generate_short_id()
         # Bind only cmd_id to avoid colliding with per-request request_id fields
         bind_contextvars(cmd_id=cmd_id)

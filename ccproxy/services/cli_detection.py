@@ -7,6 +7,7 @@ It eliminates duplicate CLI detection logic by consolidating common patterns.
 
 import asyncio
 import json
+import re
 from typing import Any, NamedTuple
 
 import structlog
@@ -274,8 +275,6 @@ class CLIDetectionService:
             output = output.split("(")[0].strip()
 
         # Extract version number pattern (e.g., "1.0.0", "v1.0.0")
-        import re
-
         version_pattern = r"v?(\d+\.\d+(?:\.\d+)?(?:-[\w.]+)?)"
         match = re.search(version_pattern, output)
         if match:

@@ -6,7 +6,11 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from starlette import status
 
+import ccproxy.core.logging
 from ccproxy.auth.conditional import ConditionalAuthDep
+
+
+logger = ccproxy.core.logging.get_logger(__name__)
 
 
 router = APIRouter(prefix="/plugins", tags=["plugins"])
@@ -173,9 +177,6 @@ async def plugin_health(
                 },
             )
         except (OSError, PermissionError) as e:
-            import structlog
-
-            logger = structlog.get_logger(__name__)
             logger.error(
                 "plugin_health_check_io_failed",
                 plugin=plugin_name,
@@ -189,9 +190,6 @@ async def plugin_health(
                 details={"type": "plugin", "active": True, "io_error": str(e)},
             )
         except Exception as e:
-            import structlog
-
-            logger = structlog.get_logger(__name__)
             logger.error(
                 "plugin_health_check_failed",
                 plugin=plugin_name,

@@ -14,7 +14,7 @@ async def _maybe_await(value: Any) -> Any:
     """Await coroutine-like values produced by adapter callables."""
 
     if inspect.isawaitable(value):
-        return await value  # type: ignore[no-any-return]
+        return await value
     return value
 
 
@@ -31,7 +31,7 @@ class FormatAdapterProtocol(Protocol):
     async def convert_error(self, data: FormatDict) -> FormatDict:
         """Convert an error payload."""
 
-    async def convert_stream(
+    def convert_stream(
         self, stream: AsyncIterator[FormatDict]
     ) -> AsyncIterator[FormatDict]:
         """Convert a streaming response represented as an async iterator."""
@@ -73,9 +73,20 @@ class SimpleFormatAdapter(FormatAdapterProtocol):
     async def convert_error(self, data: FormatDict) -> FormatDict:
         return await self._run_stage(self._error, data, stage="error")
 
-    async def convert_stream(
+    def convert_stream(
         self, stream: AsyncIterator[FormatDict]
     ) -> AsyncIterator[FormatDict]:
+        if self._stream is None:
+            raise NotImplementedError(
+                f"{self.name} does not implement stream conversion"
+            )
+
+        return self._create_stream_iterator(stream)
+
+    async def _create_stream_iterator(
+        self, stream: AsyncIterator[FormatDict]
+    ) -> AsyncIterator[FormatDict]:
+        """Helper method to create the actual async iterator."""
         if self._stream is None:
             raise NotImplementedError(
                 f"{self.name} does not implement stream conversion"
@@ -89,7 +100,7 @@ class SimpleFormatAdapter(FormatAdapterProtocol):
                 f"{self.name}.stream must return an async iterator, got {type(handler).__name__}"
             )
 
-        async for item in handler:  # type: ignore[async-for-required]
+        async for item in handler:
             if not isinstance(item, dict):
                 raise TypeError(
                     f"{self.name}.stream yielded non-dict item: {type(item).__name__}"

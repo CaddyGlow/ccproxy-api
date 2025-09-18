@@ -25,10 +25,10 @@ def format_chain(
     """
 
     def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-        func.__format_chain__ = list(formats)
+        func.__format_chain__ = list(formats)  # type: ignore[attr-defined]
 
         @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:  # type: ignore[misc]
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             return await func(*args, **kwargs)
 
         return wrapper
@@ -47,10 +47,10 @@ def with_format_chain(
     """
 
     def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-        func.__format_chain__ = list(formats)
+        func.__format_chain__ = list(formats)  # type: ignore[attr-defined]
 
         @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:  # type: ignore[misc]
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Find Request in args/kwargs
             request: Request | None = None
             for arg in args:

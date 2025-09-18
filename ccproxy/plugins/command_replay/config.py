@@ -73,7 +73,7 @@ class CommandReplayConfig(BaseModel):
     model_config = ConfigDict()
 
     def should_generate_for_url(
-        self, url: str, is_provider_request: bool = None
+        self, url: str, is_provider_request: bool | None = None
     ) -> bool:
         """Check if commands should be generated for the given URL.
 

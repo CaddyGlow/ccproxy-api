@@ -270,7 +270,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         else:
             # Non-HTTP adapters (like ClaudeSDK) have different dependencies
             # Build kwargs based on adapter class constructor signature
-            adapter_kwargs: dict[str, Any] = {}
+            non_http_adapter_kwargs: dict[str, Any] = {}
 
             # Get the adapter's __init__ signature
             sig = inspect.signature(self.adapter_class.__init__)
@@ -304,7 +304,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     continue
                 if param_name in param_mapping:
                     if param_mapping[param_name] is not None:
-                        adapter_kwargs[param_name] = param_mapping[param_name]
+                        non_http_adapter_kwargs[param_name] = param_mapping[param_name]
                     elif (
                         param_name == "config"
                         and param.default is inspect.Parameter.empty
@@ -312,18 +312,18 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     ):
                         # Config is None but required, create default
                         default_config = self.manifest.config_class()
-                        adapter_kwargs["config"] = default_config
+                        non_http_adapter_kwargs["config"] = default_config
                 elif (
                     param.default is inspect.Parameter.empty
-                    and param_name not in adapter_kwargs
+                    and param_name not in non_http_adapter_kwargs
                     and param_name == "config"
                     and self.manifest.config_class
                 ):
                     # Config parameter is missing but required, create default
                     default_config = self.manifest.config_class()
-                    adapter_kwargs["config"] = default_config
+                    non_http_adapter_kwargs["config"] = default_config
 
-            return cast(BaseAdapter, self.adapter_class(**adapter_kwargs))
+            return cast(BaseAdapter, self.adapter_class(**non_http_adapter_kwargs))
 
     def create_detection_service(self, context: PluginContext) -> Any:
         """Create detection service instance if class is configured.

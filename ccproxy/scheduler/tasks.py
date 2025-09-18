@@ -5,13 +5,22 @@ import contextlib
 import random
 import time
 from abc import ABC, abstractmethod
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.scheduler.errors import SchedulerError
+from ccproxy.utils.version_checker import (
+    VersionCheckState,
+    compare_versions,
+    fetch_latest_github_version,
+    get_current_version,
+    get_version_check_state_path,
+    load_check_state,
+    save_check_state,
+)
 
 
 logger = structlog.get_logger(__name__)
@@ -464,8 +473,6 @@ class VersionUpdateCheckTask(BaseScheduledTask):
             current_version: Current version string
             latest_version: Latest version string
         """
-        from ccproxy.utils.version_checker import compare_versions
-
         if compare_versions(current_version, latest_version):
             logger.warning(
                 "version_update_available",
@@ -496,17 +503,6 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                 task_name=self.name,
                 first_run=self._first_run,
             )
-            from datetime import datetime
-
-            from ccproxy.utils.version_checker import (
-                VersionCheckState,
-                fetch_latest_github_version,
-                get_current_version,
-                get_version_check_state_path,
-                load_check_state,
-                save_check_state,
-            )
-
             state_path = get_version_check_state_path()
             current_time = datetime.now(UTC)
 

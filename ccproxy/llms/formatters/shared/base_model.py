@@ -13,10 +13,9 @@ class LlmBaseModel(BaseModel):
 
     model_config = ConfigDict(
         extra="allow",  # Allow extra fields
-        exclude_none=True,  # Exclude None values from serialization
     )
 
-    def model_dump(self, **kwargs) -> dict[str, Any]:
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
         """Override to exclude empty collections as well as None values."""
         # First get the data with None values excluded
         data = super().model_dump(exclude_none=True, **kwargs)

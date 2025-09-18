@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal, cast
 from fastapi import APIRouter, Body, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from ccproxy.api.decorators import format_chain, with_format_chain
+from ccproxy.api.decorators import with_format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
@@ -100,9 +100,10 @@ async def create_anthropic_message(
     return await _handle_adapter_request(request, adapter)
 
 
-@format_chain(
-    [FORMAT_OPENAI_RESPONSES, FORMAT_OPENAI_CHAT]
-)  # Single-hop flow: Response API -> OpenAI
+@with_format_chain(
+    [FORMAT_OPENAI_RESPONSES, FORMAT_OPENAI_CHAT],
+    endpoint=UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS,
+)
 @router_v1.post(
     "/responses",
     response_model=anthropic_models.MessageResponse,
@@ -174,8 +175,6 @@ async def get_usage_stats(adapter: CopilotAdapterDep, request: Request) -> Respo
     request.state.context.metadata["endpoint"] = UPSTREAM_ENDPOINT_COPILOT_INTERNAL_USER
     request.state.context.metadata["method"] = "get"
     result = await adapter.handle_request_gh_api(request)
-    from typing import cast
-
     return cast(Response, result)
 
 
@@ -187,8 +186,6 @@ async def get_token_status(adapter: CopilotAdapterDep, request: Request) -> Resp
     )
     request.state.context.metadata["method"] = "get"
     result = await adapter.handle_request_gh_api(request)
-    from typing import cast
-
     return cast(Response, result)
 
 

@@ -1,8 +1,11 @@
 """JSON formatter for structured request/response logging."""
 
+import base64
 import json
 import logging
+import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,13 +15,12 @@ from structlog.contextvars import get_merged_contextvars
 from ccproxy.core.plugins.hooks.types import HookHeaders
 
 
-logger = structlog.get_logger(__name__)
-
-# Import TRACE_LEVEL
 try:
     from ccproxy.core.logging import TRACE_LEVEL
 except ImportError:
     TRACE_LEVEL = 5  # Fallback
+
+logger = structlog.get_logger(__name__)
 
 
 class JSONFormatter:
@@ -118,9 +120,6 @@ class JSONFormatter:
         Where timestamp is in format: YYYYMMDD_HHMMSS_microseconds
         And sequence is a counter to prevent collisions
         """
-        import time
-        from datetime import datetime
-
         base_id = self._compose_file_id(request_id)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
 
@@ -237,8 +236,6 @@ class JSONFormatter:
                             body_content = body.decode("utf-8", errors="replace")
                         except Exception:
                             # Last resort: encode as base64
-                            import base64
-
                             body_content = {
                                 "_type": "base64",
                                 "data": base64.b64encode(body).decode("ascii"),

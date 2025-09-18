@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import MutableMapping
+from typing import Any
+
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ccproxy.core.logging import get_logger
@@ -17,14 +20,14 @@ class NormalizeHeadersMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:  # type: ignore[override]
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
         send_called = False
 
-        async def send_wrapper(message):
+        async def send_wrapper(message: MutableMapping[str, Any]) -> None:
             nonlocal send_called
             if message.get("type") == "http.response.start":
                 headers = message.get("headers", [])

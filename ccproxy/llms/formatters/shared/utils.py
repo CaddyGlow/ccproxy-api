@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Literal, cast
 
 from ccproxy.llms.models import anthropic as anthropic_models
 
@@ -21,7 +21,7 @@ def openai_usage_to_anthropic_usage(openai_usage: Any | None) -> anthropic_model
     # Handle dict or pydantic model
     as_dict: dict[str, Any]
     if hasattr(openai_usage, "model_dump"):
-        as_dict = openai_usage.model_dump()  # type: ignore[assignment]
+        as_dict = openai_usage.model_dump()
     elif isinstance(openai_usage, dict):
         as_dict = openai_usage
     else:
@@ -69,7 +69,14 @@ def openai_usage_to_anthropic_usage(openai_usage: Any | None) -> anthropic_model
     )
 
 
-def map_openai_finish_to_anthropic_stop(finish_reason: str | None) -> str | None:
+def map_openai_finish_to_anthropic_stop(
+    finish_reason: str | None,
+) -> (
+    Literal[
+        "end_turn", "max_tokens", "stop_sequence", "tool_use", "pause_turn", "refusal"
+    ]
+    | None
+):
     """Map OpenAI finish_reason to Anthropic stop_reason."""
     mapping = {
         "stop": "end_turn",
@@ -79,10 +86,24 @@ def map_openai_finish_to_anthropic_stop(finish_reason: str | None) -> str | None
         "content_filter": "stop_sequence",
         None: "end_turn",
     }
-    return mapping.get(finish_reason, "end_turn")
+    result = mapping.get(finish_reason, "end_turn")
+    return cast(
+        Literal[
+            "end_turn",
+            "max_tokens",
+            "stop_sequence",
+            "tool_use",
+            "pause_turn",
+            "refusal",
+        ]
+        | None,
+        result,
+    )
 
 
-def strict_parse_tool_arguments(arguments: str | dict | None) -> dict:
+def strict_parse_tool_arguments(
+    arguments: str | dict[str, Any] | None,
+) -> dict[str, Any]:
     """Strictly parse tool/function arguments as JSON object.
 
     - If a dict is provided, return as-is.

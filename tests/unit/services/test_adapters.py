@@ -23,6 +23,6 @@ import pytest
 
 
 @pytest.mark.skip(reason="OpenAI adapters removed in refactoring - tests disabled")
-def test_adapters_disabled():
+def test_adapters_disabled() -> None:
     """Placeholder test indicating the original adapter tests were disabled."""
     pass

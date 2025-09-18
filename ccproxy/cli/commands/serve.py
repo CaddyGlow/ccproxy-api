@@ -1,6 +1,7 @@
 """Serve command for CCProxy API server - consolidates server-related commands."""
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Annotated, Any
@@ -8,11 +9,14 @@ from typing import Annotated, Any
 import typer
 import uvicorn
 from click import get_current_context
+from rich.console import Console
+from rich.syntax import Syntax
 
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import ConfigurationError, Settings
 from ccproxy.core._version import __version__
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import get_logger, setup_logging
+from ccproxy.utils.binary_resolver import BinaryResolver
 
 from ..options.security_options import validate_auth_token
 from ..options.server_options import (
@@ -35,8 +39,6 @@ def get_config_path_from_context() -> Path | None:
 
 def _show_api_usage_info(toolkit: Any, settings: Settings) -> None:
     """Show API usage information when auth token is configured."""
-    from rich.console import Console
-    from rich.syntax import Syntax
 
     toolkit.print_title("API Client Configuration", tag="config")
 
@@ -352,8 +354,6 @@ def api(
         # Pass CLI context to settings creation
         settings = Settings.from_config(config_path=config, cli_context=cli_context)
 
-        from ccproxy.core.logging import setup_logging
-
         setup_logging(
             json_logs=settings.logging.format == "json",
             log_level_name=settings.logging.level,
@@ -545,11 +545,6 @@ def claude(
         #         user_context=user_context,
         #     )
         # else:
-        import shutil
-        from pathlib import Path
-
-        from ccproxy.utils.binary_resolver import BinaryResolver
-
         claude_paths = [
             shutil.which("claude"),
             Path.home() / ".cache" / ".bun" / "bin" / "claude",

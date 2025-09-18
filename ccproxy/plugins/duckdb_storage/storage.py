@@ -15,7 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import delete, insert, select as sa_select
+from sqlalchemy import delete, insert
+from sqlalchemy import select as sa_select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, func
@@ -300,7 +301,6 @@ class SimpleDuckDBStorage:
                 "cost_sdk_usd": data.get("cost_sdk_usd", 0.0),
             }
 
-
             table = SQLModel.metadata.tables.get("access_logs")
             if table is None:
                 raise RuntimeError(
@@ -322,7 +322,7 @@ class SimpleDuckDBStorage:
                             k: v for k, v in values.items() if k != "provider"
                         }
                         session.rollback()
-                        _ = _cast(Any, session).exec(insert(table).values(safe_values))
+                        _ = cast(Any, session).exec(insert(table).values(safe_values))
                         session.commit()
                     else:
                         raise
@@ -381,7 +381,6 @@ class SimpleDuckDBStorage:
             return False
 
         try:
-
             rows = []
             for data in metrics:
                 timestamp_value = data.get("timestamp", time.time())
@@ -572,8 +571,6 @@ class SimpleDuckDBStorage:
     def _health_check_sync(self) -> int:
         """Synchronous version of health check for thread pool execution."""
         with Session(self._engine) as session:
-            from sqlalchemy import select as sa_select
-
             table = SQLModel.metadata.tables.get("access_logs")
             if table is None:
                 return 0
@@ -605,8 +602,6 @@ class SimpleDuckDBStorage:
         Uses safe SQLModel ORM operations instead of raw SQL to prevent injection.
         """
         try:
-            from sqlalchemy import delete
-
             table = SQLModel.metadata.tables.get("access_logs")
             if table is None:
                 return True
