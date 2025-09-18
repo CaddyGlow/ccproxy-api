@@ -10,7 +10,6 @@ from ccproxy.config.settings import Settings
 if TYPE_CHECKING:
     from ccproxy.core.plugins import PluginRegistry
     from ccproxy.http.pool import HTTPPoolManager
-    from ccproxy.llms.formatters.formatter_registry import FormatterRegistry
     from ccproxy.scheduler.core import Scheduler
     from ccproxy.services.adapters.format_registry import FormatRegistry
 
@@ -26,7 +25,7 @@ class CoreServices:
         scheduler: "Scheduler | None" = None,
         plugin_registry: "PluginRegistry | None" = None,
         format_registry: "FormatRegistry | None" = None,
-        formatter_registry: "FormatterRegistry | None" = None,
+        formatter_registry: "None" = None,
     ):
         """Initialize core services.
 
@@ -134,10 +133,3 @@ class CoreServices:
         if self.format_registry is None:
             raise RuntimeError("Format adapter registry is not available")
         return self.format_registry
-
-    def get_formatter_registry(self) -> "FormatterRegistry":
-        """Get formatter registry service instance."""
-
-        if self.formatter_registry is None:
-            raise RuntimeError("Formatter registry is not available")
-        return self.formatter_registry

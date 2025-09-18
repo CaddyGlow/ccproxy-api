@@ -151,10 +151,6 @@ class BasePluginFactory(PluginFactory):
             with contextlib.suppress(Exception):
                 context.format_registry = core_services.get_format_registry()
 
-        if hasattr(core_services, "get_formatter_registry"):
-            with contextlib.suppress(Exception):
-                context.formatter_registry = core_services.get_formatter_registry()
-
         return context
 
 

@@ -23,6 +23,22 @@ FormatDict = dict[str, Any]
 logger = logging.get_logger(__name__)
 
 
+def _safe_validate(model: Any, data: dict[str, Any]) -> Any:
+    """Validate data against a Pydantic model; fallback to SimpleNamespace.
+
+    This keeps stream conversion resilient to unexpected event variants.
+    """
+    try:
+        from pydantic import TypeAdapter
+
+        adapter = TypeAdapter(model)
+        return adapter.validate_python(data)
+    except Exception:
+        from types import SimpleNamespace
+
+        return SimpleNamespace(**data)
+
+
 async def _convert_stream_single_chunk(
     chunk_data: dict[str, Any],
     *,
@@ -37,15 +53,7 @@ async def _convert_stream_single_chunk(
     - wrapping the single event into an async generator for converter(stream)
     - re-yielding converted typed chunks as plain dicts
     """
-    try:
-        from pydantic import TypeAdapter
-
-        adapter = TypeAdapter(validator_model)
-        chunk = adapter.validate_python(chunk_data)
-    except Exception:
-        from types import SimpleNamespace
-
-        chunk = SimpleNamespace(**chunk_data)
+    chunk = _safe_validate(validator_model, chunk_data)
 
     async def _one():
         yield chunk
@@ -53,6 +61,22 @@ async def _convert_stream_single_chunk(
     converted_chunks = converter(_one())
     async for converted_chunk in converted_chunks:
         yield converted_chunk.model_dump(exclude_unset=True)
+
+
+# Generic stream mapper to DRY conversion loops
+async def map_stream(
+    stream: AsyncIterator[FormatDict],
+    *,
+    validator_model: Any,
+    converter: Any,
+) -> AsyncIterator[FormatDict]:
+    async for chunk_data in stream:
+        async for out_chunk in _convert_stream_single_chunk(
+            chunk_data,
+            validator_model=validator_model,
+            converter=converter,
+        ):
+            yield out_chunk
 
 
 # OpenAI to Anthropic converters (for plugins that target Anthropic APIs)
@@ -92,13 +116,12 @@ async def convert_anthropic_to_openai_stream(
     """Convert Anthropic MessageStream to OpenAI ChatCompletion stream."""
     from ccproxy.llms.models.anthropic import MessageStreamEvent
 
-    async for chunk_data in stream:
-        async for out_chunk in _convert_stream_single_chunk(
-            chunk_data,
-            validator_model=MessageStreamEvent,
-            converter=anthropic_to_openai.convert__anthropic_message_to_openai_chat__stream,
-        ):
-            yield out_chunk
+    async for out_chunk in map_stream(
+        stream,
+        validator_model=MessageStreamEvent,
+        converter=anthropic_to_openai.convert__anthropic_message_to_openai_chat__stream,
+    ):
+        yield out_chunk
 
 
 async def convert_openai_to_anthropic_error(data: FormatDict) -> FormatDict:
@@ -146,13 +169,12 @@ async def convert_openai_to_anthropic_stream(
     stream: AsyncIterator[FormatDict],
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to Anthropic MessageStream."""
-    async for chunk_data in stream:
-        async for out_chunk in _convert_stream_single_chunk(
-            chunk_data,
-            validator_model=openai_models.ChatCompletionChunk,
-            converter=openai_to_anthropic.convert__openai_chat_to_anthropic_messages__stream,
-        ):
-            yield out_chunk
+    async for out_chunk in map_stream(
+        stream,
+        validator_model=openai_models.ChatCompletionChunk,
+        converter=openai_to_anthropic.convert__openai_chat_to_anthropic_messages__stream,
+    ):
+        yield out_chunk
 
 
 async def convert_anthropic_to_openai_error(data: FormatDict) -> FormatDict:
@@ -291,65 +313,42 @@ async def convert_openai_responses_to_openai_chat_stream(
     """Convert OpenAI Responses stream to OpenAI ChatCompletion stream."""
     from ccproxy.llms.models.openai import AnyStreamEvent
 
-    async for chunk_data in stream:
-        async for out_chunk in _convert_stream_single_chunk(
-            chunk_data,
-            validator_model=AnyStreamEvent,
-            converter=openai_to_openai.convert__openai_responses_to_openai_chat__stream,
-        ):
-            yield out_chunk
+    async for out_chunk in map_stream(
+        stream,
+        validator_model=AnyStreamEvent,
+        converter=openai_to_openai.convert__openai_responses_to_openai_chat__stream,
+    ):
+        yield out_chunk
 
 
 async def convert_openai_chat_to_openai_responses_stream(
     stream: AsyncIterator[FormatDict],
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to OpenAI Responses stream."""
-    async for chunk_data in stream:
-        async for out_chunk in _convert_stream_single_chunk(
-            chunk_data,
-            validator_model=openai_models.ChatCompletionChunk,
-            converter=openai_to_openai.convert__openai_chat_to_openai_responses__stream,
-        ):
-            yield out_chunk
+    async for out_chunk in map_stream(
+        stream,
+        validator_model=openai_models.ChatCompletionChunk,
+        converter=openai_to_openai.convert__openai_chat_to_openai_responses__stream,
+    ):
+        yield out_chunk
 
 
 async def convert_anthropic_to_openai_responses_stream(
     stream: AsyncIterator[FormatDict],
 ) -> AsyncIterator[FormatDict]:
-    """Convert Anthropic MessageStream to OpenAI Responses stream."""
-    async for chunk_data in stream:
-        try:
-            from pydantic import TypeAdapter
+    """Convert Anthropic MessageStream to OpenAI Responses stream.
 
-            from ccproxy.llms.models.anthropic import MessageStreamEvent
+    Avoid dict→model→dict churn by using the shared map_stream helper.
+    """
+    from ccproxy.llms.formatters.anthropic_to_openai import helpers as a2o
+    from ccproxy.llms.models.anthropic import MessageStreamEvent
 
-            adapter = TypeAdapter(MessageStreamEvent)
-            chunk = adapter.validate_python(chunk_data)
-        except Exception:
-            # For unknown event types (like inverted converter output), create a simple object
-            # The downstream formatter will handle unknown events gracefully
-            from types import SimpleNamespace
-
-            chunk = SimpleNamespace(**chunk_data)
-
-        # Create async iterator from single chunk
-        async def single_chunk_stream(chunk_value=chunk):
-            yield chunk_value
-
-        # Use the proper anthropic -> openai.responses stream converter
-        from ccproxy.llms.formatters.anthropic_to_openai import (
-            helpers as anthropic_to_openai,
-        )
-
-        converted_chunks = (
-            anthropic_to_openai.convert__anthropic_message_to_openai_responses__stream(
-                single_chunk_stream()
-            )
-        )
-
-        # Yield converted chunks as dicts
-        async for converted_chunk in converted_chunks:
-            yield converted_chunk.model_dump(exclude_unset=True)
+    async for out_chunk in map_stream(
+        stream,
+        validator_model=MessageStreamEvent,
+        converter=a2o.convert__anthropic_message_to_openai_responses__stream,
+    ):
+        yield out_chunk
 
 
 async def convert_openai_responses_to_anthropic_stream(
@@ -380,7 +379,8 @@ async def convert_openai_responses_to_openai_chat_request(
     return result.model_dump(exclude_unset=True)
 
 
-# Additional error conversion functions for completeness
+# Passthrough and additional error conversion functions
+# OpenAI↔OpenAI error formats are identical; return input unchanged.
 async def convert_openai_responses_to_anthropic_error(data: FormatDict) -> FormatDict:
     """Convert OpenAI Responses error to Anthropic error."""
     # OpenAI errors are similar across formats - use existing converter
@@ -434,13 +434,18 @@ __all__ = [
 
 # Centralized pair→stage mapping and registration helpers
 
-from .format_adapter import SimpleFormatAdapter
-from .format_registry import FormatRegistry
 from ccproxy.core.constants import (
-    FORMAT_OPENAI_CHAT as OPENAI_CHAT,
-    FORMAT_OPENAI_RESPONSES as OPENAI_RESPONSES,
     FORMAT_ANTHROPIC_MESSAGES as ANTHROPIC_MESSAGES,
 )
+from ccproxy.core.constants import (
+    FORMAT_OPENAI_CHAT as OPENAI_CHAT,
+)
+from ccproxy.core.constants import (
+    FORMAT_OPENAI_RESPONSES as OPENAI_RESPONSES,
+)
+
+from .format_adapter import SimpleFormatAdapter
+from .format_registry import FormatRegistry
 
 
 # Canonical format names imported from core constants

@@ -229,7 +229,6 @@ async def _lazy_register_oauth_provider(
             self.request_tracer = container.get_request_tracer()
             self.streaming_handler = container.get_streaming_handler()
             self.format_registry = container.get_format_registry()
-            self.formatter_registry = container.get_formatter_registry()
             # Add http_pool_manager for plugin context (minimal implementation for CLI)
             self.http_pool_manager = self._create_minimal_pool_manager()
             # Create context dictionary for plugin runtime access
@@ -301,9 +300,6 @@ async def _lazy_register_oauth_provider(
 
         def get_format_registry(self) -> Any:
             return self.format_registry
-
-        def get_formatter_registry(self) -> Any:
-            return self.formatter_registry
 
     core_services = CoreServicesAdapter()
 

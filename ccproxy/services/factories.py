@@ -17,11 +17,6 @@ from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.client import HTTPClientFactory
 from ccproxy.http.pool import HTTPPoolManager
-from ccproxy.llms.formatters.formatter_registry import (
-    FormatterRegistry,
-    iter_registered_formatters,
-    load_builtin_formatter_modules,
-)
 from ccproxy.scheduler.registry import TaskRegistry
 from ccproxy.services.adapters.format_adapter import SimpleFormatAdapter
 from ccproxy.services.adapters.format_registry import FormatRegistry
@@ -92,9 +87,7 @@ class ConcreteServiceFactory:
         self._container.register_service(
             FormatRegistry, factory=self.create_format_registry
         )
-        self._container.register_service(
-            FormatterRegistry, factory=self.create_formatter_registry
-        )
+        # Removed legacy FormatterRegistry; FormatRegistry is canonical.
 
         # Registries
         self._container.register_service(
@@ -214,39 +207,7 @@ class ConcreteServiceFactory:
 
         return registry
 
-    def create_formatter_registry(self) -> FormatterRegistry:
-        """Create formatter registry populated from helper modules."""
-
-        load_builtin_formatter_modules()
-
-        registry = FormatterRegistry()
-        for registration in iter_registered_formatters():
-            try:
-                registry.register(
-                    registration.source_format,
-                    registration.target_format,
-                    registration.operation,
-                    registration.formatter,
-                    registration.module_name,
-                )
-            except ValueError as exc:
-                logger.warning(
-                    "formatter_registration_conflict",
-                    source_format=registration.source_format,
-                    target_format=registration.target_format,
-                    operation=registration.operation,
-                    module=registration.module_name,
-                    error=str(exc),
-                    category="formatter",
-                )
-
-        logger.debug(
-            "formatter_registry_created",
-            total=len(registry.list()),
-            category="formatter",
-        )
-
-        return registry
+    # Legacy create_formatter_registry removed
 
     def create_hook_registry(self) -> HookRegistry:
         """Create a HookRegistry instance."""

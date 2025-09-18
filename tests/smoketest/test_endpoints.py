@@ -5,17 +5,16 @@ debug logging to avoid race conditions during initialization.
 """
 
 import asyncio
+
 import httpx
 import pytest
 import structlog
-from tests.factories.fastapi_factory import FastAPIAppFactory, FastAPIClientFactory
-from ccproxy.config.settings import Settings
-from ccproxy.config.core import ServerSettings
-from fastapi.testclient import TestClient
-from httpx import AsyncClient
-from httpx import ASGITransport
+from httpx import ASGITransport, AsyncClient
+
 from ccproxy.api.app import create_app
 from ccproxy.api.bootstrap import create_service_container
+from ccproxy.config.core import ServerSettings
+from ccproxy.config.settings import Settings
 from ccproxy.services.container import ServiceContainer
 
 

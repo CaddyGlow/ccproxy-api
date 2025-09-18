@@ -130,8 +130,8 @@ class CodexAdapter(BaseHTTPAdapter):
             )
 
             # 2) Build handler config using composed adapter from format_chain (unified path)
-            from ccproxy.services.handler_config import HandlerConfig
             from ccproxy.services.adapters.chain_composer import compose_from_chain
+            from ccproxy.services.handler_config import HandlerConfig
 
             composed_adapter = (
                 compose_from_chain(
@@ -213,7 +213,7 @@ class CodexAdapter(BaseHTTPAdapter):
                         },
                     )
 
-                # Filter headers and rebuild response; Content-Length will be added by ProxyResponse
+                # Filter headers and rebuild response; middleware will normalize headers
                 headers_out = filter_response_headers(dict(buffered_response.headers))
                 return Response(
                     content=converted_body,

@@ -203,8 +203,8 @@ def setup_default_middleware(manager: MiddlewareManager) -> None:
         manager: Middleware manager
     """
     from ccproxy.api.middleware.hooks import HooksMiddleware
+    from ccproxy.api.middleware.normalize_headers import NormalizeHeadersMiddleware
     from ccproxy.api.middleware.request_id import RequestIDMiddleware
-    from ccproxy.api.middleware.server_header import ServerHeaderMiddleware
 
     # Request ID should be first (lowest priority) to set context for all others
     manager.add_core_middleware(
@@ -224,11 +224,10 @@ def setup_default_middleware(manager: MiddlewareManager) -> None:
     #     AccessLogMiddleware, priority=MiddlewareLayer.OBSERVABILITY
     # )
     #
-    # Server header in routing layer
+    # Normalize headers: strip unsafe and ensure server header
     manager.add_core_middleware(
-        ServerHeaderMiddleware,  # type: ignore[arg-type]
-        priority=MiddlewareLayer.ROUTING,
-        server_name="ccproxy",
+        NormalizeHeadersMiddleware,  # type: ignore[arg-type]
+        priority=MiddlewareLayer.ROUTING,  # after routing layer
     )
 
     logger.debug("default_middleware_configured", category="middleware")

@@ -5,9 +5,7 @@
 """
 
 import asyncio
-import os
 
-import httpx
 import pytest
 import structlog
 from httpx import ASGITransport, AsyncClient
@@ -17,7 +15,7 @@ from ccproxy.api.bootstrap import create_service_container
 from ccproxy.config.core import ServerSettings
 from ccproxy.config.settings import Settings
 from ccproxy.services.container import ServiceContainer
-from tests.smoketest.mock_util import make_mock_middleware, is_record_mode
+from tests.smoketest.mock_util import is_record_mode, make_mock_middleware
 
 
 pytestmark = pytest.mark.smoketest
@@ -138,7 +136,9 @@ class TestSmokeMocks:
             "stream": True,
         }
         headers = {"Accept": "text/event-stream"}
-        async with client.stream("POST", "/copilot/v1/chat/completions", json=payload, headers=headers) as r:
+        async with client.stream(
+            "POST", "/copilot/v1/chat/completions", json=payload, headers=headers
+        ) as r:
             assert r.status_code == 200
             assert "text/event-stream" in r.headers.get("content-type", "")
             count = 0
@@ -157,7 +157,9 @@ class TestSmokeMocks:
             "stream": True,
         }
         headers = {"Accept": "text/event-stream"}
-        async with client.stream("POST", "/api/v1/chat/completions", json=payload, headers=headers) as r:
+        async with client.stream(
+            "POST", "/api/v1/chat/completions", json=payload, headers=headers
+        ) as r:
             assert r.status_code == 200
             assert "text/event-stream" in r.headers.get("content-type", "")
             count = 0
@@ -204,7 +206,9 @@ class TestSmokeMocks:
             "stream": True,
         }
         headers = {"Accept": "text/event-stream"}
-        async with client.stream("POST", "/api/codex/v1/chat/completions", json=payload, headers=headers) as r:
+        async with client.stream(
+            "POST", "/api/codex/v1/chat/completions", json=payload, headers=headers
+        ) as r:
             assert r.status_code == 200
             assert "text/event-stream" in r.headers.get("content-type", "")
             count = 0
@@ -229,12 +233,16 @@ class TestSmokeMocks:
             ],
         }
         headers = {"Accept": "text/event-stream"}
-        async with client.stream("POST", "/api/codex/responses", json=payload, headers=headers) as r:
+        async with client.stream(
+            "POST", "/api/codex/responses", json=payload, headers=headers
+        ) as r:
             assert r.status_code == 200
             assert "text/event-stream" in r.headers.get("content-type", "")
             count = 0
             async for chunk in r.aiter_text():
-                if chunk.strip() and (chunk.startswith("data: ") or chunk.startswith("event: ")):
+                if chunk.strip() and (
+                    chunk.startswith("data: ") or chunk.startswith("event: ")
+                ):
                     count += 1
                     if count >= 5:
                         break

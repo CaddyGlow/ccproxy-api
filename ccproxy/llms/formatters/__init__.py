@@ -1,12 +1,11 @@
 """LLM format adapters with typed interfaces."""
 
 from .base import APIAdapter, BaseAPIAdapter
+
+# Legacy FormatterRegistry APIs are deprecated/removed from internal usage.
 from .formatter_registry import (
     FormatterRegistration,
-    FormatterRegistry,
     formatter,
-    iter_registered_formatters,
-    load_builtin_formatter_modules,
     register_formatter,
 )
 from .shim import AdapterShim
@@ -15,11 +14,9 @@ from .shim import AdapterShim
 __all__ = [
     "APIAdapter",
     "FormatterRegistration",
-    "FormatterRegistry",
     "AdapterShim",
     "BaseAPIAdapter",
     "formatter",
-    "iter_registered_formatters",
-    "load_builtin_formatter_modules",
+    # FormatterRegistry and module auto-loading not exposed for internal use
     "register_formatter",
 ]

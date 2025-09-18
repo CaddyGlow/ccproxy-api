@@ -153,7 +153,8 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.streaming_handler = container.get_streaming_handler()
             self.metrics = None
             self.format_registry = container.get_format_registry()
-            self.formatter_registry = container.get_formatter_registry()
+            # Legacy formatter registry removed; use FormatRegistry only
+            self.formatter_registry = None
 
         def get_plugin_config(self, plugin_name: str) -> Any:
             if hasattr(self.settings, "plugins") and self.settings.plugins:
@@ -169,10 +170,6 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
         def get_format_registry(self) -> Any:
             """Get format adapter registry service instance."""
             return self.format_registry
-
-        def get_formatter_registry(self) -> Any:
-            """Get formatter registry service instance."""
-            return self.formatter_registry
 
     core_services = CoreServicesAdapter(service_container)
 
@@ -615,11 +612,11 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
-    # Add format chain middleware
-    from ccproxy.api.middleware.format_chain import FormatChainMiddleware
+    # TODO: middleware should be in the middleware_manager
+    # in ccproxy/core/middleware.py
+    # Format chain is applied via decorators; middleware removed.
 
-    app.add_middleware(FormatChainMiddleware)
-
+    # TODO: This should not be here
     # Register core converters into the format registry and validate route chains
     try:
         from ccproxy.services.adapters.chain_validation import (
@@ -642,7 +639,9 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
                 declared_chains.append(chain)
 
         missing = validate_chains(registry=registry, chains=declared_chains)
-        missing_stream = validate_stream_pairs(registry=registry, chains=declared_chains)
+        missing_stream = validate_stream_pairs(
+            registry=registry, chains=declared_chains
+        )
         if missing or missing_stream:
             logger.error(
                 "format_chain_validation_failed",
