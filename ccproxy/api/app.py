@@ -620,6 +620,31 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
 
     app.add_middleware(FormatChainMiddleware)
 
+    # Register core converters into the format registry and validate route chains
+    try:
+        from ccproxy.services.adapters.chain_validation import validate_chains
+        from ccproxy.services.adapters.simple_converters import (
+            register_converters,
+        )
+
+        registry = service_container.get_format_registry()
+        register_converters(registry, plugin_name="core")
+
+        # Collect declared chains from routes for validation
+        declared_chains: list[list[str]] = []
+        for route in app.router.routes:  # type: ignore[attr-defined]
+            endpoint = getattr(route, "endpoint", None)
+            chain = getattr(endpoint, "__format_chain__", None)
+            if chain:
+                declared_chains.append(chain)
+
+        missing = validate_chains(registry=registry, chains=declared_chains)
+        if missing:
+            logger.error("format_chain_validation_failed", missing_adapters=missing)
+    except Exception as _e:
+        # Best‑effort registration/validation; do not block app startup
+        logger.warning("format_registry_setup_skipped", error=str(_e))
+
     setup_default_middleware(middleware_manager)
 
     middleware_manager.apply_to_app(app)

@@ -391,14 +391,21 @@ class BaseHTTPAdapter(BaseAdapter):
                 else None,
             )
 
-        # Build handler config for streaming with format adapter
+        # Build handler config for streaming with a composed format adapter derived from chain
         # Import here to avoid circular imports
+        from ccproxy.services.adapters.chain_composer import compose_from_chain
         from ccproxy.services.handler_config import HandlerConfig
+
+        composed_adapter = (
+            compose_from_chain(registry=self.format_registry, chain=ctx.format_chain)
+            if self.format_registry and ctx.format_chain
+            else streaming_format_adapter
+        )
 
         handler_config = HandlerConfig(
             supports_streaming=True,
             request_transformer=None,
-            response_adapter=streaming_format_adapter,  # Pass streaming format adapter
+            response_adapter=composed_adapter,  # use composed adapter when available
             format_context=None,
         )
 

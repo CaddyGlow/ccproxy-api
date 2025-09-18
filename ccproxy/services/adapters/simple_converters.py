@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
+from ccproxy.core import logging
 from ccproxy.llms.formatters.anthropic_to_openai import helpers as anthropic_to_openai
 from ccproxy.llms.formatters.openai_to_anthropic import helpers as openai_to_anthropic
 from ccproxy.llms.formatters.openai_to_openai import helpers as openai_to_openai
@@ -18,6 +19,8 @@ from ccproxy.llms.models import openai as openai_models
 
 
 FormatDict = dict[str, Any]
+
+logger = logging.get_logger(__name__)
 
 
 # OpenAI to Anthropic converters (for plugins that target Anthropic APIs)
@@ -56,7 +59,7 @@ async def convert_anthropic_to_openai_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert Anthropic MessageStream to OpenAI ChatCompletion stream."""
     async for chunk_data in stream:
-        # Try to convert dict to typed model with graceful fallback
+        # Try to validate to typed model with graceful fallback
         try:
             from pydantic import TypeAdapter
 
@@ -65,7 +68,7 @@ async def convert_anthropic_to_openai_stream(
             adapter = TypeAdapter(MessageStreamEvent)
             chunk = adapter.validate_python(chunk_data)
         except Exception:
-            # For unknown event types, create a simple object with the data
+            # For unknown event types (like inverted converter output), create a simple object
             # The downstream formatter will handle unknown events gracefully
             from types import SimpleNamespace
 
@@ -133,11 +136,10 @@ async def convert_openai_to_anthropic_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to Anthropic MessageStream."""
     async for chunk_data in stream:
-        # Convert dict to typed model with graceful fallback
         try:
             chunk = openai_models.ChatCompletionChunk.model_validate(chunk_data)
         except Exception:
-            # For unknown event types, create a simple object with the data
+            # For unknown event types (like inverted converter output), create a simple object
             # The downstream formatter will handle unknown events gracefully
             from types import SimpleNamespace
 
@@ -294,7 +296,6 @@ async def convert_openai_responses_to_openai_chat_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI Responses stream to OpenAI ChatCompletion stream."""
     async for chunk_data in stream:
-        # Convert dict to typed model with graceful fallback
         try:
             from pydantic import TypeAdapter
 
@@ -303,7 +304,7 @@ async def convert_openai_responses_to_openai_chat_stream(
             adapter = TypeAdapter(AnyStreamEvent)
             chunk = adapter.validate_python(chunk_data)
         except Exception:
-            # For unknown event types, create a simple object with the data
+            # For unknown event types (like inverted converter output), create a simple object
             # The downstream formatter will handle unknown events gracefully
             from types import SimpleNamespace
 
@@ -330,11 +331,10 @@ async def convert_openai_chat_to_openai_responses_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to OpenAI Responses stream."""
     async for chunk_data in stream:
-        # Convert dict to typed model with graceful fallback
         try:
             chunk = openai_models.ChatCompletionChunk.model_validate(chunk_data)
         except Exception:
-            # For unknown event types, create a simple object with the data
+            # For unknown event types (like inverted converter output), create a simple object
             # The downstream formatter will handle unknown events gracefully
             from types import SimpleNamespace
 
@@ -361,7 +361,6 @@ async def convert_anthropic_to_openai_responses_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert Anthropic MessageStream to OpenAI Responses stream."""
     async for chunk_data in stream:
-        # Convert dict to typed model with graceful fallback
         try:
             from pydantic import TypeAdapter
 
@@ -370,7 +369,7 @@ async def convert_anthropic_to_openai_responses_stream(
             adapter = TypeAdapter(MessageStreamEvent)
             chunk = adapter.validate_python(chunk_data)
         except Exception:
-            # For unknown event types, create a simple object with the data
+            # For unknown event types (like inverted converter output), create a simple object
             # The downstream formatter will handle unknown events gracefully
             from types import SimpleNamespace
 
@@ -475,3 +474,78 @@ __all__ = [
     "convert_openai_responses_to_openai_chat_stream",
     "convert_openai_responses_to_openai_chat_request",
 ]
+
+# Centralized pair→stage mapping and registration helpers
+
+from .format_adapter import SimpleFormatAdapter
+from .format_registry import FormatRegistry
+
+
+# Canonical format names
+OPENAI_CHAT = "openai.chat_completions"
+OPENAI_RESPONSES = "openai.responses"
+ANTHROPIC_MESSAGES = "anthropic.messages"
+
+
+def get_converter_map() -> dict[tuple[str, str], dict[str, Any]]:
+    """Return a mapping of (from, to) → {request, response, error, stream} callables.
+
+    Missing stages are allowed (e.g., error), and will default to passthrough in composition.
+    """
+    return {
+        # OpenAI Chat → Anthropic Messages
+        (OPENAI_CHAT, ANTHROPIC_MESSAGES): {
+            "request": convert_openai_to_anthropic_request,
+            "response": convert_anthropic_to_openai_response,
+            "error": convert_anthropic_to_openai_error,
+            "stream": convert_anthropic_to_openai_stream,
+        },
+        # Anthropic Messages → OpenAI Chat
+        (ANTHROPIC_MESSAGES, OPENAI_CHAT): {
+            "request": convert_anthropic_to_openai_request,
+            "response": convert_openai_to_anthropic_response,
+            "error": convert_openai_to_anthropic_error,
+            "stream": convert_openai_to_anthropic_stream,
+        },
+        # OpenAI Chat ↔ OpenAI Responses
+        (OPENAI_CHAT, OPENAI_RESPONSES): {
+            "request": convert_openai_chat_to_openai_responses_request,
+            "response": convert_openai_chat_to_openai_responses_response,
+            "error": convert_openai_chat_to_openai_responses_error,
+            "stream": convert_openai_chat_to_openai_responses_stream,
+        },
+        (OPENAI_RESPONSES, OPENAI_CHAT): {
+            "request": convert_openai_responses_to_openai_chat_request,
+            "response": convert_openai_responses_to_openai_chat_response,
+            "error": convert_openai_responses_to_openai_chat_error,
+            "stream": convert_openai_responses_to_openai_chat_stream,
+        },
+        # OpenAI Responses ↔ Anthropic Messages
+        (OPENAI_RESPONSES, ANTHROPIC_MESSAGES): {
+            "request": convert_openai_responses_to_anthropic_request,
+            "response": convert_openai_responses_to_anthropic_response,
+            "error": convert_openai_responses_to_anthropic_error,
+            "stream": convert_openai_responses_to_anthropic_stream,
+        },
+        (ANTHROPIC_MESSAGES, OPENAI_RESPONSES): {
+            "request": convert_anthropic_to_openai_responses_request,
+            "response": convert_anthropic_to_openai_responses_response,
+            "error": convert_anthropic_to_openai_responses_error,
+            "stream": convert_anthropic_to_openai_responses_stream,
+        },
+    }
+
+
+def register_converters(registry: FormatRegistry, *, plugin_name: str = "core") -> None:
+    """Register SimpleFormatAdapter instances for all known pairs into the registry."""
+    for (src, dst), stages in get_converter_map().items():
+        adapter = SimpleFormatAdapter(
+            request=stages.get("request"),
+            response=stages.get("response"),
+            error=stages.get("error"),
+            stream=stages.get("stream"),
+            name=f"{src}->{dst}",
+        )
+        registry.register(
+            from_format=src, to_format=dst, adapter=adapter, plugin_name=plugin_name
+        )

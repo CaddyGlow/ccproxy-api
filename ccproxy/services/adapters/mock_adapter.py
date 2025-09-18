@@ -9,10 +9,14 @@ from fastapi import Request
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
 
+from ccproxy.core import logging
 from ccproxy.core.request_context import RequestContext
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.mocking.mock_handler import MockResponseHandler
 from ccproxy.streaming import DeferredStreaming
+
+
+logger = logging.get_logger(__name__)
 
 
 class MockAdapter(BaseAdapter):
@@ -32,9 +36,7 @@ class MockAdapter(BaseAdapter):
         except UnicodeDecodeError:
             pass
         except Exception as e:
-            structlog.get_logger(__name__).debug(
-                "stream_flag_extraction_error", error=str(e)
-            )
+            logger.debug("stream_flag_extraction_error", error=str(e))
             pass
         return False
 
@@ -61,9 +63,7 @@ class MockAdapter(BaseAdapter):
         except UnicodeDecodeError:
             pass
         except Exception as e:
-            structlog.get_logger(__name__).debug(
-                "stream_flag_extraction_error", error=str(e)
-            )
+            logger.debug("stream_flag_extraction_error", error=str(e))
             pass
 
         # Create request context
@@ -103,9 +103,7 @@ class MockAdapter(BaseAdapter):
         except UnicodeDecodeError:
             pass
         except Exception as e:
-            structlog.get_logger(__name__).debug(
-                "stream_flag_extraction_error", error=str(e)
-            )
+            logger.debug("stream_flag_extraction_error", error=str(e))
             pass
 
         # Create request context
