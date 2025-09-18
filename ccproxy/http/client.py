@@ -7,7 +7,6 @@ This module provides:
 """
 
 import os
-from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -25,82 +24,6 @@ logger = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     import httpx
-
-
-class HTTPClient(ABC):
-    """Abstract HTTP client interface for generic HTTP operations."""
-
-    @abstractmethod
-    async def request(
-        self,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-        body: bytes | None = None,
-        timeout: float | None = None,
-    ) -> tuple[int, dict[str, str], bytes]:
-        """Make an HTTP request.
-
-        Args:
-            method: HTTP method (GET, POST, etc.)
-            url: Target URL
-            headers: HTTP headers
-            body: Request body (optional)
-            timeout: Request timeout in seconds (optional)
-
-        Returns:
-            Tuple of (status_code, response_headers, response_body)
-
-        Raises:
-            HTTPError: If the request fails
-        """
-        pass
-
-    @abstractmethod
-    async def close(self) -> None:
-        """Close any resources held by the HTTP client."""
-        pass
-
-
-class BaseProxyClient:
-    """Generic proxy client with no business logic - pure forwarding."""
-
-    def __init__(self, http_client: HTTPClient) -> None:
-        """Initialize with an HTTP client.
-
-        Args:
-            http_client: The HTTP client to use for requests
-        """
-        self.http_client = http_client
-
-    async def forward(
-        self,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-        body: bytes | None = None,
-        timeout: float | None = None,
-    ) -> tuple[int, dict[str, str], bytes]:
-        """Forward an HTTP request without any transformations.
-
-        Args:
-            method: HTTP method
-            url: Target URL
-            headers: HTTP headers
-            body: Request body (optional)
-            timeout: Request timeout in seconds (optional)
-
-        Returns:
-            Tuple of (status_code, response_headers, response_body)
-
-        Raises:
-            HTTPError: If the request fails
-        """
-        return await self.http_client.request(method, url, headers, body, timeout)
-
-    async def close(self) -> None:
-        """Close any resources held by the proxy client."""
-        await self.http_client.close()
 
 
 class HTTPError(Exception):
@@ -140,132 +63,8 @@ class HTTPConnectionError(HTTPError):
         """
         super().__init__(message, status_code=503)
 
-
-class HTTPXClient(HTTPClient):
-    """HTTPX-based HTTP client implementation."""
-
-    def __init__(
-        self,
-        timeout: float = 240.0,
-        proxy: str | None = None,
-        verify: bool | str = True,
-    ) -> None:
-        """Initialize HTTPX client.
-
-        Args:
-            timeout: Request timeout in seconds
-            proxy: HTTP proxy URL (optional)
-            verify: SSL verification (True/False or path to CA bundle)
-        """
-        proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or proxy
-
-        self.timeout = timeout
-        self.proxy = proxy
-        self.verify = verify
-        self._client: httpx.AsyncClient | None = None
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create the HTTPX client."""
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=self.timeout,
-                proxy=self.proxy,
-                verify=self.verify,
-            )
-        return self._client
-
-    async def request(
-        self,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-        body: bytes | None = None,
-        timeout: float | None = None,
-    ) -> tuple[int, dict[str, str], bytes]:
-        """Make an HTTP request using HTTPX.
-
-        Args:
-            method: HTTP method
-            url: Target URL
-            headers: HTTP headers
-            body: Request body (optional)
-            timeout: Request timeout in seconds (optional)
-
-        Returns:
-            Tuple of (status_code, response_headers, response_body)
-
-        Raises:
-            HTTPError: If the request fails
-        """
-        try:
-            client = await self._get_client()
-
-            # Use the existing client and pass timeout to the request method
-            # This fixes Issue #9 by avoiding creating new client instances
-            # for custom timeouts
-            request_timeout = timeout if timeout is not None else self.timeout
-
-            response = await client.request(
-                method=method,
-                url=url,
-                headers=headers,
-                content=body,
-                timeout=request_timeout,  # Pass timeout to the request method
-            )
-
-            # Always return the response, even for error status codes
-            # This allows the proxy to forward upstream errors directly
-            return (
-                response.status_code,
-                dict(response.headers),
-                response.content,
-            )
-
-        except httpx.TimeoutException as e:
-            raise HTTPTimeoutError(f"Request timed out: {e}") from e
-        except httpx.ConnectError as e:
-            raise HTTPConnectionError(f"Connection failed: {e}") from e
-        except httpx.HTTPStatusError as e:
-            # This shouldn't happen with the default raise_for_status=False
-            # but keep it just in case
-            raise HTTPError(
-                f"HTTP {e.response.status_code}: {e.response.reason_phrase}",
-                status_code=e.response.status_code,
-            ) from e
-        except Exception as e:
-            raise HTTPError(f"HTTP request failed: {e}") from e
-
-    async def stream(
-        self,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-        content: bytes | None = None,
-    ) -> Any:
-        """Create a streaming HTTP request.
-
-        Args:
-            method: HTTP method
-            url: Target URL
-            headers: HTTP headers
-            content: Request body (optional)
-
-        Returns:
-            HTTPX streaming response context manager
-        """
-        client = await self._get_client()
-        return client.stream(
-            method=method,
-            url=url,
-            headers=headers,
-            content=content,
-        )
-
-    async def close(self) -> None:
-        """Close the HTTPX client."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+    # Note: legacy HTTPXClient and BaseProxyClient removed in favor of using
+    # HTTPClientFactory + httpx.AsyncClient directly.
 
 
 class HTTPClientFactory:
@@ -522,6 +321,3 @@ def get_ssl_context() -> str | bool:
         return False
     else:
         return True
-
-
-# Legacy singleton helpers removed. Use ServiceContainer + HTTPPoolManager.

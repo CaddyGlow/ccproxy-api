@@ -78,7 +78,8 @@ class ProxyResponse(Response):
         if not has_content_type and self.media_type:
             headers_list.append((b"content-type", self.media_type.encode()))
 
-        logger.error("headers", headers=headers_list)
+        # Debug logging only; avoid noisy error-level logs for normal responses
+        # logger.debug("proxy_response_headers", headers=headers_list)
 
         await send(
             {

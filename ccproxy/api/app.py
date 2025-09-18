@@ -622,7 +622,10 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
 
     # Register core converters into the format registry and validate route chains
     try:
-        from ccproxy.services.adapters.chain_validation import validate_chains
+        from ccproxy.services.adapters.chain_validation import (
+            validate_chains,
+            validate_stream_pairs,
+        )
         from ccproxy.services.adapters.simple_converters import (
             register_converters,
         )
@@ -639,8 +642,13 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
                 declared_chains.append(chain)
 
         missing = validate_chains(registry=registry, chains=declared_chains)
-        if missing:
-            logger.error("format_chain_validation_failed", missing_adapters=missing)
+        missing_stream = validate_stream_pairs(registry=registry, chains=declared_chains)
+        if missing or missing_stream:
+            logger.error(
+                "format_chain_validation_failed",
+                missing_adapters=missing,
+                missing_stream_adapters=missing_stream,
+            )
     except Exception as _e:
         # Best‑effort registration/validation; do not block app startup
         logger.warning("format_registry_setup_skipped", error=str(_e))

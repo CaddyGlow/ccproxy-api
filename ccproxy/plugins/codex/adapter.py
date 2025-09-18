@@ -129,24 +129,22 @@ class CodexAdapter(BaseHTTPAdapter):
                 category="http",
             )
 
-            # 2) Build handler config (optionally with streaming format adapter)
-            streaming_format_adapter = None
-            if ctx.format_chain and len(ctx.format_chain) > 1 and self.format_registry:
-                from_format = ctx.format_chain[-1]
-                to_format = ctx.format_chain[0]
-                try:
-                    streaming_format_adapter = self.format_registry.get_if_exists(
-                        from_format, to_format
-                    )
-                except Exception:
-                    streaming_format_adapter = None
-
+            # 2) Build handler config using composed adapter from format_chain (unified path)
             from ccproxy.services.handler_config import HandlerConfig
+            from ccproxy.services.adapters.chain_composer import compose_from_chain
+
+            composed_adapter = (
+                compose_from_chain(
+                    registry=self.format_registry, chain=ctx.format_chain
+                )
+                if self.format_registry and ctx.format_chain
+                else None
+            )
 
             handler_config = HandlerConfig(
                 supports_streaming=True,
                 request_transformer=None,
-                response_adapter=streaming_format_adapter,
+                response_adapter=composed_adapter,
                 format_context=None,
             )
 
@@ -270,6 +268,9 @@ class CodexAdapter(BaseHTTPAdapter):
         # Codex does not support max_output_tokens, remove if present
         if "max_output_tokens" in body_data:
             body_data.pop("max_output_tokens")
+        # Codex does not support max_output_tokens, remove if present
+        if "max_completion_tokens" in body_data:
+            body_data.pop("max_completion_tokens")
 
         # Remove any prefixed metadata fields that shouldn't be sent to the API
         body_data = self._remove_metadata_fields(body_data)

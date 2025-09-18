@@ -23,6 +23,38 @@ FormatDict = dict[str, Any]
 logger = logging.get_logger(__name__)
 
 
+async def _convert_stream_single_chunk(
+    chunk_data: dict[str, Any],
+    *,
+    validator_model: Any,
+    converter: Any,
+) -> AsyncIterator[dict[str, Any]]:
+    """Validate a single stream event, convert via converter(stream), yield dicts.
+
+    This helper removes repetitive code across streaming converters by:
+    - attempting typed validation for better downstream behavior
+    - falling back to a SimpleNamespace when schema is unknown
+    - wrapping the single event into an async generator for converter(stream)
+    - re-yielding converted typed chunks as plain dicts
+    """
+    try:
+        from pydantic import TypeAdapter
+
+        adapter = TypeAdapter(validator_model)
+        chunk = adapter.validate_python(chunk_data)
+    except Exception:
+        from types import SimpleNamespace
+
+        chunk = SimpleNamespace(**chunk_data)
+
+    async def _one():
+        yield chunk
+
+    converted_chunks = converter(_one())
+    async for converted_chunk in converted_chunks:
+        yield converted_chunk.model_dump(exclude_unset=True)
+
+
 # OpenAI to Anthropic converters (for plugins that target Anthropic APIs)
 async def convert_openai_to_anthropic_request(data: FormatDict) -> FormatDict:
     """Convert OpenAI ChatCompletion request to Anthropic CreateMessage request."""
@@ -58,36 +90,15 @@ async def convert_anthropic_to_openai_stream(
     stream: AsyncIterator[FormatDict],
 ) -> AsyncIterator[FormatDict]:
     """Convert Anthropic MessageStream to OpenAI ChatCompletion stream."""
+    from ccproxy.llms.models.anthropic import MessageStreamEvent
+
     async for chunk_data in stream:
-        # Try to validate to typed model with graceful fallback
-        try:
-            from pydantic import TypeAdapter
-
-            from ccproxy.llms.models.anthropic import MessageStreamEvent
-
-            adapter = TypeAdapter(MessageStreamEvent)
-            chunk = adapter.validate_python(chunk_data)
-        except Exception:
-            # For unknown event types (like inverted converter output), create a simple object
-            # The downstream formatter will handle unknown events gracefully
-            from types import SimpleNamespace
-
-            chunk = SimpleNamespace(**chunk_data)
-
-        # Create async iterator from single chunk
-        async def single_chunk_stream(chunk_value=chunk):
-            yield chunk_value
-
-        # Use existing formatter function
-        converted_chunks = (
-            anthropic_to_openai.convert__anthropic_message_to_openai_chat__stream(
-                single_chunk_stream()
-            )
-        )
-
-        # Yield converted chunks as dicts
-        async for converted_chunk in converted_chunks:
-            yield converted_chunk.model_dump(exclude_unset=True)
+        async for out_chunk in _convert_stream_single_chunk(
+            chunk_data,
+            validator_model=MessageStreamEvent,
+            converter=anthropic_to_openai.convert__anthropic_message_to_openai_chat__stream,
+        ):
+            yield out_chunk
 
 
 async def convert_openai_to_anthropic_error(data: FormatDict) -> FormatDict:
@@ -136,29 +147,12 @@ async def convert_openai_to_anthropic_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to Anthropic MessageStream."""
     async for chunk_data in stream:
-        try:
-            chunk = openai_models.ChatCompletionChunk.model_validate(chunk_data)
-        except Exception:
-            # For unknown event types (like inverted converter output), create a simple object
-            # The downstream formatter will handle unknown events gracefully
-            from types import SimpleNamespace
-
-            chunk = SimpleNamespace(**chunk_data)
-
-        # Create async iterator from single chunk
-        async def single_chunk_stream(chunk_value=chunk):
-            yield chunk_value
-
-        # Use existing formatter function
-        converted_chunks = (
-            openai_to_anthropic.convert__openai_chat_to_anthropic_messages__stream(
-                single_chunk_stream()
-            )
-        )
-
-        # Yield converted chunks as dicts
-        async for converted_chunk in converted_chunks:
-            yield converted_chunk.model_dump(exclude_unset=True)
+        async for out_chunk in _convert_stream_single_chunk(
+            chunk_data,
+            validator_model=openai_models.ChatCompletionChunk,
+            converter=openai_to_anthropic.convert__openai_chat_to_anthropic_messages__stream,
+        ):
+            yield out_chunk
 
 
 async def convert_anthropic_to_openai_error(data: FormatDict) -> FormatDict:
@@ -295,35 +289,15 @@ async def convert_openai_responses_to_openai_chat_stream(
     stream: AsyncIterator[FormatDict],
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI Responses stream to OpenAI ChatCompletion stream."""
+    from ccproxy.llms.models.openai import AnyStreamEvent
+
     async for chunk_data in stream:
-        try:
-            from pydantic import TypeAdapter
-
-            from ccproxy.llms.models.openai import AnyStreamEvent
-
-            adapter = TypeAdapter(AnyStreamEvent)
-            chunk = adapter.validate_python(chunk_data)
-        except Exception:
-            # For unknown event types (like inverted converter output), create a simple object
-            # The downstream formatter will handle unknown events gracefully
-            from types import SimpleNamespace
-
-            chunk = SimpleNamespace(**chunk_data)
-
-        # Create async iterator from single chunk
-        async def single_chunk_stream(chunk_value=chunk):
-            yield chunk_value
-
-        # Use existing formatter function
-        converted_chunks = (
-            openai_to_openai.convert__openai_responses_to_openai_chat__stream(
-                single_chunk_stream()
-            )
-        )
-
-        # Yield converted chunks as dicts
-        async for converted_chunk in converted_chunks:
-            yield converted_chunk.model_dump(exclude_unset=True)
+        async for out_chunk in _convert_stream_single_chunk(
+            chunk_data,
+            validator_model=AnyStreamEvent,
+            converter=openai_to_openai.convert__openai_responses_to_openai_chat__stream,
+        ):
+            yield out_chunk
 
 
 async def convert_openai_chat_to_openai_responses_stream(
@@ -331,29 +305,12 @@ async def convert_openai_chat_to_openai_responses_stream(
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to OpenAI Responses stream."""
     async for chunk_data in stream:
-        try:
-            chunk = openai_models.ChatCompletionChunk.model_validate(chunk_data)
-        except Exception:
-            # For unknown event types (like inverted converter output), create a simple object
-            # The downstream formatter will handle unknown events gracefully
-            from types import SimpleNamespace
-
-            chunk = SimpleNamespace(**chunk_data)
-
-        # Create async iterator from single chunk
-        async def single_chunk_stream(chunk_value=chunk):
-            yield chunk_value
-
-        # Use existing formatter function
-        converted_chunks = (
-            openai_to_openai.convert__openai_chat_to_openai_responses__stream(
-                single_chunk_stream()
-            )
-        )
-
-        # Yield converted chunks as dicts
-        async for converted_chunk in converted_chunks:
-            yield converted_chunk.model_dump(exclude_unset=True)
+        async for out_chunk in _convert_stream_single_chunk(
+            chunk_data,
+            validator_model=openai_models.ChatCompletionChunk,
+            converter=openai_to_openai.convert__openai_chat_to_openai_responses__stream,
+        ):
+            yield out_chunk
 
 
 async def convert_anthropic_to_openai_responses_stream(
@@ -479,12 +436,14 @@ __all__ = [
 
 from .format_adapter import SimpleFormatAdapter
 from .format_registry import FormatRegistry
+from ccproxy.core.constants import (
+    FORMAT_OPENAI_CHAT as OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES as OPENAI_RESPONSES,
+    FORMAT_ANTHROPIC_MESSAGES as ANTHROPIC_MESSAGES,
+)
 
 
-# Canonical format names
-OPENAI_CHAT = "openai.chat_completions"
-OPENAI_RESPONSES = "openai.responses"
-ANTHROPIC_MESSAGES = "anthropic.messages"
+# Canonical format names imported from core constants
 
 
 def get_converter_map() -> dict[tuple[str, str], dict[str, Any]]:

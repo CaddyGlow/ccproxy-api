@@ -1,23 +1,71 @@
-"""Smoketest suite for CCProxy - quick validation of core endpoints."""
+"""Smoketest suite for CCProxy - quick validation of core endpoints.
 
+Starts a single in‑process app/client for the whole module and enables
+debug logging to avoid race conditions during initialization.
+"""
+
+import asyncio
 import httpx
 import pytest
+import structlog
+from tests.factories.fastapi_factory import FastAPIAppFactory, FastAPIClientFactory
+from ccproxy.config.settings import Settings
+from ccproxy.config.core import ServerSettings
+from fastapi.testclient import TestClient
+from httpx import AsyncClient
+from httpx import ASGITransport
+from ccproxy.api.app import create_app
+from ccproxy.api.bootstrap import create_service_container
+from ccproxy.services.container import ServiceContainer
 
 
-# Mark all tests in this module as smoketests
+# Mark all tests and set module-scoped asyncio loop
 pytestmark = pytest.mark.smoketest
+
+
+@pytest.fixture(scope="function")
+async def smoke_client() -> AsyncClient:
+    """One in‑process AsyncClient for all smoketests with full startup and debug logs."""
+    # Enable detailed logs and plugins
+    settings = Settings()
+    settings.server = ServerSettings(log_level="DEBUG")
+    settings.enable_plugins = True
+    settings.plugins_disable_local_discovery = False
+
+    # Configure structlog for useful debug output during smoketests
+    structlog.configure(
+        processors=[
+            structlog.processors.TimeStamper(fmt="iso"),
+            structlog.processors.add_log_level,
+            structlog.processors.EventRenamer("event"),
+            structlog.processors.JSONRenderer(),
+        ]
+    )
+
+    container: ServiceContainer = create_service_container(settings)
+    app = create_app(container)
+    transport = ASGITransport(app=app)
+
+    # Run lifespan and client per test (function-scoped loop compatibility)
+    async with app.router.lifespan_context(app):
+        async with AsyncClient(transport=transport, base_url="http://testserver") as c:
+            for _ in range(50):
+                try:
+                    r = await c.get("/health")
+                    if r.status_code == 200:
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(0.1)
+            yield c
 
 
 class TestSmokeTests:
     """Essential smoketests for CCProxy endpoints."""
 
     @pytest.fixture
-    async def client(self) -> httpx.AsyncClient:
-        """HTTP client for making requests."""
-        async with httpx.AsyncClient(
-            base_url="http://127.0.0.1:8000", timeout=15.0
-        ) as client:
-            yield client
+    async def client(self, smoke_client: AsyncClient) -> AsyncClient:
+        return smoke_client
 
     async def test_health_endpoint(self, client: httpx.AsyncClient) -> None:
         """Test health check endpoint."""
@@ -227,7 +275,7 @@ class TestSmokeTests:
                 }
             ],
         }
-        response = await client.post("/codex/responses", json=payload)
+        response = await client.post("/api/codex/responses", json=payload)
         assert response.status_code == 200
         data = response.json()
         assert "output" in data
@@ -250,7 +298,7 @@ class TestSmokeTests:
 
         event_count = 0
         async with client.stream(
-            "POST", "/codex/responses", json=payload, headers=headers
+            "POST", "/api/codex/responses", json=payload, headers=headers
         ) as response:
             assert response.status_code == 200
             assert "text/event-stream" in response.headers.get("content-type", "")
