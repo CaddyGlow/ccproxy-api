@@ -342,7 +342,7 @@ class CommandFileFormatter:
                 file_path = Path(file_path_str)
                 # Add execute permission for owner, group, and others
                 current_mode = file_path.stat().st_mode
-                new_mode = current_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH
+                new_mode = current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
                 file_path.chmod(new_mode)
 
                 logger.debug(

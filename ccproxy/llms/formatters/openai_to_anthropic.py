@@ -17,6 +17,7 @@ from ccproxy.llms.formatters.utils import (
 )
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
+from ccproxy.llms.streaming.accumulators import OpenAIAccumulator
 
 
 def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
@@ -1212,34 +1213,42 @@ def convert__openai_chat_to_anthropic_messages__stream(
         accumulated_content = ""
         model_id = ""
         current_index = 0
-        tool_call_buffers: dict[int, str | dict[str, Any]] = {}
-        tool_call_names: dict[int, str] = {}
-        tool_call_ids: dict[int, str] = {}
-        tool_call_emitted: set[int] = set()
+        emitted_tool_ids: set[str] = set()
+        openai_accumulator = OpenAIAccumulator()
 
         async for chunk in stream:
-            # Handle both dict and typed model inputs
             if isinstance(chunk, dict):
-                if not chunk.get("choices"):
-                    continue
-                choices = chunk["choices"]
-                if not choices:
-                    continue
-                choice = choices[0]
-                model_id = chunk.get("model", model_id)
+                chunk_payload = chunk
             else:
-                if not chunk.choices:
-                    continue
-                choice = chunk.choices[0]
-                model_id = chunk.model or model_id
+                try:
+                    chunk_payload = chunk.model_dump(mode="json", exclude_none=True)
+                except Exception:
+                    chunk_payload = chunk.model_dump(exclude_none=True)
 
-            # Start message if not started
+            choices = chunk_payload.get("choices")
+            if not choices:
+                continue
+
+            choice = choices[0]
+            openai_accumulator.accumulate("", chunk_payload)
+
+            if chunk_payload.get("model"):
+                model_id = chunk_payload["model"]
+            elif not isinstance(chunk, dict):
+                model_id = getattr(chunk, "model", model_id) or model_id
+
+            delta = choice.get("delta") if isinstance(choice, dict) else {}
+            if not isinstance(delta, dict):
+                delta = {}
+            finish_reason = choice.get("finish_reason")
+            content_piece = delta.get("content")
+
             if not message_started:
-                chunk_id = (
-                    chunk.get("id", "msg_stream")
-                    if isinstance(chunk, dict)
-                    else (chunk.id or "msg_stream")
-                )
+                chunk_id = chunk_payload.get("id")
+                if chunk_id is None and not isinstance(chunk, dict):
+                    chunk_id = getattr(chunk, "id", None)
+                chunk_id = chunk_id or "msg_stream"
+
                 yield anthropic_models.MessageStartEvent(
                     type="message_start",
                     message=anthropic_models.MessageResponse(
@@ -1255,210 +1264,96 @@ def convert__openai_chat_to_anthropic_messages__stream(
                 )
                 message_started = True
 
-            # Handle content delta and tool calls - support both dict and typed formats
-            content = None
-            finish_reason = None
-            tool_calls = None
-
-            if isinstance(chunk, dict):
-                if choice.get("delta") and choice["delta"].get("content"):
-                    content = choice["delta"]["content"]
-                finish_reason = choice.get("finish_reason")
-                tool_calls = choice.get("delta", {}).get("tool_calls") or choice.get(
-                    "tool_calls"
+            if content_piece:
+                content_text = (
+                    content_piece
+                    if isinstance(content_piece, str)
+                    else str(content_piece)
                 )
-            else:
-                if choice.delta and choice.delta.content:
-                    content = choice.delta.content
-                finish_reason = choice.finish_reason
-                tool_calls = getattr(choice.delta, "tool_calls", None) or getattr(
-                    choice, "tool_calls", None
-                )
-
-            if content:
-                # Ensure content is a string for concatenation and TextBlock creation
-                content_str = str(content) if not isinstance(content, str) else content
-                accumulated_content += content_str
-
-                # Start content block if not started
                 if not text_block_started:
                     yield anthropic_models.ContentBlockStartEvent(
                         type="content_block_start",
-                        index=0,
+                        index=current_index,
                         content_block=anthropic_models.TextBlock(type="text", text=""),
                     )
                     text_block_started = True
 
-                # Emit content delta
                 yield anthropic_models.ContentBlockDeltaEvent(
                     type="content_block_delta",
                     index=current_index,
-                    delta=anthropic_models.TextBlock(type="text", text=content_str),
+                    delta=anthropic_models.TextBlock(type="text", text=content_text),
                 )
+                accumulated_content += content_text
 
-            # Handle tool calls (strict JSON parsing)
-            if tool_calls and isinstance(tool_calls, list):
-                # Close any active text block before emitting tool_use
+            if finish_reason:
                 if text_block_started:
                     yield anthropic_models.ContentBlockStopEvent(
-                        type="content_block_stop", index=current_index
+                        type="content_block_stop",
+                        index=current_index,
                     )
                     text_block_started = False
                     current_index += 1
-                for i, tc in enumerate(tool_calls):
-                    tool_index = i
-                    fn = None
-                    if isinstance(tc, dict):
-                        fn = tc.get("function")
-                        raw_id = tc.get("id")
-                        tool_index = int(tc.get("index", tool_index))
-                        name = fn.get("name") if isinstance(fn, dict) else None
-                        args_raw = fn.get("arguments") if isinstance(fn, dict) else None
-                    else:
-                        fn = getattr(tc, "function", None)
-                        raw_id = getattr(tc, "id", None)
-                        tool_index = getattr(tc, "index", tool_index)
-                        name = getattr(fn, "name", None) if fn is not None else None
-                        args_raw = (
-                            getattr(fn, "arguments", None) if fn is not None else None
-                        )
 
-                    if raw_id:
-                        tool_call_ids[tool_index] = raw_id
-                    elif tool_index not in tool_call_ids:
-                        tool_call_ids[tool_index] = f"call_{tool_index}"
-
-                    if tool_index not in tool_call_buffers:
-                        tool_call_buffers[tool_index] = ""
-                    if isinstance(args_raw, dict):
-                        tool_call_buffers[tool_index] = args_raw
-                    elif isinstance(args_raw, str):
-                        existing = tool_call_buffers.get(tool_index)
-                        if isinstance(existing, str):
-                            tool_call_buffers[tool_index] = existing + args_raw
-                        else:
-                            tool_call_buffers[tool_index] = args_raw
-                    if name:
-                        tool_call_names[tool_index] = name
-                    elif tool_index not in tool_call_names:
-                        tool_call_names[tool_index] = "function"
-
-                    if tool_index in tool_call_emitted:
-                        continue
-
-                    from ccproxy.llms.formatters.utils import (
-                        strict_parse_tool_arguments,
+                for tool in openai_accumulator.get_complete_tool_calls():
+                    tool_key = (
+                        tool.get("id")
+                        or f"call_{tool.get('index', len(emitted_tool_ids))}"
                     )
+                    tool_key_str = str(tool_key)
+                    if tool_key_str in emitted_tool_ids:
+                        continue
 
-                    buffer_value = tool_call_buffers.get(tool_index)
-                    if isinstance(buffer_value, str) and not buffer_value.strip():
-                        continue
+                    raw_arguments = tool.get("function", {}).get("arguments", "")
                     try:
-                        args = strict_parse_tool_arguments(buffer_value)
-                    except ValueError:
-                        continue
+                        arguments = strict_parse_tool_arguments(raw_arguments)
+                    except Exception:
+                        arguments = {"arguments": raw_arguments}
 
                     yield anthropic_models.ContentBlockStartEvent(
                         type="content_block_start",
                         index=current_index,
                         content_block=anthropic_models.ToolUseBlock(
                             type="tool_use",
-                            id=tool_call_ids.get(tool_index, f"call_{tool_index}"),
-                            name=tool_call_names.get(tool_index, "function"),
-                            input=args,
+                            id=tool_key_str,
+                            name=str(
+                                tool.get("function", {}).get("name")
+                                or tool.get("name")
+                                or "function"
+                            ),
+                            input=arguments,
                         ),
                     )
                     yield anthropic_models.ContentBlockStopEvent(
                         type="content_block_stop", index=current_index
                     )
-                    tool_call_emitted.add(tool_index)
+                    emitted_tool_ids.add(tool_key_str)
                     current_index += 1
 
-            # Handle finish reason
-            if finish_reason:
-                # Flush any pending tool calls before finalizing the stream.
-                if tool_call_buffers:
-                    # Close active text block so tool_use emits cleanly after content.
-                    if text_block_started:
-                        yield anthropic_models.ContentBlockStopEvent(
-                            type="content_block_stop", index=current_index
-                        )
-                        text_block_started = False
-                        current_index += 1
+                usage_payload = chunk_payload.get("usage")
+                if usage_payload is None and not isinstance(chunk, dict):
+                    usage_obj = getattr(chunk, "usage", None)
+                    if usage_obj is not None:
+                        if hasattr(usage_obj, "model_dump"):
+                            usage_payload = usage_obj.model_dump()
+                        else:
+                            usage_payload = {
+                                "prompt_tokens": getattr(usage_obj, "prompt_tokens", 0),
+                                "completion_tokens": getattr(
+                                    usage_obj, "completion_tokens", 0
+                                ),
+                            }
 
-                    for i in sorted(tool_call_buffers.keys()):
-                        if i in tool_call_emitted:
-                            continue
-
-                        buffer_value = tool_call_buffers.get(i)
-                        if isinstance(buffer_value, str) and not buffer_value.strip():
-                            continue
-
-                        try:
-                            args = strict_parse_tool_arguments(buffer_value)
-                        except ValueError:
-                            # If the provider never produced valid JSON we bail out.
-                            continue
-
-                        yield anthropic_models.ContentBlockStartEvent(
-                            type="content_block_start",
-                            index=current_index,
-                            content_block=anthropic_models.ToolUseBlock(
-                                type="tool_use",
-                                id=tool_call_ids.get(i, f"call_{i}"),
-                                name=tool_call_names.get(i, "function"),
-                                input=args,
-                            ),
-                        )
-                        yield anthropic_models.ContentBlockStopEvent(
-                            type="content_block_stop", index=current_index
-                        )
-                        tool_call_emitted.add(i)
-                        current_index += 1
-
-                # Stop content block if started
-                if text_block_started:
-                    yield anthropic_models.ContentBlockStopEvent(
-                        type="content_block_stop", index=current_index
-                    )
-                    text_block_started = False
-                    current_index += 1
-
-                # Map OpenAI finish reason to Anthropic stop reason via shared utility
-                from ccproxy.llms.formatters.utils import (
-                    map_openai_finish_to_anthropic_stop,
+                anthropic_usage = (
+                    openai_usage_to_anthropic_usage(usage_payload)
+                    if usage_payload is not None
+                    else anthropic_models.Usage(input_tokens=0, output_tokens=0)
                 )
 
-                stop_reason = map_openai_finish_to_anthropic_stop(finish_reason)
+                mapped_stop = map_openai_finish_to_anthropic_stop(finish_reason)
 
-                # Get usage if available
-                if isinstance(chunk, dict):
-                    usage = chunk.get("usage")
-                    anthropic_usage = (
-                        anthropic_models.Usage(
-                            input_tokens=usage.get("prompt_tokens", 0),
-                            output_tokens=usage.get("completion_tokens", 0),
-                        )
-                        if usage
-                        else anthropic_models.Usage(input_tokens=0, output_tokens=0)
-                    )
-                else:
-                    usage = getattr(chunk, "usage", None)
-                    anthropic_usage = (
-                        anthropic_models.Usage(
-                            input_tokens=usage.prompt_tokens,
-                            output_tokens=usage.completion_tokens,
-                        )
-                        if usage
-                        else anthropic_models.Usage(input_tokens=0, output_tokens=0)
-                    )
-
-                # Emit message delta and stop
                 yield anthropic_models.MessageDeltaEvent(
                     type="message_delta",
-                    delta=anthropic_models.MessageDelta(
-                        stop_reason=map_openai_finish_to_anthropic_stop(stop_reason)
-                    ),
+                    delta=anthropic_models.MessageDelta(stop_reason=mapped_stop),
                     usage=anthropic_usage,
                 )
                 yield anthropic_models.MessageStopEvent(type="message_stop")

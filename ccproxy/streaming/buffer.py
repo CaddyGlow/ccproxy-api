@@ -464,6 +464,9 @@ class StreamingBufferService:
                         "total_chunks": total_chunks,
                         "total_bytes": total_bytes,
                         "buffered_mode": True,
+                        "upstream_stream_text": b"".join(chunks).decode(
+                            "utf-8", errors="replace"
+                        ),
                     },
                     metadata={
                         "request_id": request_id,

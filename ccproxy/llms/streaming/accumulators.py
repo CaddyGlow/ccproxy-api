@@ -181,6 +181,9 @@ class ClaudeAccumulator(StreamAccumulator):
                     self.content_block_map[block_id]["input"] = block.get("input", {})
                 elif block_type == "thinking":
                     self.content_block_map[block_id]["thinking"] = ""
+                    signature = block.get("signature")
+                    if isinstance(signature, str) and signature:
+                        self.content_block_map[block_id]["signature"] = signature
 
                 # Set current content block for delta updates
                 self.current_content_block = (
@@ -327,7 +330,8 @@ class ClaudeAccumulator(StreamAccumulator):
                     content_blocks.append(
                         {
                             "type": "thinking",
-                            "text": block.get("thinking", ""),
+                            "thinking": block.get("thinking", ""),
+                            "signature": block.get("signature", ""),
                         }
                     )
 
@@ -356,6 +360,48 @@ class ClaudeAccumulator(StreamAccumulator):
             rebuilt["text"] = self.text_content
 
         return rebuilt
+
+    def get_block_info(self, index: int) -> tuple[str, dict[str, Any]] | None:
+        """Return (block_id, block_data) for a content block index."""
+
+        if index < 0:
+            return None
+
+        block_id = self._index_to_key.get(str(index))
+        if not block_id:
+            return None
+
+        block = self.content_block_map.get(block_id)
+        if block is None:
+            return None
+
+        return block_id, block
+
+    def get_tool_entry(
+        self,
+        identifier: int | str,
+    ) -> dict[str, Any] | None:
+        """Fetch the tool metadata tracked by the accumulator.
+
+        Args:
+            identifier: Either the integer index from the stream event or the
+                underlying block identifier tracked by the accumulator.
+
+        Returns:
+            The tracked tool entry if present.
+        """
+
+        block_id: str | None
+        if isinstance(identifier, int):
+            info = self.get_block_info(identifier)
+            block_id = info[0] if info else None
+        else:
+            block_id = identifier
+
+        if not block_id:
+            return None
+
+        return self.tools.get(block_id)
 
     def _merge_usage(self, usage: dict[str, Any]) -> None:
         for key, value in usage.items():
@@ -428,34 +474,44 @@ class OpenAIAccumulator(StreamAccumulator):
                 if not isinstance(tool_call, dict):
                     continue
 
-                index = tool_call.get("index", 0)
+                index = int(tool_call.get("index", 0))
                 index_key = str(index)
 
+                previous_key = self._index_to_key.get(index_key)
                 tool_id = tool_call.get("id")
                 if isinstance(tool_id, str) and tool_id:
                     key = tool_id
-                    # Latest explicit id wins for this index so future id-less
-                    # deltas append to this entry.
-                    self._index_to_key[index_key] = key
                 else:
-                    key = self._index_to_key.get(index_key) or f"call_{index}"
+                    key = previous_key or f"call_{index}"
 
-                entry = self.tools.setdefault(
-                    key,
-                    {
-                        "id": None,
-                        "type": None,
-                        "function": {"name": None, "arguments": ""},
-                        "index": index,
-                        "order": len(self.tools),
-                    },
-                )
+                self._index_to_key[index_key] = key
 
-                # Remember the mapping for subsequent deltas that omit the id
-                self._index_to_key.setdefault(index_key, key)
+                migrated_entry = None
+                if previous_key and previous_key != key:
+                    migrated_entry = self.tools.pop(previous_key, None)
 
-                if "id" in tool_call:
-                    entry["id"] = tool_call["id"]
+                entry = self.tools.get(key)
+                if entry is None:
+                    if migrated_entry is not None:
+                        entry = migrated_entry
+                    else:
+                        entry = {
+                            "id": None,
+                            "type": None,
+                            "function": {"name": None, "arguments": ""},
+                            "index": index,
+                            "order": len(self.tools),
+                        }
+                    self.tools[key] = entry
+
+                entry.setdefault("function", {"name": None, "arguments": ""})
+                entry.setdefault("order", len(self.tools))
+                entry["index"] = index
+
+                if isinstance(tool_id, str) and tool_id:
+                    entry["id"] = tool_id
+                elif not entry.get("id"):
+                    entry["id"] = key
 
                 if "type" in tool_call:
                     entry["type"] = tool_call["type"]

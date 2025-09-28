@@ -5,7 +5,7 @@ This implementation solves the header timing issue and supports SSE processing.
 
 import contextlib
 import json
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -192,6 +192,7 @@ class DeferredStreaming(StreamingResponse):
             async def body_generator() -> AsyncGenerator[bytes, None]:
                 total_chunks = 0
                 total_bytes = 0
+                upstream_raw_chunks: list[bytes] = []
 
                 # Emit PROVIDER_STREAM_START hook
                 if self.hook_manager:
@@ -277,7 +278,9 @@ class DeferredStreaming(StreamingResponse):
                         )
                         # Process SSE events with format adaptation
                         async for chunk in self._process_sse_events(
-                            response, self.handler_config.response_adapter
+                            response,
+                            self.handler_config.response_adapter,
+                            raw_event_consumer=upstream_raw_chunks.append,
                         ):
                             total_chunks += 1
                             total_bytes += len(chunk)
@@ -351,6 +354,9 @@ class DeferredStreaming(StreamingResponse):
                                     event_data = sse_buffer[:event_end]
                                     sse_buffer = sse_buffer[event_end:]
 
+                                    # Capture raw upstream chunk
+                                    upstream_raw_chunks.append(event_data)
+
                                     # Process the complete SSE event with collector
 
                                     # Emit PROVIDER_STREAM_CHUNK hook for SSE event
@@ -394,6 +400,7 @@ class DeferredStreaming(StreamingResponse):
 
                             # Yield any remaining data in buffer
                             if sse_buffer:
+                                upstream_raw_chunks.append(sse_buffer)
                                 self._record_sse_bytes(sse_buffer)
                                 yield sse_buffer
                         else:
@@ -401,6 +408,7 @@ class DeferredStreaming(StreamingResponse):
                             async for chunk in response.aiter_bytes():
                                 total_chunks += 1
                                 total_bytes += len(chunk)
+                                upstream_raw_chunks.append(chunk)
 
                                 # Emit PROVIDER_STREAM_CHUNK hook
                                 if self.hook_manager:
@@ -466,6 +474,12 @@ class DeferredStreaming(StreamingResponse):
                                 total_bytes=total_bytes,
                             )
 
+                            upstream_stream_text: str | None = None
+                            if upstream_raw_chunks:
+                                upstream_stream_text = b"".join(
+                                    upstream_raw_chunks
+                                ).decode("utf-8", errors="replace")
+
                             stream_end_context = HookContext(
                                 event=HookEvent.PROVIDER_STREAM_END,
                                 timestamp=datetime.now(),
@@ -476,6 +490,7 @@ class DeferredStreaming(StreamingResponse):
                                     "request_id": request_id,
                                     "total_chunks": total_chunks,
                                     "total_bytes": total_bytes,
+                                    "upstream_stream_text": upstream_stream_text,
                                 },
                                 metadata={
                                     "request_id": request_id,
@@ -609,7 +624,11 @@ class DeferredStreaming(StreamingResponse):
                 await self.client.aclose()
 
     async def _process_sse_events(
-        self, response: httpx.Response, adapter: Any
+        self,
+        response: httpx.Response,
+        adapter: Any,
+        *,
+        raw_event_consumer: Callable[[bytes], None] | None = None,
     ) -> AsyncGenerator[bytes, None]:
         """Parse and adapt SSE events from response stream.
 
@@ -633,7 +652,9 @@ class DeferredStreaming(StreamingResponse):
 
         # Create streaming pipeline:
         # 1. Parse raw SSE bytes to JSON chunks
-        json_stream = self._parse_sse_to_json_stream(response.aiter_bytes())
+        json_stream = self._parse_sse_to_json_stream(
+            response.aiter_bytes(), raw_event_consumer=raw_event_consumer
+        )
 
         # 2. Pass entire JSON stream through adapter (maintains state)
         logger.debug(
@@ -720,7 +741,10 @@ class DeferredStreaming(StreamingResponse):
         )
 
     async def _parse_sse_to_json_stream(
-        self, raw_stream: AsyncIterator[bytes]
+        self,
+        raw_stream: AsyncIterator[bytes],
+        *,
+        raw_event_consumer: Callable[[bytes], None] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Parse raw SSE bytes stream into JSON chunks.
 
@@ -729,6 +753,7 @@ class DeferredStreaming(StreamingResponse):
 
         Args:
             raw_stream: Raw bytes stream from provider
+            raw_event_consumer: Optional callback invoked with each raw SSE event
         """
         buffer = b""
 
@@ -740,6 +765,9 @@ class DeferredStreaming(StreamingResponse):
                 event_end = buffer.index(b"\n\n") + 2
                 event_data = buffer[:event_end]
                 buffer = buffer[event_end:]
+
+                if raw_event_consumer:
+                    raw_event_consumer(event_data)
 
                 # Parse SSE event
                 event_lines = (
@@ -783,6 +811,15 @@ class DeferredStreaming(StreamingResponse):
                         yield json_obj
                     except json.JSONDecodeError:
                         continue
+
+        if buffer:
+            if raw_event_consumer:
+                raw_event_consumer(buffer)
+            logger.debug(
+                "sse_parser_incomplete_chunk",
+                remaining_bytes=len(buffer),
+                category="streaming_conversion",
+            )
 
     async def _serialize_json_to_sse_stream(
         self, json_stream: AsyncIterator[Any], include_done: bool = True

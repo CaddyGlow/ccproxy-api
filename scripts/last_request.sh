@@ -76,14 +76,37 @@ for f in "${PATH_REQ}/"*"${LAST_UUID}"*.json; do
   printf '```\n'
 done
 
-printf "\n## Response Strem\n"
-for f in "${PATH_REQ}/"*"${LAST_UUID}"*response_core_http.json; do
+printf "\n## Response Stream\n"
+STREAM_FOUND=false
+for f in "${PATH_REQ}/"*"${LAST_UUID}"*_streaming_response.json; do
   [ -e "$f" ] || continue
+  STREAM_FOUND=true
   echo "$f"
   printf '```json\n'
-  jq -r .body "$f" | grep '^data: ' | sed 's/^data: //' | jq -r .
+  jq '{request_id, provider, method, url, total_chunks, total_bytes, buffered_mode}' "$f"
   printf '```\n'
+  UPSTREAM_STREAM=$(jq -r '.upstream_stream_text // empty' "$f")
+  if [[ -n "$UPSTREAM_STREAM" ]]; then
+    printf 'Upstream Stream (provider raw)\n'
+    printf '```text\n'
+    printf '%s\n' "$UPSTREAM_STREAM"
+    printf '```\n'
+  fi
+  printf 'Client Stream (proxied)\n'
+  printf '```text\n'
+  jq -r '.response_text' "$f"
+  printf '\n```\n'
 done
+
+if [[ "$STREAM_FOUND" == false ]]; then
+  for f in "${PATH_REQ}/"*"${LAST_UUID}"*response_core_http.json; do
+    [ -e "$f" ] || continue
+    echo "$f"
+    printf '```json\n'
+    jq -r .body "$f" | grep '^data: ' | sed 's/^data: //' | jq -r .
+    printf '```\n'
+  done
+fi
 
 printf "\n## Command\n"
 for f in "${COMMAND_REQ}/"*"${LAST_UUID}"*.txt; do

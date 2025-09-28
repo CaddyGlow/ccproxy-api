@@ -7,7 +7,11 @@ that operate directly on dictionaries instead of typed Pydantic models.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+
+if TYPE_CHECKING:
+    from .protocols import StreamAccumulatorProtocol
 
 from pydantic import TypeAdapter, ValidationError
 
@@ -62,19 +66,53 @@ async def map_stream(
     *,
     validator_model: Any,
     converter: Any,
+    accumulator: StreamAccumulatorProtocol | None = None,
 ) -> AsyncIterator[FormatDict]:
+    """Map stream with optional accumulation before validation.
+
+    Args:
+        stream: Input stream of format dictionaries
+        validator_model: Pydantic model for validation
+        converter: Converter function to apply to validated stream
+        accumulator: Optional accumulator for handling partial chunks
+
+    Returns:
+        Converted stream
+    """
+
     async def _typed_stream() -> AsyncIterator[Any]:
         async for chunk_data in stream:
-            try:
-                yield _validate_stream_event(validator_model, chunk_data)
-            except ValidationError as exc:
-                logger.debug(
-                    "stream_chunk_validation_failed",
-                    model=str(validator_model),
-                    error=str(exc),
-                    action="raise",
-                )
-                raise
+            if accumulator:
+                # Accumulate chunk and get complete object if ready
+                complete_object = accumulator.accumulate_chunk(chunk_data)
+
+                if complete_object is None:
+                    # Still accumulating, skip this chunk
+                    continue
+
+                # Have complete object, validate it
+                try:
+                    yield _validate_stream_event(validator_model, complete_object)
+                except ValidationError as exc:
+                    logger.debug(
+                        "stream_chunk_validation_failed",
+                        model=str(validator_model),
+                        error=str(exc),
+                        action="raise",
+                    )
+                    raise
+            else:
+                # No accumulator, validate directly
+                try:
+                    yield _validate_stream_event(validator_model, chunk_data)
+                except ValidationError as exc:
+                    logger.debug(
+                        "stream_chunk_validation_failed",
+                        model=str(validator_model),
+                        error=str(exc),
+                        action="raise",
+                    )
+                    raise
 
     converted_chunks = converter(_typed_stream())
     async for converted_chunk in converted_chunks:
@@ -178,10 +216,16 @@ async def convert_openai_to_anthropic_stream(
     stream: AsyncIterator[FormatDict],
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to Anthropic MessageStream."""
+    from .chat_accumulator import ChatCompletionAccumulator
+
+    # Use accumulator to handle partial tool calls
+    accumulator = ChatCompletionAccumulator()
+
     async for out_chunk in map_stream(
         stream,
         validator_model=openai_models.ChatCompletionChunk,
         converter=openai_to_anthropic.convert__openai_chat_to_anthropic_messages__stream,
+        accumulator=accumulator,
     ):
         yield out_chunk
 
@@ -348,10 +392,16 @@ async def convert_openai_chat_to_openai_responses_stream(
     stream: AsyncIterator[FormatDict],
 ) -> AsyncIterator[FormatDict]:
     """Convert OpenAI ChatCompletion stream to OpenAI Responses stream."""
+    from .chat_accumulator import ChatCompletionAccumulator
+
+    # Use accumulator to handle partial tool calls
+    accumulator = ChatCompletionAccumulator()
+
     async for out_chunk in map_stream(
         stream,
         validator_model=openai_models.ChatCompletionChunk,
         converter=openai_to_openai.convert__openai_chat_to_openai_responses__stream,
+        accumulator=accumulator,
     ):
         yield out_chunk
 

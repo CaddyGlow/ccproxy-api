@@ -1,10 +1,13 @@
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 
 from ccproxy.llms.formatters.openai_to_anthropic import (
     convert__openai_chat_to_anthropic_messages__response,
+    convert__openai_chat_to_anthropic_messages__stream,
 )
+from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
 
 
@@ -195,3 +198,102 @@ def test_response_usage_from_dict() -> None:
     assert usage_model.total_tokens == 15
     assert usage_model.input_tokens_details is not None
     assert usage_model.output_tokens_details is not None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_openai_chat_stream_to_anthropic_events_with_tool_call() -> None:
+    async def gen() -> AsyncIterator[dict[str, Any]]:
+        yield {
+            "id": "chunk-1",
+            "model": "gpt-test",
+            "choices": [{"delta": {"role": "assistant"}}],
+        }
+        yield {
+            "id": "chunk-1",
+            "model": "gpt-test",
+            "choices": [
+                {
+                    "delta": {
+                        "content": "Weather report:",
+                    }
+                }
+            ],
+        }
+        yield {
+            "id": "chunk-1",
+            "model": "gpt-test",
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "tool_1",
+                                "index": 0,
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": '{"city":"Sea',
+                                },
+                            }
+                        ]
+                    }
+                }
+            ],
+        }
+        yield {
+            "id": "chunk-1",
+            "model": "gpt-test",
+            "choices": [
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {
+                                "id": "tool_1",
+                                "index": 0,
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": 'ttle","units":"metric"}',
+                                },
+                            }
+                        ]
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 10,
+                "completion_tokens": 6,
+                "input_tokens": 10,
+                "output_tokens": 6,
+            },
+        }
+
+    events = [
+        evt async for evt in convert__openai_chat_to_anthropic_messages__stream(gen())
+    ]
+
+    assert events, "expected streamed events"
+    event_types = [getattr(evt, "type", None) for evt in events]
+    assert event_types[0] == "message_start"
+    assert "content_block_start" in event_types
+    assert event_types[-1] == "message_stop"
+
+    tool_start = next(
+        evt
+        for evt in events
+        if isinstance(evt, anthropic_models.ContentBlockStartEvent)
+        and getattr(evt.content_block, "type", None) == "tool_use"
+    )
+    assert tool_start.content_block.input == {
+        "city": "Seattle",
+        "units": "metric",
+    }
+
+    message_delta = next(
+        evt for evt in events if isinstance(evt, anthropic_models.MessageDeltaEvent)
+    )
+    assert message_delta.delta.stop_reason == "tool_use"
+    assert message_delta.usage.input_tokens == 10
+    assert message_delta.usage.output_tokens == 6

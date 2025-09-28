@@ -457,7 +457,7 @@ class OutputTextContent(LlmBaseModel):
     type: Literal["output_text"]
     text: str
     annotations: list[Any] | None = None
-    logprobs: dict[str, Any] | None = None
+    logprobs: dict[str, Any] | list[Any] | None = None
 
 
 class MessageOutput(LlmBaseModel):
@@ -797,7 +797,8 @@ class ErrorEvent(LlmBaseModel):  # Does not inherit from BaseStreamEvent per doc
     error: ErrorDetail
 
 
-AnyStreamEvent = RootModel[
+# Union type for all possible streaming events (for type annotations)
+StreamEventType = (
     ResponseCreatedEvent
     | ResponseInProgressEvent
     | ResponseCompletedEvent
@@ -831,7 +832,10 @@ AnyStreamEvent = RootModel[
     | CodeInterpreterCallCodeDeltaEvent
     | CodeInterpreterCallCodeDoneEvent
     | ErrorEvent
-]
+)
+
+# RootModel wrapper for validation (for pydantic parsing)
+AnyStreamEvent = RootModel[StreamEventType]
 
 
 # Utility functions

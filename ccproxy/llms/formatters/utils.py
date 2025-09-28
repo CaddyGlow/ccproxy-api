@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import contextlib
+import hashlib
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -225,6 +227,17 @@ def openai_usage_to_anthropic_usage(openai_usage: Any | None) -> anthropic_model
     )
 
 
+def build_obfuscation_token(
+    *, seed: str, sequence: int, payload: str | None = None
+) -> str:
+    """Return a deterministic obfuscation token mirroring Responses streams."""
+
+    material = f"{seed}:{sequence}:{payload or ''}"
+    digest = hashlib.sha256(material.encode("utf-8")).digest()
+    token = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return token[:16]
+
+
 def map_openai_finish_to_anthropic_stop(
     finish_reason: str | None,
 ) -> (
@@ -287,6 +300,7 @@ __all__ = [
     "openai_response_usage_snapshot",
     "openai_completion_usage_snapshot",
     "openai_usage_to_anthropic_usage",
+    "build_obfuscation_token",
     "map_openai_finish_to_anthropic_stop",
     "strict_parse_tool_arguments",
 ]

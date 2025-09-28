@@ -216,31 +216,30 @@ class RequestTracerHook(Hook):
 
     async def _handle_stream_start(self, context: HookContext) -> None:
         """Handle PROVIDER_STREAM_START event."""
-        logger.debug(
-            "stream_start_handler_called",
-            enabled=self.config.log_streaming_chunks,
-            request_id=context.data.get(
-                "request_id", context.metadata.get("request_id", "unknown")
-            ),
-            provider=context.provider,
-        )
-
-        if not self.config.log_streaming_chunks:
-            return
-
         request_id = context.data.get("request_id") or context.metadata.get(
             "request_id", "unknown"
         )
         provider = context.provider or "unknown"
 
-        # Initialize chunk collection for this request
-        self._streaming_chunks[request_id] = []
-        self._streaming_metadata[request_id] = {
-            "provider": provider,
-            "start_time": datetime.now(),
-            "url": context.data.get("url", ""),
-            "method": context.data.get("method", "UNKNOWN"),
-        }
+        logger.debug(
+            "stream_start_handler_called",
+            chunk_logging_enabled=self.config.log_streaming_chunks,
+            json_logs_enabled=self.config.json_logs_enabled,
+            request_id=request_id,
+            provider=provider,
+        )
+
+        if self.config.json_logs_enabled:
+            # Initialize chunk collection for this request when JSON logs are enabled
+            self._streaming_chunks[request_id] = []
+            self._streaming_metadata[request_id] = {
+                "provider": provider,
+                "start_time": datetime.now(),
+                "url": context.data.get("url", ""),
+                "method": context.data.get("method", "UNKNOWN"),
+                "buffered_mode": context.data.get("buffered_mode", False),
+                "upstream_stream_text": None,
+            }
 
         logger.debug(
             "stream_started",
@@ -250,32 +249,33 @@ class RequestTracerHook(Hook):
 
     async def _handle_stream_chunk(self, context: HookContext) -> None:
         """Handle PROVIDER_STREAM_CHUNK event."""
-        if not self.config.log_streaming_chunks:
-            return
-
         request_id = context.data.get("request_id", "unknown")
         chunk = context.data.get("chunk")
 
-        if chunk and request_id in self._streaming_chunks:
+        if (
+            chunk
+            and self.config.json_logs_enabled
+            and request_id in self._streaming_chunks
+        ):
             # Collect the chunk
             self._streaming_chunks[request_id].append(chunk)
 
-            # Optional: Log chunk info for debugging
-            chunk_number = context.data.get("chunk_number", 0)
-            chunk_size = context.data.get("chunk_size", len(chunk) if chunk else 0)
-
-            logger.trace(
-                "stream_chunk_collected",
-                request_id=request_id,
-                chunk_number=chunk_number,
-                chunk_size=chunk_size,
-            )
-
-    async def _handle_stream_end(self, context: HookContext) -> None:
-        """Handle PROVIDER_STREAM_END event."""
         if not self.config.log_streaming_chunks:
             return
 
+        # Optional: Log chunk info for debugging
+        chunk_number = context.data.get("chunk_number", 0)
+        chunk_size = context.data.get("chunk_size", len(chunk) if chunk else 0)
+
+        logger.trace(
+            "stream_chunk_collected",
+            request_id=request_id,
+            chunk_number=chunk_number,
+            chunk_size=chunk_size,
+        )
+
+    async def _handle_stream_end(self, context: HookContext) -> None:
+        """Handle PROVIDER_STREAM_END event."""
         request_id = context.data.get("request_id", "unknown")
         provider = context.provider or "unknown"
         total_chunks = context.data.get("total_chunks", 0)
@@ -283,26 +283,33 @@ class RequestTracerHook(Hook):
         usage_metrics = context.data.get("usage_metrics", {})
 
         # Write collected chunks to response file
-        if request_id in self._streaming_chunks and self._streaming_chunks[request_id]:
-            metadata = self._streaming_metadata.get(request_id, {})
-            chunks = self._streaming_chunks[request_id]
+        if self.config.json_logs_enabled:
+            if (
+                request_id in self._streaming_chunks
+                and self._streaming_chunks[request_id]
+            ):
+                metadata = self._streaming_metadata.get(request_id, {})
+                chunks = self._streaming_chunks[request_id]
 
-            # Add end time and metrics to metadata
-            metadata.update(
-                {
-                    "end_time": datetime.now(),
-                    "total_chunks": total_chunks,
-                    "total_bytes": total_bytes,
-                    "usage_metrics": usage_metrics,
-                }
-            )
+                # Add end time and metrics to metadata
+                metadata.update(
+                    {
+                        "end_time": datetime.now(),
+                        "total_chunks": total_chunks,
+                        "total_bytes": total_bytes,
+                        "usage_metrics": usage_metrics,
+                        "upstream_stream_text": context.data.get(
+                            "upstream_stream_text"
+                        ),
+                    }
+                )
 
-            # Write response file
-            await self._write_streaming_response_file(request_id, chunks, metadata)
+                # Write response file
+                await self._write_streaming_response_file(request_id, chunks, metadata)
 
-            # Clean up memory
-            del self._streaming_chunks[request_id]
-            del self._streaming_metadata[request_id]
+            # Clean up memory regardless of whether we had chunks
+            self._streaming_chunks.pop(request_id, None)
+            self._streaming_metadata.pop(request_id, None)
 
         logger.trace(
             "stream_ended",
@@ -356,6 +363,7 @@ class RequestTracerHook(Hook):
                 response_text = str(combined_data)
 
             # Build response data
+            upstream_stream_text = metadata.get("upstream_stream_text")
             response_data = {
                 "request_id": request_id,
                 "provider": metadata.get("provider", "unknown"),
@@ -365,6 +373,8 @@ class RequestTracerHook(Hook):
                 "end_time": datetime.now().isoformat(),
                 "total_chunks": len(chunks),
                 "total_bytes": len(combined_data),
+                "buffered_mode": metadata.get("buffered_mode", False),
+                "usage_metrics": metadata.get("usage_metrics"),
                 # "response_text": response_text[: self.config.truncate_body_preview]
                 # if len(response_text) > self.config.truncate_body_preview
                 # else response_text,
@@ -372,6 +382,9 @@ class RequestTracerHook(Hook):
                 # > self.config.truncate_body_preview,
                 "response_text": response_text,
             }
+
+            if upstream_stream_text is not None:
+                response_data["upstream_stream_text"] = upstream_stream_text
 
             # Generate file path
             file_path = self._generate_stream_response_file_path(
