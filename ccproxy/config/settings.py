@@ -17,7 +17,10 @@ from .core import (
 )
 from .runtime import BinarySettings
 from .security import AuthSettings, SecuritySettings
-from .utils import SchedulerSettings, find_toml_config_file
+from .utils import SchedulerSettings, find_toml_config_file, get_ccproxy_config_dir
+
+
+_CONFIG_MISSING_LOGGED = False
 
 
 def _auth_default() -> AuthSettings:
@@ -76,6 +79,7 @@ class Settings(BaseSettings):
     http: HTTPSettings = Field(
         default_factory=HTTPSettings,
         description="HTTP client configuration settings",
+        json_schema_extra={"config_example_hidden": True},
     )
 
     auth: AuthSettings = Field(
@@ -86,21 +90,25 @@ class Settings(BaseSettings):
     binary: BinarySettings = Field(
         default_factory=BinarySettings,
         description="Binary resolution and package manager fallback configuration",
+        json_schema_extra={"config_example_hidden": True},
     )
 
     scheduler: SchedulerSettings = Field(
         default_factory=SchedulerSettings,
         description="Task scheduler configuration settings",
+        json_schema_extra={"config_example_hidden": True},
     )
 
     plugin_discovery: PluginDiscoverySettings = Field(
         default_factory=PluginDiscoverySettings,
         description="Filesystem plugin discovery search paths",
+        json_schema_extra={"config_example_hidden": True},
     )
 
     enable_plugins: bool = Field(
         default=True,
         description="Enable plugin system",
+        json_schema_extra={"config_example_hidden": True},
     )
 
     plugins_disable_local_discovery: bool = Field(
@@ -109,16 +117,19 @@ class Settings(BaseSettings):
             "If true, skip filesystem plugin discovery from the local 'plugins/' directory "
             "and load plugins only from installed entry points."
         ),
+        json_schema_extra={"config_example_hidden": True},
     )
 
     enabled_plugins: list[str] | None = Field(
         default=None,
         description="List of explicitly enabled plugins (None = all enabled). Takes precedence over disabled_plugins.",
+        json_schema_extra={"config_example_hidden": True},
     )
 
     disabled_plugins: list[str] | None = Field(
         default=None,
         description="List of explicitly disabled plugins.",
+        json_schema_extra={"config_example_hidden": True},
     )
 
     # CLI context for plugin access (set dynamically)
@@ -368,6 +379,10 @@ class Settings(BaseSettings):
         **kwargs: Any,
     ) -> "Settings":
         """Create Settings instance from configuration file with env precedence and safe merging."""
+        logger = get_logger(__name__)
+
+        global _CONFIG_MISSING_LOGGED
+
         if config_path is None:
             config_path_env = os.environ.get("CONFIG_FILE")
             if config_path_env:
@@ -382,12 +397,21 @@ class Settings(BaseSettings):
         config_data: dict[str, Any] = {}
         if config_path and config_path.exists():
             config_data = cls.load_config_file(config_path)
-            logger = get_logger(__name__)
             logger.info(
                 "config_file_loaded",
                 path=str(config_path),
                 category="config",
             )
+        elif not _CONFIG_MISSING_LOGGED:
+            suggestion = f"ccproxy config init --output-dir {get_ccproxy_config_dir()}"
+            log_kwargs: dict[str, Any] = {
+                "category": "config",
+                "suggested_command": suggestion,
+            }
+            if config_path is not None:
+                log_kwargs["path"] = str(config_path)
+            logger.info("config_file_missing", **log_kwargs)
+            _CONFIG_MISSING_LOGGED = True
 
         cls._validate_deprecated_keys(config_data)
 

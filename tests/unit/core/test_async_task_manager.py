@@ -1,7 +1,6 @@
 """Tests for the AsyncTaskManager."""
 
 import asyncio
-import contextlib
 from unittest.mock import Mock, patch
 
 import pytest
@@ -271,14 +270,13 @@ class TestAsyncTaskManager:
         """Test that max tasks limit is enforced."""
         await manager.start()
 
-        # Create max number of tasks
-        async def long_running_task():
-            """Long running task that can be cancelled cleanly."""
-            try:
-                while True:
-                    await asyncio.sleep(0.1)
-            except asyncio.CancelledError:
-                raise
+        # Keep tasks alive until the stop event is triggered so we can
+        # assert the manager refuses additional work while saturated without
+        # relying on cancellation side-effects that trigger runtime warnings.
+        stop_event = asyncio.Event()
+
+        async def long_running_task() -> None:
+            await stop_event.wait()
 
         tasks = []
         for i in range(manager.max_tasks):
@@ -300,11 +298,9 @@ class TestAsyncTaskManager:
             finally:
                 overflow_coro.close()  # Clean up the unawaited coroutine
 
-        # Cancel all tasks and wait for them to complete cancellation
-        for task in tasks:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+        # Allow tasks to finish gracefully now that the assertion has run
+        stop_event.set()
+        await asyncio.gather(*tasks)
 
         await manager.stop()
 
@@ -322,8 +318,10 @@ class TestAsyncTaskManager:
         async def quick_task():
             await asyncio.sleep(0.01)
 
+        slow_stop_event = asyncio.Event()
+
         async def slow_task():
-            await asyncio.sleep(1)
+            await slow_stop_event.wait()
 
         task1 = await manager.create_task(quick_task(), name="quick")
         task2 = await manager.create_task(slow_task(), name="slow")
@@ -335,8 +333,9 @@ class TestAsyncTaskManager:
         assert stats["total_tasks"] >= 2
         assert stats["active_tasks"] >= 1  # slow task still running
 
-        # Cancel slow task
-        task2.cancel()
+        # Allow the slow task to finish cleanly
+        slow_stop_event.set()
+        await task2
 
         await manager.stop()
 
@@ -344,8 +343,10 @@ class TestAsyncTaskManager:
         """Test listing active tasks."""
         await manager.start()
 
-        async def slow_task():
-            await asyncio.sleep(1)
+        stop_event = asyncio.Event()
+
+        async def slow_task() -> None:
+            await stop_event.wait()
 
         task = await manager.create_task(
             slow_task(),
@@ -367,9 +368,8 @@ class TestAsyncTaskManager:
         assert "task_id" in found_task
         assert "age_seconds" in found_task
 
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        stop_event.set()
+        await task
         await manager.stop()
 
 

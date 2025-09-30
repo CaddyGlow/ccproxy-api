@@ -56,15 +56,27 @@ def mock_external_openai_codex_api_streaming(httpx_mock: HTTPXMock) -> HTTPXMock
     Returns:
         HTTPXMock configured with streaming Codex responses
     """
-    streaming_response = """data: {"id":"chunk_1","object":"chat.completion.chunk","created":1234567890,"model":"gpt-5","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
-
-data: {"id":"chunk_1","object":"chat.completion.chunk","created":1234567890,"model":"gpt-5","choices":[{"index":0,"delta":{"content":" from"},"finish_reason":null}]}
-
-data: {"id":"chunk_1","object":"chat.completion.chunk","created":1234567890,"model":"gpt-5","choices":[{"index":0,"delta":{"content":" Codex!"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}
-
-data: [DONE]
-
-"""
+    streaming_response = (
+        'data: {"type":"response.created","sequence_number":0,'
+        '"response":{"id":"resp_123","object":"response","created_at":1234567890,'
+        '"status":"in_progress","model":"gpt-5","output":[],"parallel_tool_calls":false}}\n\n'
+        'data: {"type":"response.output_text.delta","sequence_number":1,'
+        '"item_id":"msg_1","output_index":0,"content_index":0,"delta":"Hello"}\n\n'
+        'data: {"type":"response.output_text.delta","sequence_number":2,'
+        '"item_id":"msg_1","output_index":0,"content_index":0,"delta":" Codex!"}\n\n'
+        'data: {"type":"response.output_text.done","sequence_number":3,'
+        '"item_id":"msg_1","output_index":0,"content_index":0,'
+        '"text":"Hello Codex!"}\n\n'
+        'data: {"type":"response.completed","sequence_number":4,'
+        '"response":{"id":"resp_123","object":"response","created_at":1234567890,'
+        '"status":"completed","model":"gpt-5","parallel_tool_calls":false,'
+        '"usage":{"input_tokens":10,"output_tokens":3,"total_tokens":13,'
+        '"input_tokens_details":{"cached_tokens":0},'
+        '"output_tokens_details":{"reasoning_tokens":0}},'
+        '"output":[{"id":"msg_1","type":"message","role":"assistant","status":"completed",'
+        '"content":[{"type":"output_text","text":"Hello Codex!"}]}]}}\n\n'
+        "data: [DONE]\n\n"
+    )
 
     httpx_mock.add_response(
         url="https://chatgpt.com/backend-api/codex/responses",

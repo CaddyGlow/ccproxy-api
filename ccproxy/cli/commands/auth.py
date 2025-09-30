@@ -34,7 +34,9 @@ from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.services.container import ServiceContainer
 
 
-app = typer.Typer(name="auth", help="Authentication and credential management")
+app = typer.Typer(
+    name="auth", help="Authentication and credential management", no_args_is_help=True
+)
 
 console = Console()
 logger = get_logger(__name__)

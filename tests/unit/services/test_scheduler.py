@@ -1,14 +1,13 @@
 """Integration tests for the scheduler system."""
 
+import asyncio
 from collections.abc import AsyncGenerator, Generator
 from typing import Any
 
 import pytest
 
-from ccproxy.api.bootstrap import create_service_container
 from ccproxy.config.settings import Settings
 from ccproxy.config.utils import SchedulerSettings
-from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.scheduler.core import Scheduler
 from ccproxy.scheduler.errors import (
     TaskNotFoundError,
@@ -20,7 +19,6 @@ from ccproxy.scheduler.tasks import (
     # StatsPrintingTask removed - functionality moved to metrics plugin
     BaseScheduledTask,
 )
-from ccproxy.services.container import ServiceContainer
 
 
 # Mock task for testing since PushgatewayTask moved to metrics plugin
@@ -30,26 +28,60 @@ class MockScheduledTask(BaseScheduledTask):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.run_count = 0
+        self.interval_seconds = 0.0
 
     async def run(self) -> bool:
         self.run_count += 1
         return True
+
+    def calculate_next_delay(self) -> float:
+        return 0.0
 
 
 class TestSchedulerCore:
     """Test the core Scheduler functionality."""
 
     @pytest.fixture
-    async def task_manager_lifecycle(self) -> AsyncGenerator[None, None]:
-        """Start and stop the task manager for tests that need it."""
-        container = ServiceContainer.get_current(strict=False)
-        if container is None:
-            container = create_service_container()
-        await start_task_manager(container=container)
-        try:
-            yield
-        finally:
-            await stop_task_manager(container=container)
+    async def task_manager_lifecycle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> AsyncGenerator[None, None]:
+        """Stub task manager lifecycle to avoid expensive startup/shutdown."""
+
+        async def _noop_start(*_: Any, **__: Any) -> None:
+            return None
+
+        async def _noop_stop(*_: Any, **__: Any) -> None:
+            return None
+
+        monkeypatch.setattr(
+            "ccproxy.core.async_task_manager.start_task_manager", _noop_start
+        )
+        monkeypatch.setattr(
+            "ccproxy.core.async_task_manager.stop_task_manager", _noop_stop
+        )
+        yield
+
+    @pytest.fixture(autouse=True)
+    def patch_managed_tasks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Ensure scheduled tasks use lightweight asyncio tasks in tests."""
+
+        async def _create_managed_task(
+            coro,
+            *,
+            name=None,
+            creator=None,
+            cleanup_callback=None,
+            **_kwargs,
+        ):
+            task = asyncio.create_task(coro, name=name)
+            if cleanup_callback:
+                task.add_done_callback(lambda _: cleanup_callback())
+            return task
+
+        monkeypatch.setattr(
+            "ccproxy.scheduler.tasks.create_managed_task",
+            _create_managed_task,
+        )
 
     @pytest.fixture
     def scheduler(self) -> Generator[Scheduler, None, None]:
@@ -64,7 +96,7 @@ class TestSchedulerCore:
         scheduler = Scheduler(
             task_registry=registry,
             max_concurrent_tasks=5,
-            graceful_shutdown_timeout=1.0,
+            graceful_shutdown_timeout=0.01,
         )
         yield scheduler
 

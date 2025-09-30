@@ -31,9 +31,9 @@ def _create_config_table(title: str, rows: list[tuple[str, str, str]]) -> Any:
     from rich.table import Table
 
     table = Table(title=title, show_header=True, header_style="bold magenta")
-    table.add_column("Setting", style="cyan", width=20)
-    table.add_column("Value", style="green")
-    table.add_column("Description", style="dim")
+    table.add_column("Setting", style="cyan", overflow="fold")
+    table.add_column("Value", style="green", overflow="fold")
+    table.add_column("Description", style="dim", overflow="fold")
 
     for setting, value, description in rows:
         table.add_row(setting, value, description)
@@ -83,7 +83,9 @@ def _generate_config_rows_from_model(
     """Generate configuration rows from a Pydantic model dynamically."""
     rows = []
 
-    for field_name, _field_info in model.model_fields.items():
+    field_definitions = model.__class__.model_fields
+
+    for field_name, _field_info in field_definitions.items():
         field_value = getattr(model, field_name)
         display_name = f"{prefix}{field_name}" if prefix else field_name
 
@@ -97,7 +99,7 @@ def _generate_config_rows_from_model(
                 )
             )
 
-            sub_rows = _generate_config_rows_from_model(field_value, f"{display_name}_")
+            sub_rows = _generate_config_rows_from_model(field_value, f"{display_name}.")
             rows.extend(sub_rows)
         else:
             formatted_value = _format_value(field_value)
@@ -113,35 +115,66 @@ def _group_config_rows(
     """Group configuration rows by their top-level section."""
     groups: dict[str, list[tuple[str, str, str]]] = {}
 
+    CATEGORY_PREFIXES = {
+        "server_": "Server Configuration",
+        "security_": "Security Configuration",
+        "cors_": "CORS Configuration",
+        "claude_": "Claude CLI Configuration",
+        "auth_": "Authentication Configuration",
+        "docker_": "Docker Configuration",
+        "observability_": "Observability Configuration",
+        "scheduler_": "Scheduler Configuration",
+        "pricing_": "Pricing Configuration",
+    }
+
     for setting, value, description in rows:
-        if setting.startswith("server"):
-            group_name = "Server Configuration"
-        elif setting.startswith("security"):
-            group_name = "Security Configuration"
-        elif setting.startswith("cors"):
-            group_name = "CORS Configuration"
-        elif setting.startswith("claude"):
-            group_name = "Claude CLI Configuration"
-        elif setting.startswith("auth"):
-            group_name = "Authentication Configuration"
-        elif setting.startswith("docker"):
-            group_name = "Docker Configuration"
-        elif setting.startswith("observability"):
-            group_name = "Observability Configuration"
-        elif setting.startswith("scheduler"):
-            group_name = "Scheduler Configuration"
-        elif setting.startswith("pricing"):
-            group_name = "Pricing Configuration"
+        normalized_setting = setting
+        group_name = "General Configuration"
+
+        for prefix, group in CATEGORY_PREFIXES.items():
+            if setting.startswith(prefix):
+                normalized_setting = setting[len(prefix) :]
+                group_name = group
+                break
         else:
-            group_name = "General Configuration"
+            if setting.startswith("server"):
+                group_name = "Server Configuration"
+            elif setting.startswith("security"):
+                group_name = "Security Configuration"
+            elif setting.startswith("cors"):
+                group_name = "CORS Configuration"
+            elif setting.startswith("claude"):
+                group_name = "Claude CLI Configuration"
+            elif setting.startswith("auth"):
+                group_name = "Authentication Configuration"
+            elif setting.startswith("docker"):
+                group_name = "Docker Configuration"
+            elif setting.startswith("observability"):
+                group_name = "Observability Configuration"
+            elif setting.startswith("scheduler"):
+                group_name = "Scheduler Configuration"
+            elif setting.startswith("pricing"):
+                group_name = "Pricing Configuration"
+
+        if "." in normalized_setting:
+            normalized_setting = normalized_setting.split(".")[-1]
 
         if group_name not in groups:
             groups[group_name] = []
 
-        clean_setting = setting.split("_", 1)[1] if "_" in setting else setting
-        groups[group_name].append((clean_setting, value, description))
+        groups[group_name].append((normalized_setting, value, description))
 
     return groups
+
+
+def _is_hidden_in_example(field_info: FieldInfo) -> bool:
+    """Determine if a field should be omitted from generated example configs."""
+
+    if bool(field_info.exclude):
+        return True
+
+    extra = getattr(field_info, "json_schema_extra", None) or {}
+    return bool(extra.get("config_example_hidden"))
 
 
 def get_config_path_from_context() -> Path | None:
@@ -308,6 +341,8 @@ def config_init(
         toolkit.print(f"Configuration value error: {e}", tag="error")
         raise typer.Exit(1) from e
     except Exception as e:
+        if isinstance(e, typer.Exit):
+            raise
         logger.error("config_init_unexpected_error", error=str(e), exc_info=e)
         toolkit.print(f"Error creating configuration file: {e}", tag="error")
         raise typer.Exit(1) from e
@@ -516,11 +551,16 @@ def _generate_default_config_from_model(
 
     config_data: dict[str, Any] = {}
 
-    for field_name, _field_info in settings_class.model_fields.items():
+    for field_name, field_info in settings_class.model_fields.items():
+        if _is_hidden_in_example(field_info):
+            continue
+
         field_value = getattr(default_settings, field_name)
 
         if isinstance(field_value, BaseModel):
-            config_data[field_name] = _generate_nested_config_from_model(field_value)
+            nested_config = _generate_nested_config_from_model(field_value)
+            if nested_config:
+                config_data[field_name] = nested_config
         else:
             if isinstance(field_value, Path):
                 config_data[field_name] = str(field_value)
@@ -534,11 +574,16 @@ def _generate_nested_config_from_model(model: BaseModel) -> dict[str, Any]:
     """Generate configuration for nested models."""
     config_data: dict[str, Any] = {}
 
-    for field_name, _field_info in model.model_fields.items():
+    for field_name, field_info in model.model_fields.items():
+        if _is_hidden_in_example(field_info):
+            continue
+
         field_value = getattr(model, field_name)
 
         if isinstance(field_value, BaseModel):
-            config_data[field_name] = _generate_nested_config_from_model(field_value)
+            nested_config = _generate_nested_config_from_model(field_value)
+            if nested_config:
+                config_data[field_name] = nested_config
         else:
             if isinstance(field_value, Path):
                 config_data[field_name] = str(field_value)
@@ -558,9 +603,12 @@ def _write_toml_config_with_comments(
         f.write("# Most settings are commented out with their default values\n")
         f.write("# Uncomment and modify as needed\n\n")
 
-        for field_name, _field_info in settings_class.model_fields.items():
+        for field_name, field_info in settings_class.model_fields.items():
+            if _is_hidden_in_example(field_info):
+                continue
+
             field_value = config_data.get(field_name)
-            description = _get_field_description(_field_info)
+            description = _get_field_description(field_info)
 
             f.write(f"# {description}\n")
 

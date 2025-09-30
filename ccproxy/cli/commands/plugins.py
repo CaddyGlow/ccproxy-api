@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 import typer
 from pydantic import BaseModel, ValidationError
@@ -18,9 +19,15 @@ from ccproxy.core.plugins.discovery import (
     build_combined_plugin_denylist,
 )
 from ccproxy.core.plugins.interfaces import PluginFactory
+from ccproxy.templates import PluginTemplateType, build_plugin_scaffold
 
 
-app = typer.Typer(name="plugins", help="Manage and inspect plugins.")
+app = typer.Typer(
+    name="plugins", help="Manage and inspect plugins.", no_args_is_help=True
+)
+
+
+PLUGIN_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -191,6 +198,22 @@ def _derive_status_reason(
     return None
 
 
+def _select_scaffold_root(settings: Settings) -> Path:
+    """Choose a sensible default root for new plugin scaffolds."""
+
+    directories = settings.plugin_discovery.directories
+    if not directories:
+        return Path.cwd()
+    for candidate in reversed(directories):
+        candidate_path = Path(candidate)
+        parts = candidate_path.parts
+        if len(parts) >= 2 and parts[-2:] == ("ccproxy", "plugins"):
+            continue
+        return candidate_path
+
+    return Path(directories[-1])
+
+
 def gather_plugin_metadata(settings: Settings) -> tuple[PluginMetadata, ...]:
     """Collect plugin metadata and configuration for CLI display."""
 
@@ -322,3 +345,145 @@ def dependencies() -> None:
     console.print(
         "Plugin dependencies are managed at the package level (pyproject.toml/extras)."
     )
+
+
+@app.command()
+def scaffold(
+    plugin_name: Annotated[
+        str,
+        typer.Argument(
+            help="New plugin package name (snake_case).",
+        ),
+    ],
+    plugin_type: Annotated[
+        PluginTemplateType,
+        typer.Option(
+            "--type",
+            "-t",
+            help="Scaffold type to generate (system, provider, auth).",
+            case_sensitive=False,
+        ),
+    ] = PluginTemplateType.SYSTEM,
+    description: Annotated[
+        str,
+        typer.Option(
+            "--description",
+            "-d",
+            help="Plugin description stored in the manifest.",
+        ),
+    ] = "Custom CCProxy plugin.",
+    version: Annotated[
+        str,
+        typer.Option(
+            "--version",
+            "-v",
+            help="Semver version recorded in the manifest.",
+        ),
+    ] = "0.1.0",
+    output_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--path",
+            "-p",
+            help="Directory to create the plugin in (defaults to user plugin dir).",
+            file_okay=False,
+            dir_okay=True,
+            writable=True,
+            resolve_path=True,
+        ),
+    ] = None,
+    include_tests: Annotated[
+        bool,
+        typer.Option(
+            "--with-tests/--no-tests",
+            help="Include placeholder pytest files in the scaffold.",
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force/--no-force",
+            help="Overwrite existing files when the directory already exists.",
+        ),
+    ] = False,
+) -> None:
+    """Generate a plugin scaffold to jump-start development."""
+
+    console = Console()
+    settings_obj = Settings.from_config()
+    raw_name = plugin_name.strip()
+    normalised = raw_name.lower()
+
+    if not PLUGIN_NAME_PATTERN.match(normalised):
+        raise typer.BadParameter(
+            "Plugin name must start with a letter and use lowercase, digits, or underscores.",
+            param_hint="plugin_name",
+        )
+
+    plugin_name = normalised
+
+    if output_path is None:
+        target_root = _select_scaffold_root(settings_obj)
+    else:
+        target_root = output_path
+
+    target_root = target_root.expanduser()
+    target_root.mkdir(parents=True, exist_ok=True)
+
+    target_dir = target_root / plugin_name
+    if target_dir.exists():
+        has_content = any(target_dir.iterdir())
+        if has_content and not force:
+            console.print(
+                f"[red]Directory {target_dir} already exists. Use --force to overwrite.[/red]"
+            )
+            raise typer.Exit(code=1)
+    else:
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        files = build_plugin_scaffold(
+            plugin_name=plugin_name,
+            description=description,
+            version=version,
+            template_type=plugin_type,
+            include_tests=include_tests,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        console.print(f"[red]Failed to build scaffold: {exc}[/red]")
+        raise typer.Exit(code=1) from exc
+
+    created: list[tuple[str, str]] = []
+    for relative_path, content in files.items():
+        destination = target_dir / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        action = "overwrote" if destination.exists() else "created"
+        destination.write_text(content, encoding="utf-8")
+        created.append((action, relative_path))
+
+    console.print(
+        f"[bold green]Plugin scaffold ready[/bold green] in [cyan]{target_dir}[/cyan]"
+    )
+    if raw_name != plugin_name:
+        console.print(
+            f"  • Normalised plugin name to [bold]{plugin_name}[/bold] from '{raw_name}'."
+        )
+    for action, relative_path in created:
+        console.print(f"  • {action}: {relative_path}")
+    console.print(
+        "  • Update config and runtime files before enabling the plugin.",
+        style="dim",
+    )
+    if settings_obj.plugins_disable_local_discovery:
+        console.print(
+            "  • Local plugin discovery is disabled. Set `plugins_disable_local_discovery = false`"
+            " in your config or export `PLUGINS_DISABLE_LOCAL_DISCOVERY=false` to load filesystem"
+            " plugins.",
+            style="yellow",
+        )
+    if not settings_obj.enable_plugins:
+        console.print(
+            "  • Plugin system is disabled (`enable_plugins = false`). Update configuration to"
+            " load plugins.",
+            style="yellow",
+        )

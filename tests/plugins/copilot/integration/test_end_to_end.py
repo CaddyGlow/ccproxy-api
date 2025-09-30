@@ -9,6 +9,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import SecretStr
 from starlette.responses import Response
 
+from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.plugins.copilot.models import CopilotCacheData
 from ccproxy.plugins.copilot.oauth.models import (
     CopilotCredentials,
@@ -43,7 +44,7 @@ class TestCopilotEndToEnd:
             account_type="individual",
         )
 
-    @pytest.mark.asyncio(loop_scope="function")
+    @pytest.mark.asyncio
     async def test_copilot_models_endpoint(
         self,
         copilot_integration_client,
@@ -98,7 +99,7 @@ class TestCopilotEndToEnd:
                 assert data["data"][0]["id"] == "copilot-chat"
                 assert data["data"][1]["id"] == "gpt-4-copilot"
 
-    @pytest.mark.asyncio(loop_scope="function")
+    @pytest.mark.asyncio
     async def test_copilot_chat_completions_non_streaming(
         self,
         copilot_integration_client,
@@ -179,7 +180,7 @@ class TestCopilotEndToEnd:
                 )
                 assert data["usage"]["total_tokens"] == 18
 
-    @pytest.mark.asyncio(loop_scope="function")
+    @pytest.mark.asyncio
     async def test_copilot_chat_completions_streaming(
         self,
         copilot_integration_client,
@@ -286,7 +287,7 @@ class TestCopilotEndToEnd:
                 # Ensure streaming response completed successfully
                 await response.aread()
 
-    @pytest.mark.asyncio(loop_scope="function")
+    @pytest.mark.asyncio
     async def test_copilot_authentication_required(
         self,
         copilot_integration_client,
@@ -326,7 +327,7 @@ class TestCopilotEndToEnd:
                 )
             assert response.status_code == 401
 
-    @pytest.mark.asyncio(loop_scope="function")
+    @pytest.mark.asyncio
     async def test_copilot_format_adapter_integration(
         self,
         copilot_integration_client,
@@ -410,7 +411,7 @@ class TestCopilotEndToEnd:
                 # We can verify this by checking the call was made
                 assert call_args is not None
 
-    @pytest.mark.asyncio(loop_scope="function")
+    @pytest.mark.asyncio
     async def test_copilot_error_handling(
         self,
         copilot_integration_client,
@@ -465,7 +466,7 @@ class TestCopilotEndToEnd:
                 data = response.json()
                 assert "error" in data
 
-    @pytest.mark.asyncio(loop_scope="function")
+    @pytest.mark.asyncio
     async def test_copilot_usage_endpoint(
         self,
         copilot_integration_client,
@@ -514,7 +515,7 @@ class TestCopilotEndToEnd:
                 assert data["plan"] == "individual"
                 assert "chat" in data["features"]
 
-    @pytest.mark.asyncio(loop_scope="function")
+    @pytest.mark.asyncio
     async def test_copilot_token_info_endpoint(
         self,
         copilot_integration_client,
@@ -596,12 +597,12 @@ async def copilot_integration_app():
     settings = Settings(
         enable_plugins=True,
         plugins_disable_local_discovery=False,  # Enable local plugin discovery
+        enabled_plugins=["copilot"],
         plugins={
             "copilot": {
                 "enabled": True,
             }
         },
-        disabled_plugins=["duckdb_storage", "analytics", "metrics"],
         logging={
             "level": "ERROR",  # Minimal logging for speed
             "verbose_api": False,
@@ -643,6 +644,10 @@ async def copilot_integration_client(copilot_integration_app):
         new=AsyncMock(return_value=None),
     )
 
+    service_container = app.state.service_container
+
+    await start_task_manager(container=service_container)
+
     with detection_patch, ensure_copilot_patch, ensure_oauth_patch, profile_patch:
         # Initialize plugins async (once per test, but app is shared)
         await initialize_plugins_startup(app, settings)
@@ -652,5 +657,6 @@ async def copilot_integration_client(copilot_integration_app):
             yield client
 
     await shutdown_plugins(app)
+    await stop_task_manager(container=service_container)
     if hasattr(app.state, "service_container"):
-        await app.state.service_container.close()
+        await app.state.service_container.shutdown()

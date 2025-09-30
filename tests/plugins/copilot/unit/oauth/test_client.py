@@ -216,7 +216,10 @@ class TestCopilotOAuthClient:
             storage=mock_storage,
         )
 
-        with patch.object(client, "_get_http_client", return_value=mock_client):
+        with (
+            patch.object(client, "_get_http_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             result = await client.poll_for_token("device-code", 1, 60)
 
         assert isinstance(result, CopilotOAuthToken)

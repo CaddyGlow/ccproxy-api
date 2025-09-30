@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +10,6 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from httpx import ASGITransport, AsyncClient
 from sqlmodel import Session, select
 
 from ccproxy.api.bootstrap import create_service_container
@@ -23,7 +22,7 @@ from ccproxy.services.container import ServiceContainer
 
 
 # Use a single event loop for this module's async fixtures
-pytestmark = pytest.mark.asyncio(loop_scope="module")
+# pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="module", autouse=True)
@@ -63,9 +62,10 @@ async def storage_with_data(
             "endpoint": "/v1/messages",
             "path": "/v1/messages",
             "query": "",
-            "client_ip": "127.0.0.1",
-            "user_agent": "test-agent",
+            "client_ip": f"127.0.0.{i + 1}",
+            "user_agent": f"test-agent/{i}",
             "service_type": "proxy_service",
+            "provider": "anthropic" if i % 2 else "openai",
             "model": "claude-3-5-sonnet-20241022",
             "streaming": False,
             "status_code": 200,
@@ -126,27 +126,18 @@ def app_no_storage() -> FastAPI:
     return app
 
 
-@pytest.fixture
-def client(app: FastAPI) -> TestClient:
+@pytest.fixture(scope="module")
+def client(app: FastAPI) -> Iterator[TestClient]:
     """Test client with storage."""
-    return TestClient(app)
-
-
-@pytest.fixture
-def client_no_storage(app_no_storage: FastAPI) -> TestClient:
-    """Test client without storage."""
-    return TestClient(app_no_storage)
-
-
-# Async client for use in async tests to avoid portal deadlocks
-@pytest_asyncio.fixture(scope="module", loop_scope="module")
-async def async_client(app: FastAPI):  # type: ignore[no-untyped-def]
-    transport = ASGITransport(app=app)
-    client = AsyncClient(transport=transport, base_url="http://test")
-    try:
+    with TestClient(app) as client:
         yield client
-    finally:
-        await client.aclose()
+
+
+@pytest.fixture(scope="module")
+def client_no_storage(app_no_storage: FastAPI) -> Iterator[TestClient]:
+    """Test client without storage."""
+    with TestClient(app_no_storage) as client:
+        yield client
 
 
 @pytest.mark.integration
@@ -183,24 +174,37 @@ class TestAnalyticsQueryEndpoint:
 
     def test_query_logs_pagination(self, client: TestClient) -> None:
         """Test query logs pagination."""
-        # First page
-        response1 = client.get("/logs/query", params={"limit": 2, "order": "desc"})
-        assert response1.status_code == 200
 
-        data1: dict[str, Any] = response1.json()
-        assert data1["count"] == 2
+        first = client.get("/logs/query", params={"limit": 2, "order": "desc"})
+        assert first.status_code == 200
+        page1: dict[str, Any] = first.json()
 
-        # Second page if cursor exists
-        if data1.get("next_cursor"):
-            response2 = client.get(
-                "/logs/query",
-                params={
-                    "limit": 2,
-                    "order": "desc",
-                    "cursor": data1["next_cursor"],
-                },
-            )
-            assert response2.status_code == 200
+        assert page1["count"] == 2
+        for item in page1["results"]:
+            assert item["provider"] in {"anthropic", "openai"}
+            assert item["client_ip"].startswith("127.0.0.")
+            assert item["user_agent"].startswith("test-agent/")
+
+        if not page1.get("has_more"):
+            return
+
+        cursor = page1.get("next_cursor")
+        assert cursor
+
+        second = client.get(
+            "/logs/query",
+            params={"limit": 2, "order": "desc", "cursor": cursor},
+        )
+        assert second.status_code == 200
+        page2: dict[str, Any] = second.json()
+
+        assert page2["count"] <= 2
+        assert isinstance(page2.get("has_more"), bool)
+
+        for item in page2["results"]:
+            assert item["provider"] in {"anthropic", "openai"}
+            assert item["client_ip"].startswith("127.0.0.")
+            assert item["user_agent"].startswith("test-agent/")
 
     def test_query_logs_without_storage(self, client_no_storage: TestClient) -> None:
         """Test query logs when storage is not available."""
@@ -328,19 +332,14 @@ class TestAnalyticsResetEndpoint:
             non_reset_results = [r for r in results if r.endpoint != "/logs/reset"]
             assert len(non_reset_results) == 0
 
-    # NOTE: This test intermittently flakes in isolated environments due to
-    # queued DuckDB writes and event-loop timing. Despite queue join and polling,
-    # some runners still observe 0 rows briefly after reset+insert.
-    # Skipping for stability; revisit when storage exposes a deterministic flush.
-    @pytest.mark.skip(reason="Flaky under async queue timing; skipping for stability")
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="module")
     async def test_reset_endpoint_preserves_schema(
-        self, async_client: AsyncClient, storage_with_data: SimpleDuckDBStorage
+        self, client: TestClient, storage_with_data: SimpleDuckDBStorage
     ) -> None:
         """Test that reset preserves database schema and can accept new data."""
 
         # Reset the data
-        response = await async_client.post("/logs/reset")
+        response = client.post("/logs/reset")
         assert response.status_code == 200
 
         # Add new data after reset

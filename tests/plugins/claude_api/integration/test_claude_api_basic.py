@@ -1,3 +1,5 @@
+import json
+from contextlib import AsyncExitStack
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -5,9 +7,13 @@ import pytest
 import pytest_asyncio
 from tests.helpers.assertions import (
     assert_anthropic_response_format,
+    assert_openai_responses_format,
+    assert_sse_format_compliance,
 )
 from tests.helpers.test_data import (
     STANDARD_ANTHROPIC_REQUEST,
+    STANDARD_OPENAI_REQUEST,
+    STREAMING_OPENAI_REQUEST,
 )
 
 from ccproxy.models.detection import DetectedHeaders, DetectedPrompts
@@ -73,10 +79,79 @@ async def test_model_alias_restored_in_anthropic_response(
 @pytest.mark.claude_api
 async def test_openai_chat_completions_conversion(
     integration_client_factory,  # type: ignore[no-untyped-def]
+    mock_external_anthropic_api,  # type: ignore[no-untyped-def]
 ) -> None:
     """OpenAI /v1/chat/completions converts through Claude API and returns OpenAI format."""
-    # Skip this test until format adapter is properly configured
-    pytest.skip("Format adapter anthropic->openai not configured in test environment")
+
+    plugin_configs = {
+        "claude_api": {"enabled": True},
+        "oauth_claude": {"enabled": True},
+        "duckdb_storage": {"enabled": False},
+        "analytics": {"enabled": False},
+        "metrics": {"enabled": False},
+    }
+
+    prompts = DetectedPrompts.from_body(
+        {"system": [{"type": "text", "text": "Hello from tests."}]}
+    )
+    detection_data = ClaudeCacheData(
+        claude_version="fallback",
+        headers=DetectedHeaders({}),
+        prompts=prompts,
+        body_json=prompts.raw,
+        method="POST",
+        url=None,
+        path=None,
+        query_params=None,
+    )
+
+    async def init_detection_stub(self):  # type: ignore[no-untyped-def]
+        self._cached_data = detection_data
+        return detection_data
+
+    async with AsyncExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.get_access_token",
+                new=AsyncMock(return_value="test-claude-access-token"),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.load_credentials",
+                new=AsyncMock(return_value=None),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.get_profile_quick",
+                new=AsyncMock(return_value=None),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.claude_api.detection_service.ClaudeAPIDetectionService.initialize_detection",
+                new=init_detection_stub,
+            )
+        )
+
+        client = await integration_client_factory(plugin_configs)
+        client = await stack.enter_async_context(client)
+
+        response = await client.post(
+            "/claude/v1/chat/completions", json=STANDARD_OPENAI_REQUEST
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert_openai_responses_format(data)
+
+        # Validate that upstream Anthropic request used messages format
+        requests = mock_external_anthropic_api.get_requests()
+        assert len(requests) == 1
+        upstream_payload = json.loads(requests[0].read().decode())
+        assert upstream_payload["model"] == STANDARD_OPENAI_REQUEST["model"]
+        assert upstream_payload["messages"][0]["role"] == "user"
 
 
 @pytest.mark.asyncio
@@ -84,10 +159,89 @@ async def test_openai_chat_completions_conversion(
 @pytest.mark.claude_api
 async def test_claude_response_api_endpoint(
     integration_client_factory,  # type: ignore[no-untyped-def]
+    mock_external_anthropic_api,  # type: ignore[no-untyped-def]
 ) -> None:
-    """POST /api/v1/responses handles Response API format."""
-    # Skip this test until response API format handling is clarified
-    pytest.skip("Response API format handling needs clarification")
+    """POST /claude/v1/responses handles OpenAI Responses format."""
+
+    plugin_configs = {
+        "claude_api": {"enabled": True},
+        "oauth_claude": {"enabled": True},
+        "duckdb_storage": {"enabled": False},
+        "analytics": {"enabled": False},
+        "metrics": {"enabled": False},
+    }
+
+    prompts = DetectedPrompts.from_body(
+        {"system": [{"type": "text", "text": "Hello from tests."}]}
+    )
+    detection_data = ClaudeCacheData(
+        claude_version="fallback",
+        headers=DetectedHeaders({}),
+        prompts=prompts,
+        body_json=prompts.raw,
+        method="POST",
+        url=None,
+        path=None,
+        query_params=None,
+    )
+
+    async def init_detection_stub(self):  # type: ignore[no-untyped-def]
+        self._cached_data = detection_data
+        return detection_data
+
+    responses_request = {
+        "model": "gpt-4o-mini",
+        "input": [
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Hello, Claude!"}],
+            }
+        ],
+        "max_output_tokens": 128,
+    }
+
+    async with AsyncExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.get_access_token",
+                new=AsyncMock(return_value="test-claude-access-token"),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.load_credentials",
+                new=AsyncMock(return_value=None),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.get_profile_quick",
+                new=AsyncMock(return_value=None),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.claude_api.detection_service.ClaudeAPIDetectionService.initialize_detection",
+                new=init_detection_stub,
+            )
+        )
+
+        client = await integration_client_factory(plugin_configs)
+        client = await stack.enter_async_context(client)
+
+        response = await client.post("/claude/v1/responses", json=responses_request)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data.get("object") == "response", data
+        assert "output" in data and isinstance(data["output"], list), data
+
+        # Ensure Anthropic upstream received converted payload
+        requests = mock_external_anthropic_api.get_requests()
+        assert len(requests) == 1
+        upstream_payload = json.loads(requests[0].read().decode())
+        assert "system" in upstream_payload
+        assert upstream_payload["system"][0]["text"] == "Hello from tests."
 
 
 @pytest.mark.asyncio
@@ -95,10 +249,80 @@ async def test_claude_response_api_endpoint(
 @pytest.mark.claude_api
 async def test_openai_chat_completions_streaming(
     integration_client_factory,  # type: ignore[no-untyped-def]
+    mock_external_anthropic_api_streaming,  # type: ignore[no-untyped-def]
 ) -> None:
     """Streaming OpenAI /v1/chat/completions returns SSE with valid chunks."""
-    # Skip this test until format adapter is properly configured
-    pytest.skip("Format adapter anthropic->openai not configured in test environment")
+
+    plugin_configs = {
+        "claude_api": {"enabled": True},
+        "oauth_claude": {"enabled": True},
+        "duckdb_storage": {"enabled": False},
+        "analytics": {"enabled": False},
+        "metrics": {"enabled": False},
+    }
+
+    prompts = DetectedPrompts.from_body(
+        {"system": [{"type": "text", "text": "Hello from tests."}]}
+    )
+    detection_data = ClaudeCacheData(
+        claude_version="fallback",
+        headers=DetectedHeaders({}),
+        prompts=prompts,
+        body_json=prompts.raw,
+        method="POST",
+        url=None,
+        path=None,
+        query_params=None,
+    )
+
+    async def init_detection_stub(self):  # type: ignore[no-untyped-def]
+        self._cached_data = detection_data
+        return detection_data
+
+    async with AsyncExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.get_access_token",
+                new=AsyncMock(return_value="test-claude-access-token"),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.load_credentials",
+                new=AsyncMock(return_value=None),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager.get_profile_quick",
+                new=AsyncMock(return_value=None),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ccproxy.plugins.claude_api.detection_service.ClaudeAPIDetectionService.initialize_detection",
+                new=init_detection_stub,
+            )
+        )
+
+        client = await integration_client_factory(plugin_configs)
+        client = await stack.enter_async_context(client)
+
+        response = await client.post(
+            "/claude/v1/chat/completions",
+            json=STREAMING_OPENAI_REQUEST,
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/event-stream")
+
+        body = await response.aread()
+        chunks = [chunk for chunk in body.decode().split("\n\n") if chunk.strip()]
+        assert chunks, "Expected streaming SSE chunks"
+        assert_sse_format_compliance(chunks)
+
+        # Ensure there are assistant deltas in the stream payload
+        assert any("delta" in chunk for chunk in chunks)
 
 
 @pytest.mark.asyncio

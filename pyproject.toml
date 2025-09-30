@@ -7,7 +7,6 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "aiofiles>=24.1.0",
-  "jsonschema>=4.23.0",
   "fastapi[standard]>=0.115.14",
   "httpx[http2]>=0.28.1",
   "pydantic>=2.8.0",
@@ -19,7 +18,6 @@ dependencies = [
   "typing-extensions>=4.0.0",
   "uvicorn>=0.34.0",
   "packaging>=25.0",
-  "aiohttp>=3.12.15",
   "sortedcontainers>=2.4.0",
   "pyjwt>=2.10.1",
 ]
@@ -315,36 +313,25 @@ env = ["PYTEST_CURRENT_TEST=true"]
 # Use modern import mode to avoid path-based module collisions
 # import-mode = "importlib"
 
-# Test markers for different test categories and tiers
+# Test markers that are currently exercised in the suite
 markers = [
-  # Primary test categories
+  # Primary categories
   "unit: Fast unit tests (< 1s each) that don't require external dependencies",
   "integration: Integration tests (< 30s each) that test component interactions",
-  "e2e: Integration tests (< 30s each) that test component interactions",
+  "e2e: End-to-end tests that drive the external API surface",
   "slow: Slow tests (> 30s each) - use sparingly",
-  "smoketest: Quick validation tests for core endpoints",
 
-  # External dependency markers
+  # External dependency requirements
   "real_api: Tests that make real API calls to external services (requires API keys)",
+  "network: Tests that require general network access",
   "docker: Tests that require Docker to be running",
-  "network: Tests that require network access but don't make real API calls",
 
-  # Feature-specific markers
+  # Feature- or plugin-specific scopes
   "auth: Authentication and authorization tests",
-  "streaming: SSE/streaming response tests",
-  "api: API endpoint tests",
-  "config: Configuration and settings tests",
-  "cli: Command-line interface tests",
-  "metrics: Metrics and monitoring tests",
-  "sdk: SDK endpoint tests using Anthropic SDK client (requires running server)",
+  "analytics: Analytics plugin tests",
+  "metrics: Metrics and monitoring plugin tests",
   "claude_api: Claude API plugin tests",
   "codex: Codex plugin tests",
-  "analytics: Analytics plugin tests",
-
-  # Test quality markers
-  "flaky: Tests that may be unreliable and need investigation",
-  "skip_ci: Tests to skip in CI environment",
-  "performance: Performance and micro-benchmark oriented tests",
 ]
 
 [tool.bandit]

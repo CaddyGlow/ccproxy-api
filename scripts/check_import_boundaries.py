@@ -12,6 +12,7 @@ Returns non-zero if violations are found.
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import json
 import pathlib
@@ -89,11 +90,9 @@ def find_ccproxy_directory() -> pathlib.Path:
     return pathlib.Path(spec.submodule_search_locations[0])
 
 
-# Pattern to match imports from ccproxy.plugins, allowing leading whitespace
-IMPORT_PATTERN = re.compile(
-    r"^\s*(?:from|import)\s+ccproxy\.plugins(\.|\s|$)",
-    re.MULTILINE,
-)
+ALLOWED_IMPORT_FILES = {
+    pathlib.Path("core/plugins/discovery.py"),
+}
 
 
 def iter_py_files(root: pathlib.Path) -> Iterable[pathlib.Path]:
@@ -124,27 +123,60 @@ def get_context_lines(
     return lines[start:end]
 
 
+def is_allowed_import(file: pathlib.Path, core_dir: pathlib.Path) -> bool:
+    """Check whether the given file is allowed to import plugin modules."""
+    try:
+        relative_path = file.relative_to(core_dir)
+    except ValueError:
+        return False
+
+    # Compare against configured allowlist of core-relative paths
+    return relative_path in ALLOWED_IMPORT_FILES
+
+
 def find_violations_in_file(
-    file: pathlib.Path, context_lines: int
+    file: pathlib.Path, core_dir: pathlib.Path, context_lines: int
 ) -> list[ImportViolation]:
     """Find all import violations in a single file."""
     try:
-        lines = file.read_text(encoding="utf-8", errors="ignore").splitlines()
+        source = file.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []
 
+    try:
+        tree = ast.parse(source, filename=str(file))
+    except SyntaxError:
+        return []
+
+    lines = source.splitlines()
     violations = []
-    for line_idx, line in enumerate(lines):
-        if IMPORT_PATTERN.search(line):
-            context = get_context_lines(lines, line_idx, context_lines)
-            violations.append(
-                ImportViolation(
-                    file=file,
-                    line_number=line_idx,
-                    context_lines=context,
-                    context_line_count=context_lines,
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            modules = [node.module] if node.module else []
+        else:
+            continue
+
+        for module in modules:
+            if module is None:
+                continue
+
+            if module == "ccproxy.plugins" or module.startswith("ccproxy.plugins."):
+                if is_allowed_import(file, core_dir):
+                    continue
+
+                line_idx = (node.lineno or 1) - 1
+                context = get_context_lines(lines, line_idx, context_lines)
+                violations.append(
+                    ImportViolation(
+                        file=file,
+                        line_number=line_idx,
+                        context_lines=context,
+                        context_line_count=context_lines,
+                    )
                 )
-            )
 
     return violations
 
@@ -222,7 +254,7 @@ def find_all_violations(
 
     for file in iter_py_files(core_dir):
         if should_check_file(file, core_dir):
-            violations.extend(find_violations_in_file(file, context_lines))
+            violations.extend(find_violations_in_file(file, core_dir, context_lines))
 
     return violations
 

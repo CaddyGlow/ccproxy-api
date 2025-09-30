@@ -5,10 +5,12 @@ and dynamically load their factories.
 """
 
 import importlib
+import importlib.machinery
 import importlib.util
 import logging
 from collections.abc import Iterable
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 import structlog
@@ -176,9 +178,91 @@ class PluginDiscovery:
         plugin_path = self.discovered_plugins[name]
 
         try:
-            # Create module spec and load the module
+            plugin_dir = plugin_path.parent
+
+            # Ensure the namespace package includes this plugin directory so
+            # relative imports like 'from .config import ...' resolve when the
+            # plugin lives outside the main repository (e.g., ~/.config/ccproxy/plugins).
+            try:
+                import ccproxy.plugins as builtin_plugins
+
+                if hasattr(builtin_plugins, "__path__"):
+                    location = str(plugin_dir)
+                    if location not in builtin_plugins.__path__:
+                        builtin_plugins.__path__.append(location)
+            except ModuleNotFoundError:  # pragma: no cover - defensive
+                pass
+
+            module_name = f"ccproxy.plugins.{name}.plugin"
+            package_name = f"ccproxy.plugins.{name}"
+
+            # Reload package/module to pick up filesystem changes
+            import sys
+
+            package_module: None | ModuleType = None
+            for candidate in (module_name, package_name):
+                if candidate in sys.modules:
+                    sys.modules.pop(candidate)
+
+            init_file = plugin_dir / "__init__.py"
+            if init_file.exists():
+                package_spec = importlib.util.spec_from_file_location(
+                    package_name,
+                    init_file,
+                    submodule_search_locations=[str(plugin_dir)],
+                )
+                if package_spec and package_spec.loader:
+                    package_module = importlib.util.module_from_spec(package_spec)
+                    sys.modules[package_name] = package_module
+                    package_spec.loader.exec_module(package_module)
+
+            package_module = sys.modules.get(package_name)
+            if package_module is None:
+                if init_file.exists():
+                    package_spec = importlib.util.spec_from_file_location(
+                        package_name,
+                        init_file,
+                        submodule_search_locations=[str(plugin_dir)],
+                    )
+                    if package_spec and package_spec.loader:
+                        package_module = importlib.util.module_from_spec(package_spec)
+                        package_module.__path__ = [str(plugin_dir)]
+                        sys.modules[package_name] = package_module
+                        package_spec.loader.exec_module(package_module)
+                    else:  # pragma: no cover - defensive
+                        package_module = importlib.util.module_from_spec(
+                            importlib.machinery.ModuleSpec(
+                                package_name, loader=None, is_package=True
+                            )
+                        )
+                        package_module.__path__ = [str(plugin_dir)]
+                        sys.modules[package_name] = package_module
+                else:
+                    package_module = importlib.util.module_from_spec(
+                        importlib.machinery.ModuleSpec(
+                            package_name, loader=None, is_package=True
+                        )
+                    )
+                    package_module.__path__ = [str(plugin_dir)]
+                    sys.modules[package_name] = package_module
+            else:
+                package_module.__file__ = (
+                    str(init_file) if init_file.exists() else package_module.__file__
+                )
+                package_module.__path__ = [str(plugin_dir)]
+
+            if package_name in sys.modules:
+                package_module = sys.modules[package_name]
+                package_module.__file__ = (
+                    str(init_file)
+                    if init_file.exists()
+                    else getattr(package_module, "__file__", None)
+                )
+                package_module.__path__ = [str(plugin_dir)]
+
             spec = importlib.util.spec_from_file_location(
-                f"ccproxy.plugins.{name}.plugin", plugin_path
+                module_name,
+                plugin_path,
             )
 
             if not spec or not spec.loader:
@@ -186,6 +270,7 @@ class PluginDiscovery:
                 return None
 
             module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
             spec.loader.exec_module(module)
 
             # Get the factory from the module
@@ -487,19 +572,26 @@ def discover_and_load_plugins(settings: Settings) -> dict[str, PluginFactory]:
             reason="settings.plugins_disable_local_discovery",
         )
 
-    # Load entry point plugins first so filesystem plugins can override them.
-    all_factories: dict[str, PluginFactory] = discovery.load_entry_point_factories(
-        plugin_filter=filter_config
-    )
+    all_factories: dict[str, PluginFactory] = {}
+
+    filesystem_factories: dict[str, PluginFactory] = {}
+    filesystem_names: set[str] = set()
 
     if not settings.plugins_disable_local_discovery:
         discovery.discover_plugins()
         filesystem_factories = discovery.load_all_factories(plugin_filter=filter_config)
+        filesystem_names = set(filesystem_factories.keys())
+        all_factories.update(filesystem_factories)
 
-        for name, factory in filesystem_factories.items():
-            if name in all_factories:
-                _get_logger("manager", name).debug("plugin_filesystem_override")
-            all_factories[name] = factory
+    entry_point_factories = discovery.load_entry_point_factories(
+        skip_names=filesystem_names,
+        plugin_filter=filter_config,
+    )
+
+    for name, factory in entry_point_factories.items():
+        if name in all_factories:
+            _get_logger("manager", name).debug("plugin_filesystem_override")
+        all_factories.setdefault(name, factory)
 
     filtered_factories = filter_config.filter_factories(all_factories)
 

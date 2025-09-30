@@ -82,9 +82,6 @@ async def test_model_alias_restored_in_response(
 @pytest.mark.asyncio
 @pytest.mark.integration
 @pytest.mark.codex
-@pytest.mark.skip(
-    reason="Streaming SSE payload parsing currently fails with validation errors; bypass until Codex stream adapter is aligned."
-)
 async def test_openai_chat_completions_streaming(
     codex_client,  # type: ignore[no-untyped-def]
     mock_external_openai_codex_api_streaming,  # type: ignore[no-untyped-def]

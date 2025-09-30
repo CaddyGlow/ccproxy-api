@@ -162,6 +162,18 @@ class Scheduler:
             task_class = self.task_registry.get(task_type)
             task_instance = task_class(name=task_name, **task_kwargs)
 
+            interval_value = task_kwargs.get("interval_seconds")
+            if interval_value is not None:
+                try:
+                    task_instance.interval_seconds = max(1.0, float(interval_value))
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "task_interval_invalid",
+                        task_name=task_name,
+                        task_type=task_type,
+                        interval_value=interval_value,
+                    )
+
             # Add to our tasks dict
             self._tasks[task_name] = task_instance
 

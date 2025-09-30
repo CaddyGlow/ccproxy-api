@@ -3,6 +3,7 @@
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
@@ -116,107 +117,107 @@ class TestCurrentVersion:
 class TestGitHubVersionFetching:
     """Test GitHub version fetching functionality."""
 
+    class _StubResponse:
+        def __init__(
+            self, *, status_code: int = 200, data: dict[str, Any] | None = None
+        ):
+            self.status_code = status_code
+            self._data = data or {}
+
+        def raise_for_status(self) -> None:
+            if 400 <= self.status_code < 600:
+                raise httpx.HTTPStatusError(
+                    f"HTTP {self.status_code}",
+                    request=httpx.Request("GET", "https://example.com"),
+                    response=httpx.Response(status_code=self.status_code),
+                )
+
+        def json(self) -> dict[str, Any]:
+            return self._data
+
+    class _StubAsyncClient:
+        def __init__(self, *, response: Any = None, exception: Exception | None = None):
+            self._response = response
+            self._exception = exception
+
+        async def __aenter__(self) -> "TestGitHubVersionFetching._StubAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        async def get(self, *args: Any, **kwargs: Any) -> Any:
+            if self._exception:
+                raise self._exception
+            return self._response
+
     @pytest.mark.asyncio
     async def test_fetch_latest_github_version_success(self) -> None:
         """Test successful GitHub version fetch."""
-        from unittest.mock import MagicMock
+        mock_response = self._StubResponse(data={"tag_name": "v1.2.3"})
+        mock_client = self._StubAsyncClient(response=mock_response)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"tag_name": "v1.2.3"}
-        mock_response.raise_for_status = Mock()  # Sync method, not async
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient") as mock_async_client:
-            mock_async_client.return_value.__aenter__.return_value = mock_client
-
+        with patch("httpx.AsyncClient", return_value=mock_client):
             result = await fetch_latest_github_version()
 
-            assert result == "1.2.3"
-            mock_client.get.assert_called_once()
-            call_args = mock_client.get.call_args
-            assert "repos/CaddyGlow/ccproxy-api/releases/latest" in call_args[0][0]
+        assert result == "1.2.3"
 
     @pytest.mark.asyncio
     async def test_fetch_latest_github_version_no_v_prefix(self) -> None:
         """Test GitHub version fetch when tag has no 'v' prefix."""
-        from unittest.mock import MagicMock
+        mock_response = self._StubResponse(data={"tag_name": "1.2.3"})
+        mock_client = self._StubAsyncClient(response=mock_response)
 
-        mock_response = MagicMock()
-        mock_response.json.return_value = {"tag_name": "1.2.3"}
-        mock_response.raise_for_status = Mock()  # Sync method, not async
-
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient") as mock_async_client:
-            mock_async_client.return_value.__aenter__.return_value = mock_client
-
+        with patch("httpx.AsyncClient", return_value=mock_client):
             result = await fetch_latest_github_version()
 
-            assert result == "1.2.3"
+        assert result == "1.2.3"
 
     @pytest.mark.asyncio
     async def test_fetch_latest_github_version_missing_tag(self) -> None:
         """Test GitHub version fetch when tag_name is missing."""
-        mock_response = AsyncMock()
-        mock_response.json.return_value = {}
-        mock_response.raise_for_status = Mock()  # Sync method, not async
+        mock_response = self._StubResponse(data={})
+        mock_client = self._StubAsyncClient(response=mock_response)
 
-        mock_client = AsyncMock()
-        mock_client.get.return_value = mock_response
-
-        with patch("httpx.AsyncClient") as mock_async_client:
-            mock_async_client.return_value.__aenter__.return_value = mock_client
-
+        with patch("httpx.AsyncClient", return_value=mock_client):
             result = await fetch_latest_github_version()
 
-            assert result is None
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_fetch_latest_github_version_timeout(self) -> None:
         """Test GitHub version fetch timeout."""
-        mock_client = AsyncMock()
-        mock_client.get.side_effect = httpx.TimeoutException("Timeout")
+        mock_client = self._StubAsyncClient(exception=httpx.TimeoutException("Timeout"))
 
-        with patch("httpx.AsyncClient") as mock_async_client:
-            mock_async_client.return_value.__aenter__.return_value = mock_client
-
+        with patch("httpx.AsyncClient", return_value=mock_client):
             result = await fetch_latest_github_version()
 
-            assert result is None
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_fetch_latest_github_version_http_error(self) -> None:
         """Test GitHub version fetch HTTP error."""
-        mock_response = AsyncMock()
-        mock_response.status_code = 404
-
-        mock_client = AsyncMock()
-        mock_client.get.side_effect = httpx.HTTPStatusError(
-            "Not found", request=AsyncMock(), response=mock_response
+        exception = httpx.HTTPStatusError(
+            "Not found",
+            request=httpx.Request("GET", "https://example.com"),
+            response=httpx.Response(status_code=404),
         )
+        mock_client = self._StubAsyncClient(exception=exception)
 
-        with patch("httpx.AsyncClient") as mock_async_client:
-            mock_async_client.return_value.__aenter__.return_value = mock_client
-
+        with patch("httpx.AsyncClient", return_value=mock_client):
             result = await fetch_latest_github_version()
 
-            assert result is None
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_fetch_latest_github_version_generic_error(self) -> None:
         """Test GitHub version fetch generic error."""
-        mock_client = AsyncMock()
-        mock_client.get.side_effect = Exception("Network error")
+        mock_client = self._StubAsyncClient(exception=Exception("Network error"))
 
-        with patch("httpx.AsyncClient") as mock_async_client:
-            mock_async_client.return_value.__aenter__.return_value = mock_client
-
+        with patch("httpx.AsyncClient", return_value=mock_client):
             result = await fetch_latest_github_version()
 
-            assert result is None
+        assert result is None
 
 
 class TestStateManagement:

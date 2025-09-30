@@ -10,6 +10,7 @@ _REQUEST_VAR: ContextVar[Any | None] = ContextVar("formatter_request", default=N
 _INSTRUCTIONS_VAR: ContextVar[str | None] = ContextVar(
     "formatter_instructions", default=None
 )
+_TOOLS_VAR: ContextVar[list[Any] | None] = ContextVar("formatter_tools", default=None)
 
 
 def register_request(request: Any | None, instructions: str | None = None) -> None:
@@ -74,3 +75,42 @@ def get_last_instructions() -> str | None:
         pass
 
     return _INSTRUCTIONS_VAR.get()
+
+
+def register_request_tools(tools: list[Any] | None) -> None:
+    """Cache request tool definitions for downstream streaming responses."""
+
+    normalized = list(tools) if tools else None
+    _TOOLS_VAR.set(normalized)
+
+    try:
+        from ccproxy.core.request_context import RequestContext
+
+        ctx = RequestContext.get_current()
+        if ctx is not None:
+            formatter_state = ctx.metadata.setdefault("formatter_state", {})
+            if normalized is None:
+                formatter_state.pop("tools", None)
+            else:
+                formatter_state["tools"] = normalized
+    except Exception:
+        pass
+
+
+def get_last_request_tools() -> list[Any] | None:
+    """Return cached request tool definitions, if any."""
+
+    try:
+        from ccproxy.core.request_context import RequestContext
+
+        ctx = RequestContext.get_current()
+        if ctx is not None:
+            formatter_state = ctx.metadata.get("formatter_state", {})
+            tools = formatter_state.get("tools")
+            if isinstance(tools, list):
+                return list(tools)
+    except Exception:
+        pass
+
+    cached = _TOOLS_VAR.get()
+    return list(cached) if cached else None

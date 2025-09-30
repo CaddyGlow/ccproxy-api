@@ -330,3 +330,63 @@ factory = FilesystemFactory()
 
     assert "alpha" in factories
     assert getattr(factories["alpha"], "source", "") == "filesystem"
+
+
+@pytest.mark.unit
+def test_external_filesystem_plugin_loads_with_namespace(tmp_path: Path) -> None:
+    """Ensure plugins under user directories load with relative imports."""
+
+    plugins_root = tmp_path / "plugins"
+    plugin_dir = plugins_root / "custom_plugin"
+    plugin_dir.mkdir(parents=True)
+
+    (plugin_dir / "__init__.py").write_text(
+        "from .plugin import factory\n",
+        encoding="utf-8",
+    )
+
+    (plugin_dir / "config.py").write_text(
+        """
+from pydantic import BaseModel
+
+
+class CustomPluginConfig(BaseModel):
+    enabled: bool = True
+""",
+        encoding="utf-8",
+    )
+
+    (plugin_dir / "plugin.py").write_text(
+        """
+from ccproxy.core.plugins import PluginManifest, SystemPluginFactory, SystemPluginRuntime
+from .config import CustomPluginConfig
+
+
+class _Runtime(SystemPluginRuntime):
+    def __init__(self, manifest: PluginManifest) -> None:
+        super().__init__(manifest)
+        self.config: CustomPluginConfig | None = None
+
+
+class _Factory(SystemPluginFactory):
+    def __init__(self) -> None:
+        super().__init__(PluginManifest(name="custom_plugin", version="0.0.1"))
+
+    def create_runtime(self) -> _Runtime:
+        return _Runtime(self.manifest)
+
+
+factory = _Factory()
+""",
+        encoding="utf-8",
+    )
+
+    discovery = PluginDiscovery([plugins_root])
+    discovery.discovered_plugins = {"custom_plugin": plugin_dir / "plugin.py"}
+
+    factory = discovery.load_plugin_factory("custom_plugin")
+
+    assert factory is not None
+    manifest = factory.get_manifest()
+    assert manifest.name == "custom_plugin"
+    assert manifest.version == "0.0.1"

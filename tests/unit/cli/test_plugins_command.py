@@ -1,7 +1,9 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from pydantic import BaseModel, Field
+from typer.testing import CliRunner
 
 from ccproxy.cli.commands import plugins as plugins_cmd
 from ccproxy.core.plugins.discovery import PluginFilter
@@ -86,3 +88,52 @@ def test_gather_plugin_metadata_includes_status_reason(
 
     assert beta.enabled is False
     assert beta.status_reason == "disabled via config"
+
+
+@pytest.fixture()
+def cli_runner() -> CliRunner:
+    return CliRunner()
+
+
+@pytest.mark.unit
+def test_scaffold_creates_system_plugin(cli_runner: CliRunner, tmp_path: Path) -> None:
+    destination = tmp_path / "plugins"
+    result = cli_runner.invoke(
+        plugins_cmd.app,
+        [
+            "scaffold",
+            "demo_plugin",
+            "--type",
+            "system",
+            "--description",
+            "Demo plugin",
+            "--version",
+            "0.2.0",
+            "--path",
+            str(destination),
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+
+    plugin_dir = destination / "demo_plugin"
+    assert plugin_dir.is_dir()
+    assert (plugin_dir / "plugin.py").is_file()
+    assert (plugin_dir / "config.py").is_file()
+
+
+@pytest.mark.unit
+def test_scaffold_rejects_invalid_name(cli_runner: CliRunner, tmp_path: Path) -> None:
+    result = cli_runner.invoke(
+        plugins_cmd.app,
+        [
+            "scaffold",
+            "Bad-Name",
+            "--path",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    output = result.stdout + result.stderr
+    assert "must start with a letter" in output

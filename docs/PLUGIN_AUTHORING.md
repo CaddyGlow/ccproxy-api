@@ -69,6 +69,23 @@ To add additional filesystem locations, declare them in configuration, e.g.:
 directories = ["/opt/ccproxy/plugins", "${HOME}/.config/ccproxy/custom"]
 ```
 
+## Scaffolding New Plugins
+
+Use the CLI scaffolder to generate starter files that follow these conventions:
+
+```
+uv run ccproxy plugins scaffold my_plugin --type provider --with-tests
+```
+
+- `--type` selects the template (`system`, `provider`, or `auth`).
+- `--path` writes the plugin to a custom directory (defaults to your first
+  writable discovery directory).
+- `--with-tests` adds placeholder pytest smoke tests.
+- `--force` overwrites an existing directory.
+
+The scaffold includes configuration, runtime boilerplate, and a README listing
+next steps. Review and customize the generated files before enabling the plugin.
+
 ### Declaring Entry Points (pyproject.toml)
 
 ```

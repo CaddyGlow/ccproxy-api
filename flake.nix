@@ -17,48 +17,99 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        # Define Playwright dependencies as a reusable list
-        playwrightDeps = with pkgs; [
-          glib
-          nss
-          nspr
-          atk
-          at-spi2-atk
-          libdrm
-          libxkbcommon
-          gtk3
-          pango
-          cairo
-          gdk-pixbuf
-          xorg.libX11
-          xorg.libxcb
-          xorg.libXcomposite
-          xorg.libXdamage
-          xorg.libXext
-          xorg.libXfixes
-          xorg.libXrandr
-          mesa
-          libgbm
-          expat
-          alsa-lib
-          at-spi2-core
-          cups
-          dbus
-          fontconfig
-          freetype
-        ];
-
         # System libraries
         systemLibs = with pkgs; [
-          stdenv.cc.cc.lib
-          glibc
-          zlib
-          stdenv
+          # stdenv.cc.cc.lib
+          # glibc
+          # zlib
+          # stdenv
         ];
 
-        allLibs = systemLibs ++ playwrightDeps;
+        allLibs = systemLibs;
       in
       {
+        packages.default = pkgs.python3Packages.buildPythonPackage rec {
+          pname = "ccproxy-api";
+          version = "0.2.0";
+          pyproject = true;
+
+          src = ./.;
+
+          build-system = with pkgs.python3Packages; [
+            hatchling
+            hatch-vcs
+          ];
+
+          dependencies = with pkgs.python3Packages; [
+            aiofiles
+            fastapi
+            httpx
+            pydantic
+            pydantic-settings
+            rich
+            rich-toolkit
+            structlog
+            typer
+            typing-extensions
+            uvicorn
+            packaging
+            pyjwt
+            sortedcontainers
+          ];
+
+          optional-dependencies = with pkgs.python3Packages; {
+            # Plugin dependencies grouped as in pyproject.toml
+            plugins-claude = [
+              # claude-code-sdk would need to be packaged separately
+              qrcode
+            ];
+            plugins-codex = [
+              qrcode
+              pyjwt
+            ];
+            plugins-storage = [
+              sqlmodel
+              sqlalchemy
+              # duckdb-engine and duckdb would need special handling
+            ];
+            test = [
+              mypy
+              pytest
+              pytest-asyncio
+              pytest-cov
+              pytest-timeout
+              # pytest-env
+              # pytest-httpx
+              # pytest-xdist
+            ];
+            dev = [
+              # ruff would need to be available
+              # pre-commit
+              mypy
+              # tox
+              # bandit
+            ];
+          };
+
+          # Skip tests during build since they require external services
+          doCheck = false;
+
+          pythonImportsCheck = [ "ccproxy" ];
+
+          meta = with pkgs.lib; {
+            description = "API server that provides an Anthropic and OpenAI compatible interface over Claude Code";
+            homepage = "https://github.com/anthropics/ccproxy-api";
+            license = licenses.mit; # Adjust based on actual license
+            maintainers = [ ];
+            platforms = platforms.unix;
+          };
+        };
+
+        apps.default = {
+          type = "app";
+          program = "${self.packages.${system}.default}/bin/ccproxy-api";
+        };
+
         devShells.default = pkgs.mkShell {
           buildInputs =
             with pkgs;
@@ -84,22 +135,11 @@
           shellHook = ''
             # Set up LD_LIBRARY_PATH for Playwright and other native dependencies
             export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath allLibs}:$LD_LIBRARY_PATH"
-
-            # Playwright configuration
-            export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-
             # Optional: Set up uv if you want it to manage Python versions
             # export UV_PYTHON_PREFERENCE=system
 
-            echo "Development environment loaded!"
-            echo "Python: $(python3 --version)"
-            echo "Node: $(node --version)"
-            echo "Bun: $(bun --version)"
-            echo "pnpm: $(pnpm --version)"
           '';
 
-          # Environment variables
-          PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
         };
       }
     );
