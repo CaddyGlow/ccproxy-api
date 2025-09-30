@@ -201,6 +201,8 @@ app = typer.Typer(
 @app.command(name="list")
 def config_list() -> None:
     """Show current configuration."""
+    from ccproxy.cli._settings_help import print_settings_help
+
     toolkit = get_rich_toolkit()
 
     try:
@@ -213,28 +215,18 @@ def config_list() -> None:
 
         console = Console()
 
-        all_rows = _generate_config_rows_from_model(settings)
-
-        all_rows.append(
-            ("server_url", settings.server_url, "Complete server URL (computed)")
-        )
-
-        grouped_rows = _group_config_rows(all_rows)
-
+        # Display header panel
         console.print(
             Panel.fit(
                 f"[bold]CCProxy API Configuration[/bold]\n[dim]Version: {__version__}[/dim]",
                 border_style="blue",
             )
         )
-        console.print()
 
-        for section_name, section_rows in grouped_rows.items():
-            if section_rows:
-                table = _create_config_table(section_name, section_rows)
-                console.print(table)
-                console.print()
+        # Use generic settings display
+        print_settings_help(Settings, settings)
 
+        # Display footer panel
         info_text = Text()
         info_text.append("Configuration loaded from: ", style="bold")
         info_text.append(

@@ -1,3 +1,4 @@
+# Logging configuration
 disabled_plugins = [
   "docker",
   "permissions",
@@ -6,11 +7,12 @@ disabled_plugins = [
   "metrics",
   "access_log",
   "dashboard",
-  # "command_replay",
-  # "request_tracer",
-]
 
-# Logging configuration
+]
+# "command_replay",
+# "request_tracer",
+plugins_disable_local_discovery = false
+
 [logging]
 level = "WARNING"
 format = "auto"
@@ -33,22 +35,27 @@ log_streaming_chunks = true
 client_enabled = true
 client_format = "combined"                             # Options: combined, common, structured
 client_log_file = "/tmp/ccproxy/combined_access.log"
-provider_enabled = false
+provider_enabled = true
 provider_format = "structured"
 provider_log_file = "/tmp/ccproxy/provider_access.log"
 exclude_paths = ["/health", "/metrics", "/logs"]
-buffer_size = 100
-flush_interval = 1.0
-
 
 [plugins.claude_sdk.sdk_session_pool]
 session_ttl = 3600
 max_sessions = 1000
 
 [plugins.duckdb_storage]
-enabled = false
 database_path = "/tmp/ccproxy/metrics.duckdb"
 register_app_state_alias = true
 
-[plugins.command_replay]
-enabled = true
+
+[[plugins.credential_balancer.providers]]
+provider = "codex"
+strategy = "round_robin" # or "failover"
+credentials = [
+  { path = "~/.config/ccproxy/codex_pro.json" },
+  { path = "~/.config/ccproxy/codex_plus.json" },
+]
+
+[plugins.codex]
+auth_manager = "codex_credential_balancer"

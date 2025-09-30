@@ -44,7 +44,7 @@ def test_describe_config_model_includes_values() -> None:
     assert by_name["optional_field"].default_label == "10"
     assert by_name["optional_field"].value_label == "42"
     assert by_name["items"].default_label.startswith("<factory:")
-    assert by_name["items"].value_label == "['a', 'b']"
+    assert by_name["items"].value_label == '["a", "b"]'
     assert by_name["items"].description == "Sample list"
 
 

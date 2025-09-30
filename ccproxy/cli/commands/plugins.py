@@ -5,10 +5,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, cast, get_args, get_origin
 
 import typer
 from pydantic import BaseModel, ValidationError
+from pydantic.fields import FieldInfo
 from rich.console import Console
 from rich.table import Table
 
@@ -84,14 +85,188 @@ def _format_default(field: Any) -> str:
     return repr(default_value)
 
 
-def _format_value(value: Any) -> str:
-    """Render an actual configuration value for display."""
+def _format_value(value: Any, indent: int = 0, max_depth: int = 3) -> str:
+    """Render an actual configuration value for display with recursive formatting.
+
+    Args:
+        value: The value to format
+        indent: Current indentation level
+        max_depth: Maximum recursion depth to prevent excessive nesting
+
+    Returns:
+        Formatted string representation
+    """
 
     if value is None:
         return "—"
+
+    # Prevent excessive recursion
+    if indent >= max_depth:
+        return repr(value)
+
+    # Handle strings
     if isinstance(value, str):
         return f'"{value}"'
+
+    # Handle Path objects
+    if hasattr(value, "__fspath__"):
+        return str(value)
+
+    # Handle booleans and numbers
+    if isinstance(value, (bool, int, float)):
+        return str(value)
+
+    # Handle enums
+    if hasattr(value, "__class__") and hasattr(value.__class__, "__members__"):
+        return f"{value.__class__.__name__}.{value.name}"
+
+    # Handle Pydantic models
+    if isinstance(value, BaseModel):
+        return _format_pydantic_model(value, indent, max_depth)
+
+    # Handle lists
+    if isinstance(value, (list, tuple)):
+        return _format_list(value, indent, max_depth)
+
+    # Handle dicts
+    if isinstance(value, dict):
+        return _format_dict(value, indent, max_depth)
+
+    # Fallback to repr for other types
     return repr(value)
+
+
+def _format_pydantic_model(model: BaseModel, indent: int, max_depth: int) -> str:
+    """Format a Pydantic model recursively."""
+    if indent >= max_depth:
+        return repr(model)
+
+    indent_str = "  " * (indent + 1)
+    lines = [f"{model.__class__.__name__}("]
+
+    for field_name in model.model_fields:
+        field_value = getattr(model, field_name)
+        formatted_value = _format_value(field_value, indent + 1, max_depth)
+
+        # Handle multiline values with proper indentation
+        if "\n" in formatted_value:
+            # First line goes on same line as field name
+            value_lines = formatted_value.split("\n")
+            lines.append(f"{indent_str}{field_name}={value_lines[0]}")
+            # Subsequent lines maintain their indentation
+            for value_line in value_lines[1:]:
+                lines.append(value_line)
+            # Remove trailing comma from last value line and add it properly
+            if lines[-1].endswith(","):
+                lines[-1] = lines[-1]
+            else:
+                lines[-1] = lines[-1] + ","
+        else:
+            lines.append(f"{indent_str}{field_name}={formatted_value},")
+
+    lines.append("  " * indent + ")")
+    return "\n".join(lines)
+
+
+def _format_list(items: list[Any] | tuple[Any, ...], indent: int, max_depth: int) -> str:
+    """Format a list or tuple recursively."""
+    if not items:
+        return "[]"
+
+    if indent >= max_depth:
+        return repr(items)
+
+    # For simple types, keep on one line
+    if all(isinstance(item, (str, int, float, bool, type(None))) for item in items):
+        formatted_items = [_format_value(item, indent, max_depth) for item in items]
+        return f"[{', '.join(formatted_items)}]"
+
+    # For complex types, use multi-line format
+    indent_str = "  " * (indent + 1)
+    lines = ["["]
+    for item in items:
+        formatted_item = _format_value(item, indent + 1, max_depth)
+        # If the formatted item is multiline, indent each line
+        if "\n" in formatted_item:
+            indented_lines = [indent_str + line if i == 0 else "  " * (indent + 1) + line
+                            for i, line in enumerate(formatted_item.split("\n"))]
+            lines.append("\n".join(indented_lines) + ",")
+        else:
+            lines.append(f"{indent_str}{formatted_item},")
+
+    lines.append("  " * indent + "]")
+    return "\n".join(lines)
+
+
+def _format_dict(d: dict[Any, Any], indent: int, max_depth: int) -> str:
+    """Format a dictionary recursively."""
+    if not d:
+        return "{}"
+
+    if indent >= max_depth:
+        return repr(d)
+
+    indent_str = "  " * (indent + 1)
+    lines = ["{"]
+
+    for key, value in d.items():
+        formatted_key = _format_value(key, indent, max_depth)
+        formatted_value = _format_value(value, indent + 1, max_depth)
+
+        # If the formatted value is multiline, handle indentation
+        if "\n" in formatted_value:
+            lines.append(f"{indent_str}{formatted_key}: {formatted_value},")
+        else:
+            lines.append(f"{indent_str}{formatted_key}: {formatted_value},")
+
+    lines.append("  " * indent + "}")
+    return "\n".join(lines)
+
+
+def _extract_nested_model_types(
+    config_class: type[BaseModel] | None,
+) -> dict[str, type[BaseModel]]:
+    """Extract all nested Pydantic model types from a config class.
+
+    Returns a dict mapping model class names to their types, in dependency order.
+    """
+    if config_class is None:
+        return {}
+
+    nested_types: dict[str, type[BaseModel]] = {}
+    seen: set[type[BaseModel]] = set()
+
+    def _extract_from_annotation(annotation: Any) -> None:
+        """Recursively extract BaseModel subclasses from type annotations."""
+        if annotation is None:
+            return
+
+        # Check if it's a BaseModel subclass
+        try:
+            if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                if annotation not in seen:
+                    seen.add(annotation)
+                    nested_types[annotation.__name__] = annotation
+                    # Recursively extract nested types from this model's fields
+                    for field in annotation.model_fields.values():
+                        _extract_from_annotation(field.annotation)
+                return
+        except TypeError:
+            pass
+
+        # Handle generic types (list, dict, Union, etc.)
+        origin = get_origin(annotation)
+        if origin is not None:
+            # Get type arguments
+            args = get_args(annotation)
+            for arg in args:
+                _extract_from_annotation(arg)
+
+    # Scan all fields
+    for field in config_class.model_fields.values():
+        _extract_from_annotation(field.annotation)
+
+    return nested_types
 
 
 def describe_config_model(
@@ -290,6 +465,7 @@ def settings(
     plugin: str | None = typer.Argument(None, help="Plugin to inspect"),
 ) -> None:
     """Show configuration fields for plugins."""
+    from ccproxy.cli._settings_help import print_settings_help
 
     console = Console()
     settings_obj = Settings.from_config()
@@ -305,36 +481,33 @@ def settings(
             console.print(f"Plugin '{plugin}' not found.")
             return
 
-    for plugin_meta in plugins:
-        header = f"[bold]{plugin_meta.name}[/bold]"
-        version = plugin_meta.version or "unknown"
-        status = "enabled" if plugin_meta.enabled else "disabled"
-        if plugin_meta.status_reason:
-            status = f"{plugin_meta.status_reason}"
-        console.print(f"\n{header} (v{version}, {status})")
+    # Load plugin factories to get config classes
+    factories, _filter_config, _combined_denylist = _load_all_plugin_factories(settings_obj)
 
-        if not plugin_meta.config_fields:
-            console.print("  No configuration fields declared.")
+    for plugin_meta in plugins:
+        # Get the plugin factory and config
+        factory = factories.get(plugin_meta.name)
+        if not factory:
+            console.print(f"[yellow]Warning: Could not load factory for {plugin_meta.name}[/yellow]")
             continue
 
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("Field", style="bold")
-        table.add_column("Type", style="cyan")
-        table.add_column("Value", style="green")
-        table.add_column("Default", style="yellow")
-        table.add_column("Description", style="dim")
+        manifest = factory.get_manifest()
+        config_class = getattr(manifest, "config_class", None)
 
-        for field in plugin_meta.config_fields:
-            field_label = f"{field.name}*" if field.required else field.name
-            table.add_row(
-                field_label,
-                field.type_label,
-                field.value_label,
-                field.default_label,
-                field.description,
-            )
+        if not config_class:
+            console.print(f"  {plugin_meta.name}: No configuration fields declared.")
+            continue
 
-        console.print(table)
+        # Get the config instance
+        config_instance = _build_config_instance(manifest, settings_obj)
+
+        # Use generic settings display
+        print_settings_help(
+            config_class,
+            config_instance,
+            version=plugin_meta.version,
+            enabled=plugin_meta.enabled,
+        )
 
 
 @app.command()
