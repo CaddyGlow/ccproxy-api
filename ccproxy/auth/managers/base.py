@@ -3,6 +3,7 @@
 import json
 import os
 from abc import ABC, abstractmethod
+from datetime import UTC, datetime
 from typing import Any, Generic, TypeVar
 
 from pydantic import ValidationError
@@ -35,7 +36,10 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
     """
 
     def __init__(
-        self, storage: TokenStorage[CredentialsT], credentials_ttl: float | None = None
+        self,
+        storage: TokenStorage[CredentialsT],
+        credentials_ttl: float | None = None,
+        refresh_grace_seconds: float | None = None,
     ):
         """Initialize token manager.
 
@@ -64,6 +68,23 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
                     self._credentials_ttl = 30.0
             except Exception:
                 self._credentials_ttl = 30.0
+
+        # Grace period before expiry to trigger proactive refresh
+        if refresh_grace_seconds is not None:
+            try:
+                grace_val = float(refresh_grace_seconds)
+                self._refresh_grace_seconds = grace_val if grace_val >= 0 else 0.0
+            except Exception:
+                self._refresh_grace_seconds = 120.0
+        else:
+            env_grace = os.getenv("AUTH__REFRESH_GRACE_SECONDS")
+            try:
+                grace_val = float(env_grace) if env_grace is not None else 120.0
+                if grace_val < 0:
+                    grace_val = 0.0
+                self._refresh_grace_seconds = grace_val
+            except Exception:
+                self._refresh_grace_seconds = 120.0
 
     # ==================== Core Operations ====================
 
@@ -217,6 +238,43 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
 
     # ==================== Common Implementations ====================
 
+    @property
+    def refresh_grace_seconds(self) -> float:
+        """Seconds before expiry when tokens should be proactively refreshed."""
+
+        return self._refresh_grace_seconds
+
+    def seconds_until_expiration(self, credentials: CredentialsT) -> float | None:
+        """Return seconds until the access token expires, if available."""
+
+        expires_at = self.get_expiration_time(credentials)
+        if not isinstance(expires_at, datetime):
+            return None
+
+        # Normalise naive datetimes to UTC to avoid comparison issues
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+
+        delta = expires_at - datetime.now(UTC)
+        return delta.total_seconds()
+
+    def should_refresh(
+        self, credentials: CredentialsT, grace_seconds: float | None = None
+    ) -> bool:
+        """Determine whether credentials should be refreshed."""
+
+        seconds_remaining = self.seconds_until_expiration(credentials)
+        if seconds_remaining is None:
+            return False
+
+        grace = (
+            self.refresh_grace_seconds
+            if grace_seconds is None
+            else max(grace_seconds, 0.0)
+        )
+
+        return seconds_remaining <= grace
+
     async def validate_token(self) -> bool:
         """Check if stored token is valid and not expired.
 
@@ -282,12 +340,10 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
         # Add expiration info if available
         expires_at = self.get_expiration_time(credentials)
         if expires_at:
-            from datetime import UTC, datetime
-
-            now = datetime.now(UTC)
-            delta = expires_at - now
             status["expires_at"] = expires_at.isoformat()
-            status["expires_in"] = max(0, int(delta.total_seconds()))
+            seconds_remaining = self.seconds_until_expiration(credentials)
+            if seconds_remaining is not None:
+                status["expires_in"] = max(0, int(seconds_remaining))
 
         # Add account ID if available
         account_id = self.get_account_id(credentials)

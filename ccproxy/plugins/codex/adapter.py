@@ -8,6 +8,7 @@ import httpx
 from fastapi import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ccproxy.auth.exceptions import OAuthTokenRefreshError
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins.interfaces import (
     DetectionServiceProtocol,
@@ -347,17 +348,61 @@ class CodexAdapter(BaseHTTPAdapter):
 
         token_manager = self.token_manager
 
-        token = await token_manager.get_access_token()
+        async def _snapshot_token() -> str | None:
+            snapshot = await token_manager.get_token_snapshot()
+            if snapshot and snapshot.access_token:
+                return snapshot.access_token
+            return None
+
+        credentials = await token_manager.load_credentials()
+        if credentials and token_manager.should_refresh(credentials):
+            try:
+                refreshed = await token_manager.get_access_token_with_refresh()
+                if refreshed:
+                    return refreshed
+            except OAuthTokenRefreshError as exc:
+                logger.warning(
+                    "codex_token_refresh_failed",
+                    error=str(exc),
+                    category="auth",
+                )
+                fallback = await _snapshot_token()
+                if fallback:
+                    return fallback
+
+        token = None
+        try:
+            token = await token_manager.get_access_token()
+        except OAuthTokenRefreshError as exc:
+            logger.warning(
+                "codex_token_refresh_failed",
+                error=str(exc),
+                category="auth",
+            )
+            fallback = await _snapshot_token()
+            if fallback:
+                return fallback
+
         if token:
             return token
 
-        refreshed = await token_manager.get_access_token_with_refresh()
-        if refreshed:
-            return refreshed
+        try:
+            refreshed = await token_manager.get_access_token_with_refresh()
+            if refreshed:
+                return refreshed
+        except OAuthTokenRefreshError as exc:
+            logger.warning(
+                "codex_token_refresh_failed",
+                error=str(exc),
+                category="auth",
+            )
+            fallback = await _snapshot_token()
+            if fallback:
+                return fallback
 
-        snapshot = await token_manager.get_token_snapshot()
-        if snapshot and snapshot.access_token:
-            return snapshot.access_token
+        fallback = await _snapshot_token()
+        if fallback:
+            return fallback
 
         raise ValueError("No authentication credentials available")
 

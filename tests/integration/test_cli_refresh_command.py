@@ -1,6 +1,7 @@
 """Integration tests for the auth refresh CLI command."""
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -130,3 +131,49 @@ class TestCLIRefreshCommand:
         assert result.exit_code == 1
         assert "re-authentication is required" in result.stdout
         provider.refresh_access_token.assert_not_called()
+
+    @pytest.mark.integration
+    def test_refresh_command_with_custom_file(
+        self, cli_runner: CliRunner, tmp_path: Path
+    ) -> None:
+        provider = MagicMock()
+        provider.supports_refresh = True
+        provider.load_credentials = AsyncMock(return_value=_build_credentials())
+        refreshed = _build_credentials()
+        refreshed.access_token = "rotated-access"
+        provider.refresh_access_token = AsyncMock(return_value=refreshed)
+        provider.save_credentials = AsyncMock(return_value=True)
+
+        cred_file = tmp_path / "tokens.json"
+        cred_file.write_text("{}", encoding="utf-8")
+
+        with (
+            patch(
+                "ccproxy.cli.commands.auth.get_oauth_provider_for_name",
+                new_callable=AsyncMock,
+            ) as mock_get_provider,
+            patch(
+                "ccproxy.cli.commands.auth.discover_oauth_providers",
+                new_callable=AsyncMock,
+            ) as mock_discover,
+            patch("ccproxy.cli.commands.auth._get_service_container") as mock_container,
+            patch("ccproxy.cli.commands.auth._resolve_token_manager") as mock_resolve,
+        ):
+            mock_get_provider.return_value = provider
+            mock_discover.return_value = {"test-provider": ("oauth", "Test Provider")}
+            mock_container.return_value = MagicMock()
+            mock_resolve.return_value = None
+
+            result = cli_runner.invoke(
+                auth_app,
+                ["refresh", "test-provider", "--file", str(cred_file)],
+            )
+
+        assert result.exit_code == 0
+        assert "Tokens refreshed successfully" in result.stdout
+        provider.load_credentials.assert_awaited_once_with(custom_path=cred_file)
+        provider.refresh_access_token.assert_awaited_once()
+        provider.save_credentials.assert_awaited_once_with(
+            refreshed, custom_path=cred_file
+        )
+        mock_resolve.assert_not_called()

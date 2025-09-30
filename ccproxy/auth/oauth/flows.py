@@ -5,6 +5,7 @@ import base64
 import secrets
 import sys
 import webbrowser
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -181,7 +182,12 @@ def render_qr_code(url: str) -> None:
 class BrowserFlow:
     """Browser-based OAuth flow with callback server."""
 
-    async def run(self, provider: OAuthProviderProtocol, no_browser: bool) -> Any:
+    async def run(
+        self,
+        provider: OAuthProviderProtocol,
+        no_browser: bool,
+        save_path: str | Path | None = None,
+    ) -> Any:
         """Execute browser OAuth flow with fallback handling."""
         cli_config = provider.cli
 
@@ -246,7 +252,7 @@ class BrowserFlow:
                 credentials = await provider.handle_callback(
                     callback_data["code"], state, code_verifier, redirect_uri
                 )
-                return await provider.save_credentials(credentials)
+                return await provider.save_credentials(credentials, save_path)
             except TimeoutError:
                 # Fallback to manual code entry if callback times out
                 console.print(
@@ -280,7 +286,7 @@ class BrowserFlow:
                     credentials = await provider.handle_callback(
                         code, actual_state, code_verifier, manual_redirect_uri
                     )
-                    return await provider.save_credentials(credentials)
+                    return await provider.save_credentials(credentials, save_path)
                 else:
                     raise
         finally:
@@ -290,7 +296,9 @@ class BrowserFlow:
 class DeviceCodeFlow:
     """OAuth device code flow for headless environments."""
 
-    async def run(self, provider: OAuthProviderProtocol) -> Any:
+    async def run(
+        self, provider: OAuthProviderProtocol, save_path: str | Path | None = None
+    ) -> Any:
         """Execute device code flow with polling."""
         (
             device_code,
@@ -309,13 +317,15 @@ class DeviceCodeFlow:
                 device_code, 5, expires_in
             )
 
-        return await provider.save_credentials(credentials)
+        return await provider.save_credentials(credentials, save_path)
 
 
 class ManualCodeFlow:
     """Manual authorization code entry for restricted environments."""
 
-    async def run(self, provider: OAuthProviderProtocol) -> Any:
+    async def run(
+        self, provider: OAuthProviderProtocol, save_path: str | Path | None = None
+    ) -> Any:
         """Execute manual code entry flow."""
         # Generate state for manual flow
         state = secrets.token_urlsafe(32)
@@ -359,4 +369,4 @@ class ManualCodeFlow:
         credentials = await provider.handle_callback(
             code, actual_state, code_verifier, manual_redirect_uri
         )
-        return await provider.save_credentials(credentials)
+        return await provider.save_credentials(credentials, save_path)

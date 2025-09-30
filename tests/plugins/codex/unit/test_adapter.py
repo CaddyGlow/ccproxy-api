@@ -54,6 +54,8 @@ class TestCodexAdapter:
         credentials = Mock()
         credentials.access_token = "test-token"
         auth_manager.load_credentials = AsyncMock(return_value=credentials)
+        auth_manager.should_refresh = Mock(return_value=False)
+        auth_manager.get_token_snapshot = AsyncMock(return_value=None)
 
         profile = Mock()
         profile.chatgpt_account_id = "test-account-123"

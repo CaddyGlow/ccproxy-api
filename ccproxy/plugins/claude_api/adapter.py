@@ -6,7 +6,7 @@ from typing import Any, cast
 import httpx
 from starlette.responses import Response, StreamingResponse
 
-from ccproxy.auth.exceptions import CredentialsInvalidError
+from ccproxy.auth.exceptions import CredentialsInvalidError, OAuthTokenRefreshError
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins.interfaces import (
     DetectionServiceProtocol,
@@ -137,6 +137,28 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
         token_manager = self.token_manager
 
+        async def _snapshot_token() -> str | None:
+            snapshot = await token_manager.get_token_snapshot()
+            if snapshot and snapshot.access_token:
+                return str(snapshot.access_token)
+            return None
+
+        credentials = await token_manager.load_credentials()
+        if credentials and token_manager.should_refresh(credentials):
+            try:
+                refreshed = await token_manager.get_access_token_with_refresh()
+                if refreshed:
+                    return refreshed
+            except OAuthTokenRefreshError as exc:
+                logger.warning(
+                    "claude_token_refresh_failed",
+                    error=str(exc),
+                    category="auth",
+                )
+                fallback = await _snapshot_token()
+                if fallback:
+                    return fallback
+
         # Primary path: rely on manager contract
         try:
             token = await token_manager.get_access_token()
@@ -144,6 +166,15 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 return token
         except CredentialsInvalidError:
             logger.debug("claude_token_invalid", category="auth")
+        except OAuthTokenRefreshError as exc:
+            logger.warning(
+                "claude_token_refresh_failed",
+                error=str(exc),
+                category="auth",
+            )
+            fallback = await _snapshot_token()
+            if fallback:
+                return fallback
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.debug(
                 "claude_token_fetch_failed",
@@ -156,6 +187,15 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             refreshed = await token_manager.get_access_token_with_refresh()
             if refreshed:
                 return refreshed
+        except OAuthTokenRefreshError as exc:
+            logger.warning(
+                "claude_token_refresh_failed",
+                error=str(exc),
+                category="auth",
+            )
+            fallback = await _snapshot_token()
+            if fallback:
+                return fallback
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.debug(
                 "claude_token_refresh_failed",
@@ -163,11 +203,9 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 category="auth",
             )
 
-        # Final fallback: inspect cached credentials directly
-        snapshot = await token_manager.get_token_snapshot()
-        # Type narrowing for mypy
-        if snapshot and hasattr(snapshot, "access_token") and snapshot.access_token:
-            return str(snapshot.access_token)
+        fallback = await _snapshot_token()
+        if fallback:
+            return fallback
 
         raise ValueError("No valid OAuth access token available for Claude API")
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -11,6 +12,7 @@ from fastapi import FastAPI
 
 from ccproxy.api.app import create_app, initialize_plugins_startup, shutdown_plugins
 from ccproxy.api.bootstrap import create_service_container
+from ccproxy.config.core import LoggingSettings
 from ccproxy.config.settings import Settings
 from ccproxy.config.utils import SchedulerSettings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
@@ -26,30 +28,13 @@ async def copilot_app() -> AsyncIterator[FastAPI]:
     setup_logging(json_logs=False, log_level_name="DEBUG")
     settings = Settings(
         enable_plugins=True,
-        plugins_disable_local_discovery=False,
-        plugins={
-            "copilot": {"enabled": True},
-            "oauth_copilot": {"enabled": True},
-            "duckdb_storage": {"enabled": False},
-            "analytics": {"enabled": False},
-            "metrics": {"enabled": False},
-            "command_replay": {"enabled": False},
-            "access_log": {"enabled": False},
-            "request_tracer": {"enabled": False},
-        },
         enabled_plugins=["copilot", "oauth_copilot"],
-        disabled_plugins=[
-            "duckdb_storage",
-            "analytics",
-            "metrics",
-            "command_replay",
-            "access_log",
-            "request_tracer",
-        ],
-        logging={
-            "level": "DEBUG",
-            "verbose_api": True,
-        },
+        logging=LoggingSettings(
+            **{
+                "level": "DEBUG",
+                "verbose_api": True,
+            }
+        ),
     )
 
     service_container = create_service_container(settings)
@@ -110,9 +95,10 @@ async def codex_app() -> AsyncIterator[FastAPI]:
     service_container = create_service_container(settings)
     app = create_app(service_container)
 
-    await start_task_manager(container=service_container)
-
-    credentials_stub = SimpleNamespace(access_token="test-codex-access-token")
+    credentials_stub = SimpleNamespace(
+        access_token="test-codex-access-token",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
     profile_stub = SimpleNamespace(chatgpt_account_id="test-account-id")
 
     load_patch = patch(
@@ -168,26 +154,7 @@ async def claude_app() -> AsyncIterator[FastAPI]:
     setup_logging(json_logs=False, log_level_name="DEBUG")
     settings = Settings(
         enable_plugins=True,
-        plugins_disable_local_discovery=False,
-        plugins={
-            "claude_api": {"enabled": True},
-            "oauth_claude": {"enabled": True},
-            "duckdb_storage": {"enabled": False},
-            "analytics": {"enabled": False},
-            "metrics": {"enabled": False},
-            "command_replay": {"enabled": False},
-            "access_log": {"enabled": False},
-            "request_tracer": {"enabled": False},
-        },
         enabled_plugins=["claude_api", "oauth_claude"],
-        disabled_plugins=[
-            "duckdb_storage",
-            "analytics",
-            "metrics",
-            "command_replay",
-            "access_log",
-            "request_tracer",
-        ],
     )
 
     service_container = create_service_container(settings)

@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime
 
+from ccproxy.auth.exceptions import OAuthTokenRefreshError
 from ccproxy.auth.managers.base import BaseTokenManager
 from ccproxy.auth.managers.token_snapshot import TokenSnapshot
 from ccproxy.auth.storage.base import TokenStorage
@@ -189,35 +190,40 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
             logger.debug("no_credentials_found", category="auth")
             return None
 
-        # Check if token is expired
-        if self.is_expired(credentials):
-            logger.info("openai_token_expired_attempting_refresh", category="auth")
+        needs_refresh = self.should_refresh(credentials)
 
-            # Try to refresh if we have a refresh token
+        if needs_refresh:
+            logger.info(
+                "openai_token_refresh_needed",
+                reason="expired" if self.is_expired(credentials) else "expiring_soon",
+                expires_in=self.seconds_until_expiration(credentials),
+                category="auth",
+            )
+
             if credentials.refresh_token:
                 try:
                     refreshed = await self.refresh_token()
-                    if refreshed:
-                        logger.info(
-                            "OpenAI token refreshed successfully", category="auth"
-                        )
-                        return refreshed.access_token
-                    else:
-                        logger.error("openai_token_refresh_failed", category="auth")
-                        return None
-                except Exception as e:
-                    logger.error(
-                        "Error refreshing OpenAI token", error=str(e), category="auth"
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning(
+                        "openai_token_refresh_exception",
+                        error=str(exc),
+                        category="auth",
                     )
-                    return None
+                    raise OAuthTokenRefreshError("OpenAI token refresh failed") from exc
+
+                if refreshed:
+                    logger.info("OpenAI token refreshed successfully", category="auth")
+                    credentials = refreshed
+                else:
+                    logger.warning("openai_token_refresh_failed", category="auth")
+                    raise OAuthTokenRefreshError("OpenAI token refresh failed")
             else:
                 logger.warning(
                     "Cannot refresh OpenAI token - no refresh token available",
                     category="auth",
                 )
-                return None
+                raise OAuthTokenRefreshError("OpenAI token refresh failed")
 
-        # Token is still valid
         return credentials.access_token
 
     async def get_access_token(self) -> str | None:
@@ -235,36 +241,16 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
             return None
 
         # Check if token is expired
-        if self.is_expired(credentials):
-            logger.warning(
-                "OpenAI token is expired. Will attempt refresh but continue with expired token if needed.",
-                category="auth",
-            )
+        needs_refresh = self.should_refresh(credentials)
 
-            # Try to refresh if we have a refresh token
-            if credentials.refresh_token:
-                try:
-                    refreshed = await self.refresh_token()
-                    if refreshed:
-                        logger.info(
-                            "OpenAI token refreshed successfully", category="auth"
-                        )
-                        return refreshed.access_token
-                    else:
-                        logger.warning(
-                            "OpenAI token refresh failed, using expired token",
-                            category="auth",
-                        )
-                except Exception as e:
-                    logger.warning(
-                        f"Error refreshing OpenAI token, using expired token: {e}",
-                        category="auth",
-                    )
-            else:
+        if needs_refresh:
+            try:
+                return await self.get_access_token_with_refresh()
+            except OAuthTokenRefreshError as exc:
                 logger.warning(
-                    "Cannot refresh expired OpenAI token (no refresh token), using expired token",
+                    "OpenAI token refresh failed, using existing token",
+                    error=str(exc),
                     category="auth",
                 )
 
-        # Return the token regardless of expiration status
         return credentials.access_token
