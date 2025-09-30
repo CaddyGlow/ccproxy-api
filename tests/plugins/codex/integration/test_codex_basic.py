@@ -1,3 +1,4 @@
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -140,7 +141,10 @@ async def codex_client():  # type: ignore[no-untyped-def]
 
     app.include_router(codex_router, prefix="/codex")
 
-    credentials_stub = SimpleNamespace(access_token="test-codex-access-token")
+    credentials_stub = SimpleNamespace(
+        access_token="test-codex-access-token",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
     profile_stub = SimpleNamespace(chatgpt_account_id="test-account-id")
 
     load_patch = patch(

@@ -7,6 +7,7 @@ import logging
 import os
 from collections.abc import Coroutine
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any, cast
 
 import structlog
@@ -45,6 +46,77 @@ logger = get_logger(__name__)
 # Cache settings and container to avoid repeated config file loading
 _cached_settings: Settings | None = None
 _cached_container: ServiceContainer | None = None
+
+
+@contextlib.contextmanager
+def _temporary_disable_provider_storage(provider: Any, *, disable: bool) -> Any:
+    """Temporarily disable provider/client storage (used for custom credential paths)."""
+
+    if not disable:
+        yield
+        return
+
+    original_provider_storage = getattr(provider, "storage", None)
+    client = getattr(provider, "client", None)
+    original_client_storage = getattr(client, "storage", None) if client else None
+
+    try:
+        if hasattr(provider, "storage"):
+            provider.storage = None
+        if client is not None and hasattr(client, "storage"):
+            client.storage = None
+        yield
+    finally:
+        if hasattr(provider, "storage"):
+            provider.storage = original_provider_storage
+        if client is not None and hasattr(client, "storage"):
+            client.storage = original_client_storage
+
+
+def _normalize_credentials_file_option(
+    toolkit: Any,
+    file_option: Path | None,
+    *,
+    require_exists: bool,
+    create_parent: bool = False,
+) -> Path | None:
+    """Resolve and validate a user-supplied credential file path."""
+
+    if file_option is None:
+        return None
+
+    custom_path = file_option.expanduser()
+    try:
+        custom_path = custom_path.resolve()
+    except FileNotFoundError:
+        # If parents do not exist, fall back to absolute path for messaging
+        custom_path = custom_path.absolute()
+
+    if custom_path.exists() and custom_path.is_dir():
+        toolkit.print(
+            f"Target path '{custom_path}' is a directory. Provide a file path.",
+            tag="error",
+        )
+        raise typer.Exit(1)
+
+    if require_exists and not custom_path.exists():
+        toolkit.print(
+            f"Credential file '{custom_path}' not found.",
+            tag="error",
+        )
+        raise typer.Exit(1)
+
+    if create_parent:
+        try:
+            custom_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            toolkit.print(
+                f"Failed to create directory '{custom_path.parent}': {exc}",
+                tag="error",
+            )
+            raise typer.Exit(1) from exc
+
+    return custom_path
 
 
 def _get_cached_settings() -> Settings:
@@ -747,6 +819,20 @@ def login_command(
             "--manual", "-m", help="Skip callback server and enter code manually"
         ),
     ] = False,
+    output_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--file",
+            help="Write credentials to this path instead of the default storage",
+        ),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Overwrite existing credential file when using --file",
+        ),
+    ] = False,
 ) -> None:
     """Login to a provider using OAuth authentication."""
     _ensure_logging_configured()
@@ -760,6 +846,42 @@ def login_command(
         pass
     toolkit = get_rich_toolkit()
 
+    if force and output_file is None:
+        toolkit.print("--force can only be used together with --file", tag="error")
+        raise typer.Exit(1)
+
+    custom_path: Path | None = None
+    if output_file is not None:
+        custom_path = output_file.expanduser()
+        try:
+            custom_path = custom_path.resolve()
+        except FileNotFoundError:
+            # Path.resolve() on some platforms raises when parents missing; fallback to absolute()
+            custom_path = custom_path.absolute()
+
+        if custom_path.exists() and custom_path.is_dir():
+            toolkit.print(
+                f"Target path '{custom_path}' is a directory. Provide a file path.",
+                tag="error",
+            )
+            raise typer.Exit(1)
+
+        if custom_path.exists() and not force:
+            toolkit.print(
+                f"Credential file '{custom_path}' already exists. Use --force to overwrite.",
+                tag="error",
+            )
+            raise typer.Exit(1)
+
+        try:
+            custom_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            toolkit.print(
+                f"Failed to create directory '{custom_path.parent}': {exc}",
+                tag="error",
+            )
+            raise typer.Exit(1)
+
     provider = provider.strip().lower()
     display_name = provider.replace("_", "-").title()
 
@@ -768,6 +890,8 @@ def login_command(
         centered=True,
     )
     toolkit.print_line()
+
+    custom_path_str = str(custom_path) if custom_path else None
 
     try:
         container = _get_service_container()
@@ -791,27 +915,40 @@ def login_command(
         # Flow engine selection with fallback logic
         flow_engine: ManualCodeFlow | DeviceCodeFlow | BrowserFlow
         try:
-            if manual:
-                # Manual mode requested
-                if not cli_config.supports_manual_code:
-                    raise AuthProviderError(
-                        f"Provider '{provider}' doesn't support manual code entry"
-                    )
-                flow_engine = ManualCodeFlow()
-                success = asyncio.run(flow_engine.run(oauth_provider))
-
-            elif (
-                cli_config.preferred_flow == FlowType.device
-                and cli_config.supports_device_flow
+            with _temporary_disable_provider_storage(
+                oauth_provider, disable=custom_path is not None
             ):
-                # Device flow preferred and supported
-                flow_engine = DeviceCodeFlow()
-                success = asyncio.run(flow_engine.run(oauth_provider))
+                if manual:
+                    # Manual mode requested
+                    if not cli_config.supports_manual_code:
+                        raise AuthProviderError(
+                            f"Provider '{provider}' doesn't support manual code entry"
+                        )
+                    flow_engine = ManualCodeFlow()
+                    success = asyncio.run(
+                        flow_engine.run(oauth_provider, save_path=custom_path_str)
+                    )
 
-            else:
-                # Browser flow (default)
-                flow_engine = BrowserFlow()
-                success = asyncio.run(flow_engine.run(oauth_provider, no_browser))
+                elif (
+                    cli_config.preferred_flow == FlowType.device
+                    and cli_config.supports_device_flow
+                ):
+                    # Device flow preferred and supported
+                    flow_engine = DeviceCodeFlow()
+                    success = asyncio.run(
+                        flow_engine.run(oauth_provider, save_path=custom_path_str)
+                    )
+
+                else:
+                    # Browser flow (default)
+                    flow_engine = BrowserFlow()
+                    success = asyncio.run(
+                        flow_engine.run(
+                            oauth_provider,
+                            no_browser=no_browser,
+                            save_path=custom_path_str,
+                        )
+                    )
 
         except PortBindError as e:
             # Port binding failed - offer manual fallback
@@ -819,8 +956,13 @@ def login_command(
                 console.print(
                     "[yellow]Port binding failed. Falling back to manual mode.[/yellow]"
                 )
-                flow_engine = ManualCodeFlow()
-                success = asyncio.run(flow_engine.run(oauth_provider))
+                with _temporary_disable_provider_storage(
+                    oauth_provider, disable=custom_path is not None
+                ):
+                    flow_engine = ManualCodeFlow()
+                    success = asyncio.run(
+                        flow_engine.run(oauth_provider, save_path=custom_path_str)
+                    )
             else:
                 console.print(
                     f"[red]Port {cli_config.callback_port} unavailable and manual mode not supported[/red]"
@@ -845,6 +987,10 @@ def login_command(
 
         if success:
             console.print("[green]✓[/green] Authentication successful!")
+            if custom_path:
+                console.print(
+                    f"[dim]Credentials saved to {custom_path}[/dim]",
+                )
         else:
             console.print("[red]✗[/red] Authentication failed")
             raise typer.Exit(1)
@@ -864,7 +1010,7 @@ def login_command(
         raise typer.Exit(1) from e
 
 
-def _refresh_provider_tokens(provider: str) -> None:
+def _refresh_provider_tokens(provider: str, custom_path: Path | None = None) -> None:
     """Shared implementation for refresh/renew commands."""
     toolkit = get_rich_toolkit()
     provider_key = provider.strip().lower()
@@ -875,6 +1021,15 @@ def _refresh_provider_tokens(provider: str) -> None:
         centered=True,
     )
     toolkit.print_line()
+
+    credential_path = _normalize_credentials_file_option(
+        toolkit, custom_path, require_exists=True
+    )
+    load_kwargs: dict[str, Any] = {}
+    save_kwargs: dict[str, Any] = {}
+    if credential_path is not None:
+        load_kwargs["custom_path"] = credential_path
+        save_kwargs["custom_path"] = credential_path
 
     try:
         container = _get_service_container()
@@ -899,21 +1054,31 @@ def _refresh_provider_tokens(provider: str) -> None:
             )
             raise typer.Exit(1)
 
-        credentials = asyncio.run(oauth_provider.load_credentials())
+        credentials = asyncio.run(oauth_provider.load_credentials(**load_kwargs))
         if not credentials:
             toolkit.print(
-                "No credentials found. Run 'ccproxy auth login' first.",
+                (
+                    f"No credentials found at '{credential_path}'."
+                    if credential_path
+                    else "No credentials found. Run 'ccproxy auth login' first."
+                ),
                 tag="warning",
             )
             raise typer.Exit(1)
 
         snapshot = _token_snapshot_from_credentials(credentials, provider_key)
 
-        manager = _resolve_token_manager(provider_key, oauth_provider, container)
+        manager = None
+        if credential_path is None:
+            manager = _resolve_token_manager(provider_key, oauth_provider, container)
 
         refreshed_credentials: Any | None = None
         try:
-            if manager and hasattr(manager, "refresh_token"):
+            if (
+                credential_path is None
+                and manager
+                and hasattr(manager, "refresh_token")
+            ):
                 refreshed_credentials = asyncio.run(manager.refresh_token())
             else:
                 refresh_token = snapshot.refresh_token if snapshot else None
@@ -925,9 +1090,23 @@ def _refresh_provider_tokens(provider: str) -> None:
                     )
                     raise typer.Exit(1)
 
-                refreshed_credentials = asyncio.run(
-                    oauth_provider.refresh_access_token(refresh_token)
-                )
+                with _temporary_disable_provider_storage(
+                    oauth_provider, disable=credential_path is not None
+                ):
+                    refreshed_credentials = asyncio.run(
+                        oauth_provider.refresh_access_token(refresh_token)
+                    )
+                if credential_path and refreshed_credentials:
+                    saved = asyncio.run(
+                        oauth_provider.save_credentials(
+                            refreshed_credentials, **save_kwargs
+                        )
+                    )
+                    if not saved:
+                        toolkit.print(
+                            f"Refreshed credentials could not be saved to '{credential_path}'.",
+                            tag="warning",
+                        )
         except Exception as exc:
             toolkit.print(f"Token refresh failed: {exc}", tag="error")
             logger.error(
@@ -940,7 +1119,9 @@ def _refresh_provider_tokens(provider: str) -> None:
 
         if refreshed_credentials is None:
             with contextlib.suppress(Exception):
-                refreshed_credentials = asyncio.run(oauth_provider.load_credentials())
+                refreshed_credentials = asyncio.run(
+                    oauth_provider.load_credentials(**load_kwargs)
+                )
             if (
                 not refreshed_credentials
                 and manager
@@ -1012,10 +1193,19 @@ def refresh_command(
         str,
         typer.Argument(help="Provider to refresh (claude-api, codex, copilot)"),
     ],
+    credential_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--file",
+            help=(
+                "Refresh credentials stored at this path instead of the default storage"
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Refresh stored credentials using the provider's refresh token."""
     _ensure_logging_configured()
-    _refresh_provider_tokens(provider)
+    _refresh_provider_tokens(provider, credential_file)
 
 
 @app.command(name="renew")
@@ -1024,10 +1214,19 @@ def renew_command(
         str,
         typer.Argument(help="Alias for refresh command"),
     ],
+    credential_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--file",
+            help=(
+                "Refresh credentials stored at this path instead of the default storage"
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Alias for refresh."""
     _ensure_logging_configured()
-    _refresh_provider_tokens(provider)
+    _refresh_provider_tokens(provider, credential_file)
 
 
 @app.command(name="status")
@@ -1040,10 +1239,25 @@ def status_command(
         bool,
         typer.Option("--detailed", "-d", help="Show detailed credential information"),
     ] = False,
+    credential_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--file",
+            help=("Read credentials from this path instead of the default storage"),
+        ),
+    ] = None,
 ) -> None:
     """Check authentication status and info for specified provider."""
     _ensure_logging_configured()
     toolkit = get_rich_toolkit()
+
+    credential_path = _normalize_credentials_file_option(
+        toolkit, credential_file, require_exists=False
+    )
+    credential_missing = bool(credential_path and not credential_path.exists())
+    load_kwargs: dict[str, Any] = {}
+    if credential_path is not None:
+        load_kwargs["custom_path"] = credential_path
 
     provider = provider.strip().lower()
     display_name = provider.replace("_", "-").title()
@@ -1077,22 +1291,31 @@ def status_command(
         if oauth_provider:
             try:
                 # Delegate to provider; providers may internally use their managers
-                credentials = asyncio.run(oauth_provider.load_credentials())
+                credentials = asyncio.run(
+                    oauth_provider.load_credentials(**load_kwargs)
+                )
+
+                if credential_missing and not credentials:
+                    toolkit.print(
+                        f"Credential file '{credential_path}' not found.",
+                        tag="warning",
+                    )
 
                 # Optionally obtain a token manager via provider API (if exposed)
                 manager = None
-                try:
-                    if hasattr(oauth_provider, "create_token_manager"):
-                        manager = asyncio.run(oauth_provider.create_token_manager())
-                    elif hasattr(oauth_provider, "get_token_manager"):
-                        mgr = oauth_provider.get_token_manager()  # may be sync
-                        # If coroutine, run it; else use directly
-                        if hasattr(mgr, "__await__"):
-                            manager = asyncio.run(mgr)
-                        else:
-                            manager = mgr
-                except Exception as e:
-                    logger.debug("token_manager_unavailable", error=str(e))
+                if credential_path is None:
+                    try:
+                        if hasattr(oauth_provider, "create_token_manager"):
+                            manager = asyncio.run(oauth_provider.create_token_manager())
+                        elif hasattr(oauth_provider, "get_token_manager"):
+                            mgr = oauth_provider.get_token_manager()  # may be sync
+                            # If coroutine, run it; else use directly
+                            if hasattr(mgr, "__await__"):
+                                manager = asyncio.run(mgr)
+                            else:
+                                manager = mgr
+                    except Exception as e:
+                        logger.debug("token_manager_unavailable", error=str(e))
 
                 if manager and hasattr(manager, "get_token_snapshot"):
                     with contextlib.suppress(Exception):
@@ -1138,13 +1361,17 @@ def status_command(
                     else:
                         quick = None
                         # Prefer provider-supplied quick profile methods if available
-                        if hasattr(oauth_provider, "get_unified_profile_quick"):
+                        if credential_path is None and hasattr(
+                            oauth_provider, "get_unified_profile_quick"
+                        ):
                             with contextlib.suppress(Exception):
                                 quick = asyncio.run(
                                     oauth_provider.get_unified_profile_quick()
                                 )
-                        if (not quick or quick == {}) and hasattr(
-                            oauth_provider, "get_unified_profile"
+                        if (
+                            credential_path is None
+                            and (not quick or quick == {})
+                            and hasattr(oauth_provider, "get_unified_profile")
                         ):
                             with contextlib.suppress(Exception):
                                 quick = asyncio.run(

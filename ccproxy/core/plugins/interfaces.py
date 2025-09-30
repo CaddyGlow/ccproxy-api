@@ -58,6 +58,10 @@ class TokenManagerProtocol(Protocol):
 
     async def get_token_snapshot(self) -> TokenSnapshot | None: ...
 
+    def should_refresh(
+        self, credentials: object, grace_seconds: float | None = None
+    ) -> bool: ...
+
 
 class ProfiledTokenManagerProtocol(TokenManagerProtocol, Protocol):
     """Token manager that can return a lightweight profile snapshot."""

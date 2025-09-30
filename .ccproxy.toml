@@ -1,0 +1,54 @@
+disabled_plugins = [
+  "docker",
+  "permissions",
+  "duckdb_storage",
+  "analytics",
+  "metrics",
+  "access_log",
+  "dashboard",
+  # "command_replay",
+  # "request_tracer",
+]
+
+# Logging configuration
+[logging]
+level = "WARNING"
+format = "auto"
+file = "/tmp/ccproxy/ccproxy.log"
+verbose_api = false
+enable_plugin_logging = true
+plugin_log_base_dir = "/tmp/ccproxy"
+
+# Request Tracer plugin configuration
+[plugins.request_tracer]
+log_dir = "/tmp/ccproxy/tracer"
+json_logs_enabled = true
+verbose_api = true
+log_client_request = true
+log_client_response = true
+log_streaming_chunks = true
+
+# Access Log plugin configuration
+[plugins.access_log]
+client_enabled = true
+client_format = "combined"                             # Options: combined, common, structured
+client_log_file = "/tmp/ccproxy/combined_access.log"
+provider_enabled = false
+provider_format = "structured"
+provider_log_file = "/tmp/ccproxy/provider_access.log"
+exclude_paths = ["/health", "/metrics", "/logs"]
+buffer_size = 100
+flush_interval = 1.0
+
+
+[plugins.claude_sdk.sdk_session_pool]
+session_ttl = 3600
+max_sessions = 1000
+
+[plugins.duckdb_storage]
+enabled = false
+database_path = "/tmp/ccproxy/metrics.duckdb"
+register_app_state_alias = true
+
+[plugins.command_replay]
+enabled = true
