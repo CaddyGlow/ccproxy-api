@@ -221,7 +221,8 @@ prod:
 
 # Documentation targets
 docs-install:
-	uv sync --group docs
+	# uv sync --group docs
+	uv sync --all-groups 
 
 docs-build: docs-install
 	uv run mkdocs build

@@ -58,6 +58,7 @@ nav:
     - Configuration: getting-started/configuration.md
   - Plugin System:
     - Overview: PLUGIN_SYSTEM_DOCUMENTATION.md
+    - Credential Balancer: plugins/credential-balancer.md
     - OAuth Integration: OAUTH_PLUGIN_ARCHITECTURE.md
   - Migration:
     - 0.2 Plugin‑First: migration/0.2-plugin-first.md
