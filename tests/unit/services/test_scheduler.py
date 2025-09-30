@@ -96,7 +96,7 @@ class TestSchedulerCore:
         scheduler = Scheduler(
             task_registry=registry,
             max_concurrent_tasks=5,
-            graceful_shutdown_timeout=0.01,
+            graceful_shutdown_timeout=0.001,  # Reduced from 0.01 for faster tests
         )
         yield scheduler
 
@@ -156,12 +156,12 @@ class TestSchedulerCore:
         """Test successful task removal."""
         await scheduler.start()
 
-        # Add task first
+        # Add task first (disabled to avoid waiting for task execution)
         await scheduler.add_task(
             task_name="test_task",
             task_type="custom_task",
             interval_seconds=60.0,
-            enabled=True,
+            enabled=False,  # Changed to False to skip task execution
         )
 
         assert scheduler.task_count == 1

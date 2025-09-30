@@ -25,14 +25,16 @@ async def copilot_app() -> AsyncIterator[FastAPI]:
 
     from ccproxy.plugins.copilot.models import CopilotCacheData
 
-    setup_logging(json_logs=False, log_level_name="DEBUG")
+    setup_logging(
+        json_logs=False, log_level_name="ERROR"
+    )  # Changed from DEBUG to ERROR for faster tests
     settings = Settings(
         enable_plugins=True,
         enabled_plugins=["copilot", "oauth_copilot"],
         logging=LoggingSettings(
             **{
-                "level": "DEBUG",
-                "verbose_api": True,
+                "level": "ERROR",  # Changed from DEBUG to ERROR
+                "verbose_api": False,  # Changed from True to False
             }
         ),
     )
@@ -84,7 +86,9 @@ async def codex_app() -> AsyncIterator[FastAPI]:
     from ccproxy.models.detection import DetectedHeaders, DetectedPrompts
     from ccproxy.plugins.codex.models import CodexCacheData
 
-    setup_logging(json_logs=False, log_level_name="DEBUG")
+    setup_logging(
+        json_logs=False, log_level_name="ERROR"
+    )  # Changed from DEBUG to ERROR for faster tests
     settings = Settings(
         scheduler=SchedulerSettings(enabled=False),
         enable_plugins=True,
@@ -151,7 +155,9 @@ async def claude_app() -> AsyncIterator[FastAPI]:
     from ccproxy.models.detection import DetectedHeaders, DetectedPrompts
     from ccproxy.plugins.claude_api.models import ClaudeCacheData
 
-    setup_logging(json_logs=False, log_level_name="DEBUG")
+    setup_logging(
+        json_logs=False, log_level_name="ERROR"
+    )  # Changed from DEBUG to ERROR for faster tests
     settings = Settings(
         enable_plugins=True,
         enabled_plugins=["claude_api", "oauth_claude"],
