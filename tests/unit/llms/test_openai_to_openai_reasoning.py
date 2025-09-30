@@ -1,5 +1,4 @@
 from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -269,14 +268,44 @@ async def test_responses_request_preserves_plain_text_content() -> None:
 
 @pytest.mark.asyncio
 async def test_responses_fixture_request_converts_to_chat_messages() -> None:
-    base_dir = Path(__file__).resolve().parents[3]
-    json_path = base_dir / "request_debug_response_api.json"
-    payload = json_path.read_text(encoding="utf-8")
-    request = openai_models.ResponseRequest.model_validate_json(payload)
+    payload = {
+        "model": "gpt-test",
+        "instructions": (
+            "You are a coding agent running in the opencode, a terminal-based "
+            "assistant.\n\n## Planning\n\nKeep users informed of your steps."
+        ),
+        "input": [
+            {
+                "role": "developer",
+                "content": "Developer instructions go here.\nFollow them exactly.",
+            },
+            {"role": "user", "content": "hello"},
+            {
+                "role": "assistant",
+                "content": "Hi! How can I help you today?",
+            },
+            {
+                "type": "tool_call",
+                "id": "call_debug",
+                "function": {
+                    "name": "shell",
+                    "arguments": {"cmd": "id", "cwd": "/workspace"},
+                },
+            },
+            {
+                "type": "tool_output",
+                "call_id": "call_debug",
+                "output": "uid=1000(user) gid=1000(user) groups=1000(user)",
+            },
+            {"role": "user", "content": "thanks!"},
+        ],
+    }
+
+    request = openai_models.ResponseRequest.model_validate(payload)
 
     chat_request = await convert__openai_responses_to_openaichat__request(request)
 
-    assert len(chat_request.messages) == 27
+    assert len(chat_request.messages) == 6
 
     # The system instructions should be preserved and merged correctly.
     system_message = chat_request.messages[0]

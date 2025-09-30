@@ -52,3 +52,16 @@ register_app_state_alias = true
 
 [plugins.command_replay]
 enabled = true
+
+
+[[plugins.credential_balancer.providers]]
+enabled = false
+provider = "codex"
+# manager_name = "claude_api_pool"  # Optional override. Defaults to "<provider>_credential_balancer"
+strategy = "round_robin" # or "round_robin"
+max_failures_before_disable = 2 # Number of failing responses before cooldown
+cooldown_seconds = 120.0 # How long to pause a failing credential
+credentials = [
+  { path = "/home/user/.config/ccproxy/claude_primary.json" },
+  { path = "/home/user/.config/ccproxy/claude_backup.json" },
+]

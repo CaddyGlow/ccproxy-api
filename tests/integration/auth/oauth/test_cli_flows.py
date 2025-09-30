@@ -1,6 +1,7 @@
 """Integration-level tests for CLI OAuth flow engines."""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -100,6 +101,37 @@ class TestBrowserFlow:
                 assert result is True
                 mock_webbrowser.open.assert_not_called()
                 mock_qr.assert_called_once()
+                mock_provider.save_credentials.assert_called_once()
+                args, _ = mock_provider.save_credentials.call_args
+                assert args[1] is None
+
+    @pytest.mark.asyncio
+    async def test_browser_flow_custom_save_path(
+        self, mock_provider: MagicMock
+    ) -> None:
+        """Browser flow forwards custom save path to provider."""
+
+        mock_provider.get_authorization_url.return_value = "https://example.com/auth"
+        mock_provider.handle_callback.return_value = {"access_token": "test_token"}
+        mock_provider.save_credentials.return_value = True
+
+        with patch("ccproxy.auth.oauth.flows.CLICallbackServer") as mock_server_class:
+            mock_server = AsyncMock()
+            mock_server_class.return_value = mock_server
+            mock_server.wait_for_callback.return_value = {
+                "code": "test_code",
+                "state": "test_state",
+            }
+
+            save_path = Path("/tmp/custom_token.json")
+
+            flow = BrowserFlow()
+            result = await flow.run(mock_provider, no_browser=True, save_path=save_path)
+
+            assert result is True
+            mock_provider.save_credentials.assert_called_once()
+            args, _ = mock_provider.save_credentials.call_args
+            assert Path(args[1]) == save_path
 
     @pytest.mark.asyncio
     async def test_browser_flow_port_bind_error(self, mock_provider: MagicMock) -> None:
@@ -175,6 +207,9 @@ class TestBrowserFlow:
                     mock_provider.get_authorization_url.call_args_list[0][0][1],
                     "urn:ietf:wg:oauth:2.0:oob",
                 )
+                mock_provider.save_credentials.assert_called_once()
+                args, _ = mock_provider.save_credentials.call_args
+                assert args[1] is None
 
 
 class TestDeviceCodeFlow:
@@ -203,7 +238,31 @@ class TestDeviceCodeFlow:
                 "device_code", 5, 600
             )
             mock_provider.save_credentials.assert_called_once()
+            args, _ = mock_provider.save_credentials.call_args
+            assert args[1] is None
             mock_qr.assert_called_once_with("https://example.com/verify")
+
+    @pytest.mark.asyncio
+    async def test_device_flow_custom_save_path(self, mock_provider: MagicMock) -> None:
+        """Device flow forwards custom save path."""
+
+        mock_provider.start_device_flow.return_value = (
+            "device_code",
+            "user_code",
+            "https://example.com/verify",
+            600,
+        )
+        mock_provider.complete_device_flow.return_value = {"access_token": "test_token"}
+        mock_provider.save_credentials.return_value = True
+
+        with patch("ccproxy.auth.oauth.flows.render_qr_code"):
+            save_path = Path("/tmp/device_token.json")
+            flow = DeviceCodeFlow()
+            result = await flow.run(mock_provider, save_path=save_path)
+
+            assert result is True
+            args, _ = mock_provider.save_credentials.call_args
+            assert Path(args[1]) == save_path
 
 
 class TestManualCodeFlow:
@@ -236,7 +295,29 @@ class TestManualCodeFlow:
                 assert callback_args[2] is not None  # code_verifier
                 assert callback_args[3] == "urn:ietf:wg:oauth:2.0:oob"  # redirect_uri
                 mock_provider.save_credentials.assert_called_once()
+                args, _ = mock_provider.save_credentials.call_args
+                assert args[1] is None
                 mock_qr.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_manual_flow_custom_save_path(self, mock_provider: MagicMock) -> None:
+        """Manual flow forwards custom save path."""
+
+        mock_provider.get_authorization_url.return_value = "https://example.com/auth"
+        mock_provider.handle_callback.return_value = {"access_token": "test_token"}
+        mock_provider.save_credentials.return_value = True
+
+        with patch("ccproxy.auth.oauth.flows.typer.prompt") as mock_prompt:
+            mock_prompt.return_value = "test_authorization_code"
+
+            with patch("ccproxy.auth.oauth.flows.render_qr_code"):
+                save_path = Path("/tmp/manual_token.json")
+                flow = ManualCodeFlow()
+                result = await flow.run(mock_provider, save_path=save_path)
+
+                assert result is True
+                args, _ = mock_provider.save_credentials.call_args
+                assert Path(args[1]) == save_path
 
     @pytest.mark.asyncio
     async def test_manual_flow_with_code_state_format(
@@ -266,6 +347,8 @@ class TestManualCodeFlow:
                 assert callback_args[2] is not None  # code_verifier
                 assert callback_args[3] == "urn:ietf:wg:oauth:2.0:oob"  # redirect_uri
                 mock_provider.save_credentials.assert_called_once()
+                args, _ = mock_provider.save_credentials.call_args
+                assert args[1] is None
                 mock_qr.assert_called_once()
 
 

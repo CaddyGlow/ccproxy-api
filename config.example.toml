@@ -61,6 +61,25 @@ json_logs_enabled = true
 raw_http_enabled = true
 log_dir = "/tmp/ccproxy/traces"
 
+# Credential balancer plugin (rotate multiple credential files)
+[plugins.credential_balancer]
+enabled = false
+
+[[plugins.credential_balancer.providers]]
+provider = "claude-api"
+# manager_name = "claude_api_pool"  # Optional override. Defaults to "<provider>_credential_balancer"
+strategy = "failover" # or "round_robin"
+max_failures_before_disable = 1 # Number of failing responses before cooldown
+cooldown_seconds = 120.0 # How long to pause a failing credential
+credentials = [
+  { path = "/home/user/.config/ccproxy/codex_plus.json" },
+  { path = "/home/user/.config/ccproxy/codex_pro.json" },
+]
+
+# Reuse the balancer inside provider plugins (e.g. Claude API)
+# [plugins.claude_api]
+# auth_manager = "claude-api_credential_balancer"
+
 # Example: Additional plugin configuration
 # [plugins.another_plugin]
 # name = "another_plugin"
@@ -73,7 +92,7 @@ enabled = true
 # Configure ordered model mapping rules (exact, prefix, suffix, regex)
 model_mappings = [
   { match = "gpt-4o", target = "claude-3-7-sonnet-20250219", kind = "prefix" },
-  { match = "claude-3-5-sonnet-latest", target = "claude-3-5-sonnet-20241022" }
+  { match = "claude-3-5-sonnet-latest", target = "claude-3-5-sonnet-20241022" },
 ]
 
 # Plain list of model dictionaries served at /claude/v1/models
@@ -97,7 +116,7 @@ permission = []
 [plugins.codex]
 model_mappings = [
   { match = "gpt-5-nano", target = "gpt-5" },
-  { match = "gpt-5-nano-2025-08-07", target = "gpt-5-2025-08-07" }
+  { match = "gpt-5-nano-2025-08-07", target = "gpt-5-2025-08-07" },
 ]
 
 [[plugins.codex.models_endpoint]]

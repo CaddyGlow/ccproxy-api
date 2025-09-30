@@ -6,12 +6,13 @@ Covers:
 - BaseTokenManager.get_unified_profile using Claude profile
 """
 
-from datetime import UTC, datetime
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import SecretStr
 
+from ccproxy.auth.exceptions import OAuthTokenRefreshError
 from ccproxy.auth.managers.base import BaseTokenManager
 from ccproxy.auth.storage.generic import GenericJsonStorage
 from ccproxy.plugins.oauth_claude.models import (
@@ -169,6 +170,83 @@ class TestTokenManagers:
         assert snapshot.access_token == "test_token"
         assert snapshot.refresh_token == "refresh_token"
         assert snapshot.expires_at is not None
+
+    @pytest.mark.asyncio
+    async def test_claude_manager_refreshes_before_expiry(self, tmp_path):
+        """Manager proactively refreshes when the token is nearing expiry."""
+        from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
+
+        storage_path = tmp_path / "claude_refresh.json"
+        storage = GenericJsonStorage(storage_path, ClaudeCredentials)
+        manager = ClaudeApiTokenManager(storage=storage)
+
+        near_expiry_ms = int(
+            (datetime.now(UTC) + timedelta(seconds=45)).timestamp() * 1000
+        )
+        initial_credentials = ClaudeCredentials(
+            claudeAiOauth=ClaudeOAuthToken(
+                accessToken=SecretStr("stale_token"),
+                refreshToken=SecretStr("refresh_token"),
+                expiresAt=near_expiry_ms,
+            )
+        )
+        await manager.save_credentials(initial_credentials)
+
+        refreshed_credentials = ClaudeCredentials(
+            claudeAiOauth=ClaudeOAuthToken(
+                accessToken=SecretStr("refreshed_token"),
+                refreshToken=SecretStr("refresh_token"),
+                expiresAt=int(
+                    (datetime.now(UTC) + timedelta(hours=2)).timestamp() * 1000
+                ),
+            )
+        )
+
+        async def _refresh() -> ClaudeCredentials:
+            await manager.save_credentials(refreshed_credentials)
+            return refreshed_credentials
+
+        manager.refresh_token = AsyncMock(side_effect=_refresh)
+
+        token = await manager.get_access_token()
+
+        assert token == "refreshed_token"
+        assert manager.refresh_token.await_count == 1
+        stored = await manager.load_credentials()
+        assert stored is not None
+        assert (
+            stored.claude_ai_oauth.access_token.get_secret_value() == "refreshed_token"
+        )
+
+    @pytest.mark.asyncio
+    async def test_claude_manager_raises_on_refresh_failure(self, tmp_path):
+        """Manager raises a consistent error when refresh fails."""
+        from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
+
+        storage_path = tmp_path / "claude_refresh_fail.json"
+        storage = GenericJsonStorage(storage_path, ClaudeCredentials)
+        manager = ClaudeApiTokenManager(storage=storage)
+
+        near_expiry_ms = int(
+            (datetime.now(UTC) + timedelta(seconds=45)).timestamp() * 1000
+        )
+        credentials = ClaudeCredentials(
+            claudeAiOauth=ClaudeOAuthToken(
+                accessToken=SecretStr("stale_token"),
+                refreshToken=SecretStr("refresh_token"),
+                expiresAt=near_expiry_ms,
+            )
+        )
+        await manager.save_credentials(credentials)
+
+        manager.refresh_token = AsyncMock(return_value=None)
+
+        with pytest.raises(OAuthTokenRefreshError):
+            await manager.get_access_token_with_refresh()
+
+        stored = await manager.load_credentials()
+        assert stored is not None
+        assert stored.claude_ai_oauth.access_token.get_secret_value() == "stale_token"
 
 
 class TestUnifiedProfiles:
