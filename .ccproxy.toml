@@ -49,13 +49,46 @@ database_path = "/tmp/ccproxy/metrics.duckdb"
 register_app_state_alias = true
 
 
+[plugins.credential_balancer]
+# enabled = true
+
 [[plugins.credential_balancer.providers]]
 provider = "codex"
 strategy = "round_robin" # or "failover"
+# Pool-level defaults applied to all credentials (can be overridden per credential)
+manager_class = "ccproxy.plugins.oauth_codex.manager.CodexTokenManager"
+storage_class = "ccproxy.plugins.oauth_codex.storage.CodexTokenStorage"
 credentials = [
-  { path = "~/.config/ccproxy/codex_pro.json" },
-  { path = "~/.config/ccproxy/codex_plus.json" },
+  { type = "manager", file = "~/.config/ccproxy/codex_pro.json", label = "codex_pro" },
+  { type = "manager", file = "~/.config/ccproxy/codex_plus.json", label = "codex_plus" },
 ]
+
+# Advanced config options example:
+# credentials = [
+#   { type = "manager",
+#     file = "~/.config/ccproxy/codex_pro.json",
+#     config = {
+#       enable_backups = true,            # Create timestamped backups (default: true)
+#       credentials_ttl = 60.0,           # Cache credentials for 60s (default: 30.0)
+#       refresh_grace_seconds = 300.0,    # Refresh 5min before expiry (default: 120.0)
+#     },
+#     label = "codex_pro"
+#   },
+# ]
+
+# Per-credential class override example:
+# credentials = [
+#   { type = "manager",
+#     file = "...",
+#     manager_class = "custom.manager.CustomManager",  # Override pool default
+#     storage_class = "custom.storage.CustomStorage",  # Override pool default
+#   },
+# ]
+
+# Alternative: Use manager_key if provider registers its manager in the registry
+# credentials = [
+#   { type = "manager", manager_key = "codex", file = "..." },
+# ]
 
 [plugins.codex]
 auth_manager = "codex_credential_balancer"

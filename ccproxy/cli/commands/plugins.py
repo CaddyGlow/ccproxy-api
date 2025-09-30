@@ -9,7 +9,6 @@ from typing import Annotated, Any, cast, get_args, get_origin
 
 import typer
 from pydantic import BaseModel, ValidationError
-from pydantic.fields import FieldInfo
 from rich.console import Console
 from rich.table import Table
 
@@ -113,7 +112,7 @@ def _format_value(value: Any, indent: int = 0, max_depth: int = 3) -> str:
         return str(value)
 
     # Handle booleans and numbers
-    if isinstance(value, (bool, int, float)):
+    if isinstance(value, bool | int | float):
         return str(value)
 
     # Handle enums
@@ -125,7 +124,7 @@ def _format_value(value: Any, indent: int = 0, max_depth: int = 3) -> str:
         return _format_pydantic_model(value, indent, max_depth)
 
     # Handle lists
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return _format_list(value, indent, max_depth)
 
     # Handle dicts
@@ -168,7 +167,9 @@ def _format_pydantic_model(model: BaseModel, indent: int, max_depth: int) -> str
     return "\n".join(lines)
 
 
-def _format_list(items: list[Any] | tuple[Any, ...], indent: int, max_depth: int) -> str:
+def _format_list(
+    items: list[Any] | tuple[Any, ...], indent: int, max_depth: int
+) -> str:
     """Format a list or tuple recursively."""
     if not items:
         return "[]"
@@ -177,7 +178,7 @@ def _format_list(items: list[Any] | tuple[Any, ...], indent: int, max_depth: int
         return repr(items)
 
     # For simple types, keep on one line
-    if all(isinstance(item, (str, int, float, bool, type(None))) for item in items):
+    if all(isinstance(item, str | int | float | bool | type(None)) for item in items):
         formatted_items = [_format_value(item, indent, max_depth) for item in items]
         return f"[{', '.join(formatted_items)}]"
 
@@ -188,8 +189,10 @@ def _format_list(items: list[Any] | tuple[Any, ...], indent: int, max_depth: int
         formatted_item = _format_value(item, indent + 1, max_depth)
         # If the formatted item is multiline, indent each line
         if "\n" in formatted_item:
-            indented_lines = [indent_str + line if i == 0 else "  " * (indent + 1) + line
-                            for i, line in enumerate(formatted_item.split("\n"))]
+            indented_lines = [
+                indent_str + line if i == 0 else "  " * (indent + 1) + line
+                for i, line in enumerate(formatted_item.split("\n"))
+            ]
             lines.append("\n".join(indented_lines) + ",")
         else:
             lines.append(f"{indent_str}{formatted_item},")
@@ -482,13 +485,17 @@ def settings(
             return
 
     # Load plugin factories to get config classes
-    factories, _filter_config, _combined_denylist = _load_all_plugin_factories(settings_obj)
+    factories, _filter_config, _combined_denylist = _load_all_plugin_factories(
+        settings_obj
+    )
 
     for plugin_meta in plugins:
         # Get the plugin factory and config
         factory = factories.get(plugin_meta.name)
         if not factory:
-            console.print(f"[yellow]Warning: Could not load factory for {plugin_meta.name}[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not load factory for {plugin_meta.name}[/yellow]"
+            )
             continue
 
         manifest = factory.get_manifest()

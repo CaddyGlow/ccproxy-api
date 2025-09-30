@@ -65,20 +65,47 @@ log_dir = "/tmp/ccproxy/traces"
 [plugins.credential_balancer]
 enabled = false
 
+# Example: OpenAI Codex credential pool with manager-based credentials (recommended)
 [[plugins.credential_balancer.providers]]
-provider = "claude-api"
-# manager_name = "claude_api_pool"  # Optional override. Defaults to "<provider>_credential_balancer"
-strategy = "failover" # or "round_robin"
-max_failures_before_disable = 1 # Number of failing responses before cooldown
-cooldown_seconds = 120.0 # How long to pause a failing credential
+provider = "codex"
+strategy = "round_robin" # or "failover"
+max_failures_before_disable = 2
+cooldown_seconds = 120.0
+failure_status_codes = [401, 403]
+
+# Pool-level defaults applied to all credentials in this pool
+manager_class = "ccproxy.plugins.oauth_codex.manager.CodexTokenManager"
+storage_class = "ccproxy.plugins.oauth_codex.storage.CodexTokenStorage"
+
 credentials = [
-  { path = "/home/user/.config/ccproxy/codex_plus.json" },
-  { path = "/home/user/.config/ccproxy/codex_pro.json" },
+  { type = "manager", file = "~/.config/ccproxy/codex_pro.json", label = "codex_pro" },
+  { type = "manager", file = "~/.config/ccproxy/codex_plus.json", label = "codex_plus" },
 ]
 
-# Reuse the balancer inside provider plugins (e.g. Claude API)
-# [plugins.claude_api]
-# auth_manager = "claude-api_credential_balancer"
+# Example: Claude API credential pool
+# [[plugins.credential_balancer.providers]]
+# provider = "claude-api"
+# strategy = "failover"
+# manager_class = "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager"
+# storage_class = "ccproxy.plugins.oauth_claude.storage.ClaudeOAuthStorage"
+# credentials = [
+#   { type = "manager", file = "~/.config/ccproxy/claude_primary.json" },
+#   { type = "manager", file = "~/.config/ccproxy/claude_backup.json" },
+# ]
+
+# Example: GitHub Copilot credential pool
+# [[plugins.credential_balancer.providers]]
+# provider = "copilot"
+# manager_class = "ccproxy.plugins.copilot.manager.CopilotTokenManager"
+# storage_class = "ccproxy.plugins.copilot.oauth.storage.CopilotOAuthStorage"
+# credentials = [
+#   { type = "manager", file = "~/.config/ccproxy/copilot_account1.json" },
+#   { type = "manager", file = "~/.config/ccproxy/copilot_account2.json" },
+# ]
+
+# Reuse the balancer inside provider plugins
+# [plugins.codex]
+# auth_manager = "codex_credential_balancer"
 
 # Example: Additional plugin configuration
 # [plugins.another_plugin]

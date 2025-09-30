@@ -147,6 +147,32 @@ class AuthManagerRegistry:
 
         return result
 
+    def get_class(self, name: str) -> type[Any] | None:
+        """Get the auth manager class if registered via register_class.
+
+        Args:
+            name: Name of the auth manager
+
+        Returns:
+            Auth manager class or None if not found or not registered as class
+        """
+        # This is a bit hacky but works: we inspect the factory closure
+        # to extract the class that was registered
+        if name not in self._factories:
+            return None
+
+        factory = self._factories[name]
+        # Check if this factory was created by register_class
+        if hasattr(factory, "__closure__") and factory.__closure__:
+            for cell in factory.__closure__:
+                try:
+                    obj = cell.cell_contents
+                    if isinstance(obj, type):
+                        return obj
+                except (AttributeError, ValueError):
+                    continue
+        return None
+
     def clear(self) -> None:
         """Clear all registered auth managers."""
         self._factories.clear()

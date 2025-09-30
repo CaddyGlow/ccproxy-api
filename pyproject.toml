@@ -72,6 +72,7 @@ test = [
   "pytest-env",
   "pytest-httpx",
   "pytest-xdist",
+  "aiohttp>=3.12.15",
 ]
 dev = [
   "ruff",

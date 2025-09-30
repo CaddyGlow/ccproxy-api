@@ -112,7 +112,7 @@ class Settings(BaseSettings):
     )
 
     plugins_disable_local_discovery: bool = Field(
-        default=True,
+        default=False,
         description=(
             "If true, skip filesystem plugin discovery from the local 'plugins/' directory "
             "and load plugins only from installed entry points."

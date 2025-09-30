@@ -29,6 +29,7 @@ DEFAULT_CODEX_MODEL_MAPPINGS: list[ModelMappingRule] = [
     ModelMappingRule(match="gpt-", target="gpt-5", kind="prefix"),
     ModelMappingRule(match="o3-", target="gpt-5", kind="prefix"),
     ModelMappingRule(match="o1-", target="gpt-5", kind="prefix"),
+    ModelMappingRule(match="claude-", target="gpt-5", kind="prefix"),
 ]
 
 

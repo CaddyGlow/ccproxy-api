@@ -13,6 +13,7 @@ from rich.box import HEAVY_HEAD
 from rich.console import Console
 from rich.table import Table
 
+
 console = Console()
 
 ELLIPSIS = "…"
@@ -219,7 +220,9 @@ def build_table_for_model(
 
         # Get actual value if instance provided
         if show_value and instance is not None:
-            val = getattr(instance, field_name, default if default != "required" else None)
+            val = getattr(
+                instance, field_name, default if default != "required" else None
+            )
             value_str = _render_value(val, width=22, field_name=field_name)
         else:
             value_str = None
@@ -335,7 +338,9 @@ def print_settings_help(
 
     # Print main table
     console.print(f"\n{header}", style="bold")
-    console.print(build_table_for_model(model_cls, instance, show_value=instance is not None))
+    console.print(
+        build_table_for_model(model_cls, instance, show_value=instance is not None)
+    )
 
     # Print nested types
     nested = collect_nested_models(model_cls)
