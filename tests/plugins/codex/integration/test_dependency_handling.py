@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -122,6 +123,17 @@ def _available_plugins() -> set[str]:
         for entry in PLUGIN_DIR.iterdir()
         if entry.is_dir() and (entry / "plugin.py").exists()
     }
+
+
+def _entry_point_plugins() -> set[str]:
+    """Return plugin names advertised via package entry points."""
+
+    groups = metadata.entry_points()
+    if hasattr(groups, "select"):
+        items = groups.select(group="ccproxy.plugins")
+    else:  # pragma: no cover - legacy importlib.metadata behaviour
+        items = groups.get("ccproxy.plugins", [])
+    return {ep.name for ep in items}
 
 
 def _make_settings(
@@ -308,6 +320,7 @@ async def test_disabled_plugins_blacklist_is_respected() -> None:
     """All plugins except the disabled ones remain available when blacklist is set."""
 
     available = _available_plugins()
+    entry_point_plugins = _entry_point_plugins()
     target_disable = {"codex", "oauth_codex"}
 
     settings = _make_settings(
@@ -320,5 +333,5 @@ async def test_disabled_plugins_blacklist_is_respected() -> None:
     loaded = {info.name for info in snapshot.enabled_plugins}
 
     assert target_disable.isdisjoint(loaded)
-    expected = available - target_disable - {"duckdb_storage"}
+    expected = (available & entry_point_plugins) - target_disable - {"duckdb_storage"}
     assert loaded.intersection(available) == expected

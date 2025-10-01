@@ -325,6 +325,7 @@ factory = FilesystemFactory()
     settings = Settings()
     settings.plugin_discovery.directories = [plugins_root]
     settings.plugins_disable_local_discovery = False
+    settings.enabled_plugins = ["alpha"]
 
     factories = discover_and_load_plugins(settings)
 

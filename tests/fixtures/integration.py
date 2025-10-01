@@ -58,9 +58,12 @@ def _build_isolated_plugin_settings(
     if extra_disabled:
         disabled_plugins.extend(extra_disabled)
 
+    enabled_plugins = sorted(requested_plugins)
+
     return Settings(
         enable_plugins=True,
         plugins_disable_local_discovery=False,
+        enabled_plugins=enabled_plugins,
         disabled_plugins=disabled_plugins,
         plugins=plugin_configs,
         logging={
