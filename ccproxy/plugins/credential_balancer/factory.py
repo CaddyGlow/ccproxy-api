@@ -246,10 +246,28 @@ class AuthManagerFactory:
                 raise AuthenticationError(
                     f"Manager class {manager_class.__name__} does not have 'create' method"
                 )
+        except FileNotFoundError as exc:
+            # Clean warning for missing credential files
+            file_path = custom_file or "default location"
+            self._logger.warning(
+                "credential_file_not_found",
+                label=label,
+                file_path=file_path,
+                manager_class=manager_class_name,
+            )
+            raise AuthenticationError(f"Credential file not found: {file_path}")
         except Exception as exc:
+            # Log the full error for debugging but raise a clean message
+            self._logger.error(
+                "manager_creation_failed",
+                label=label,
+                manager_class=manager_class_name,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             raise AuthenticationError(
                 f"Failed to create manager from class '{manager_class_name}': {exc}"
-            ) from exc
+            )
 
         self._logger.info(
             "provider_manager_created_from_class",

@@ -42,11 +42,22 @@ class GenericJsonStorage(BaseJsonStorage[T]):
         """
         try:
             data = await self._read_json()
+        except FileNotFoundError:
+            # File doesn't exist - this is normal for uninitialized credentials
+            logger.debug(
+                "credential_file_not_found",
+                path=str(self.file_path),
+                category="auth",
+            )
+            return None
         except Exception as e:
-            # Handle JSON decode errors and other file read issues
-            logger.error(
-                "Failed to read credentials file",
+            # Handle JSON decode errors and other file read issues with clear warning
+            error_type = type(e).__name__
+            logger.warning(
+                "credential_file_read_failed",
+                error_type=error_type,
                 error=str(e),
+                exc_info=e,
                 path=str(self.file_path),
                 category="auth",
             )
@@ -59,10 +70,16 @@ class GenericJsonStorage(BaseJsonStorage[T]):
             # Pydantic handles all validation and conversion
             return self.type_adapter.validate_python(data)
         except Exception as e:
-            logger.error(
-                "Failed to validate credentials",
+            # Log validation errors with clean warning (not error)
+            error_type = type(e).__name__
+            logger.warning(
+                "credential_validation_failed",
+                error_type=error_type,
                 error=str(e),
+                exc_info=e,
                 model=self.model_class.__name__,
+                path=str(self.file_path),
+                category="auth",
             )
             return None
 
@@ -91,6 +108,7 @@ class GenericJsonStorage(BaseJsonStorage[T]):
             logger.error(
                 "Failed to save credentials",
                 error=str(e),
+                exc_info=e,
                 model=self.model_class.__name__,
             )
             return False

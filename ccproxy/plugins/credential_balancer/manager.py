@@ -210,16 +210,59 @@ class CredentialBalancerTokenManager(AuthManager):
 
         # Create entries with composed managers
         entries: list[CredentialEntry] = []
+        failed_credentials: list[str] = []
+
         for credential in config.credentials:
-            manager = await factory.create_from_source(credential, config.provider)
-            entry = CredentialEntry(
-                config=credential,
-                manager=manager,
-                max_failures=config.max_failures_before_disable,
-                cooldown_seconds=config.cooldown_seconds,
-                logger=bound_logger.bind(credential=credential.resolved_label),
+            try:
+                manager = await factory.create_from_source(credential, config.provider)
+                entry = CredentialEntry(
+                    config=credential,
+                    manager=manager,
+                    max_failures=config.max_failures_before_disable,
+                    cooldown_seconds=config.cooldown_seconds,
+                    logger=bound_logger.bind(credential=credential.resolved_label),
+                )
+                entries.append(entry)
+            except AuthenticationError as e:
+                # Log clean warning for failed credential without stack trace
+                label = credential.resolved_label
+                bound_logger.warning(
+                    "credential_balancer_credential_skipped",
+                    credential=label,
+                    reason=str(e),
+                    category="auth",
+                )
+                failed_credentials.append(label)
+                continue
+            except Exception as e:
+                # Unexpected errors still get logged with type info
+                label = credential.resolved_label
+                bound_logger.error(
+                    "credential_balancer_credential_failed",
+                    credential=label,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    category="auth",
+                )
+                failed_credentials.append(label)
+                continue
+
+        # Warn if some credentials failed
+        if failed_credentials:
+            bound_logger.warning(
+                "credential_balancer_partial_initialization",
+                total=len(config.credentials),
+                failed=len(failed_credentials),
+                succeeded=len(entries),
+                failed_labels=failed_credentials,
             )
-            entries.append(entry)
+
+        # Ensure we have at least one valid credential
+        if not entries:
+            raise AuthenticationError(
+                f"No valid credentials available for {config.manager_name}. "
+                f"All {len(config.credentials)} credential(s) failed to load."
+            )
 
         return cls(config, entries, logger=logger)
 

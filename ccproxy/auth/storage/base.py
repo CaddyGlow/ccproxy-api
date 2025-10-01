@@ -117,12 +117,12 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
             return data
 
         except json.JSONDecodeError as e:
-            logger.error(
+            logger.warning(
                 "json_decode_error",
                 path=str(self.file_path),
                 error=str(e),
                 line=e.lineno,
-                exc_info=e,
+                category="auth",
             )
             raise CredentialsInvalidError(
                 f"Invalid JSON in {self.file_path}: {e}"

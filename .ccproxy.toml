@@ -49,7 +49,7 @@ database_path = "/tmp/ccproxy/metrics.duckdb"
 register_app_state_alias = true
 
 
-[plugins.credential_balancer]
+# [plugins.credential_balancer]
 # enabled = true
 
 [[plugins.credential_balancer.providers]]
