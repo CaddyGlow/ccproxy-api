@@ -141,6 +141,78 @@ dependencies = [
     { name = "uvicorn" },
 ]
 
+[package.optional-dependencies]
+all = [
+    { name = "aioconsole" },
+    { name = "claude-code-sdk" },
+    { name = "duckdb" },
+    { name = "duckdb-engine" },
+    { name = "fastapi-mcp" },
+    { name = "prometheus-client" },
+    { name = "pyjwt" },
+    { name = "qrcode" },
+    { name = "sqlalchemy" },
+    { name = "sqlmodel" },
+    { name = "textual" },
+]
+dev = [
+    { name = "bandit" },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "ruff" },
+    { name = "tox" },
+    { name = "types-aiofiles" },
+    { name = "types-pyyaml" },
+]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-gen-files" },
+    { name = "mkdocs-glightbox" },
+    { name = "mkdocs-include-markdown-plugin" },
+    { name = "mkdocs-literate-nav" },
+    { name = "mkdocs-material" },
+    { name = "mkdocs-mermaid2-plugin" },
+    { name = "mkdocs-minify-plugin" },
+    { name = "mkdocs-redirects" },
+    { name = "mkdocs-section-index" },
+    { name = "mkdocs-swagger-ui-tag" },
+    { name = "mkdocstrings", extra = ["python"] },
+]
+plugins-claude = [
+    { name = "claude-code-sdk" },
+    { name = "qrcode" },
+]
+plugins-codex = [
+    { name = "pyjwt" },
+    { name = "qrcode" },
+]
+plugins-mcp = [
+    { name = "fastapi-mcp" },
+]
+plugins-metrics = [
+    { name = "prometheus-client" },
+]
+plugins-storage = [
+    { name = "duckdb" },
+    { name = "duckdb-engine" },
+    { name = "sqlalchemy" },
+    { name = "sqlmodel" },
+]
+plugins-tui = [
+    { name = "aioconsole" },
+    { name = "textual" },
+]
+test = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-env" },
+    { name = "pytest-httpx" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "bandit" },
@@ -202,21 +274,72 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aioconsole", marker = "extra == 'all'", specifier = ">=0.8.1" },
+    { name = "aioconsole", marker = "extra == 'plugins-tui'", specifier = ">=0.8.1" },
     { name = "aiofiles", specifier = ">=24.1.0" },
+    { name = "bandit", marker = "extra == 'dev'" },
+    { name = "claude-code-sdk", marker = "extra == 'all'", git = "https://github.com/anthropics/claude-code-sdk-python.git" },
+    { name = "claude-code-sdk", marker = "extra == 'plugins-claude'", git = "https://github.com/anthropics/claude-code-sdk-python.git" },
+    { name = "duckdb", marker = "extra == 'all'", specifier = ">=1.1.0" },
+    { name = "duckdb", marker = "extra == 'plugins-storage'", specifier = ">=1.1.0" },
+    { name = "duckdb-engine", marker = "extra == 'all'", specifier = ">=0.17.0" },
+    { name = "duckdb-engine", marker = "extra == 'plugins-storage'", specifier = ">=0.17.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
+    { name = "fastapi-mcp", marker = "extra == 'all'", specifier = ">=0.3.7" },
+    { name = "fastapi-mcp", marker = "extra == 'plugins-mcp'", specifier = ">=0.3.7" },
     { name = "httpx", extras = ["http2"], specifier = ">=0.28.1" },
+    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.5.3" },
+    { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = ">=0.5.0" },
+    { name = "mkdocs-glightbox", marker = "extra == 'docs'", specifier = ">=0.3.0" },
+    { name = "mkdocs-include-markdown-plugin", marker = "extra == 'docs'", specifier = ">=6.0.0" },
+    { name = "mkdocs-literate-nav", marker = "extra == 'docs'", specifier = ">=0.6.0" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
+    { name = "mkdocs-mermaid2-plugin", marker = "extra == 'docs'", specifier = ">=1.1.0" },
+    { name = "mkdocs-minify-plugin", marker = "extra == 'docs'", specifier = ">=0.7.0" },
+    { name = "mkdocs-redirects", marker = "extra == 'docs'", specifier = ">=1.2.0" },
+    { name = "mkdocs-section-index", marker = "extra == 'docs'", specifier = ">=0.3.0" },
+    { name = "mkdocs-swagger-ui-tag", marker = "extra == 'docs'", specifier = ">=0.6.0" },
+    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.24.0" },
+    { name = "mypy", marker = "extra == 'dev'" },
+    { name = "mypy", marker = "extra == 'test'" },
     { name = "packaging", specifier = ">=25.0" },
+    { name = "pre-commit", marker = "extra == 'dev'" },
+    { name = "prometheus-client", marker = "extra == 'all'", specifier = ">=0.22.1" },
+    { name = "prometheus-client", marker = "extra == 'plugins-metrics'", specifier = ">=0.22.1" },
     { name = "pydantic", specifier = ">=2.8.0" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "pyjwt", specifier = ">=2.10.1" },
+    { name = "pyjwt", marker = "extra == 'all'", specifier = ">=2.10.1" },
+    { name = "pyjwt", marker = "extra == 'plugins-codex'", specifier = ">=2.10.1" },
+    { name = "pytest", marker = "extra == 'test'" },
+    { name = "pytest-asyncio", marker = "extra == 'test'" },
+    { name = "pytest-cov", marker = "extra == 'test'" },
+    { name = "pytest-env", marker = "extra == 'test'" },
+    { name = "pytest-httpx", marker = "extra == 'test'" },
+    { name = "pytest-timeout", marker = "extra == 'test'" },
+    { name = "pytest-xdist", marker = "extra == 'test'" },
+    { name = "qrcode", marker = "extra == 'all'", specifier = ">=8.2" },
+    { name = "qrcode", marker = "extra == 'plugins-claude'", specifier = ">=8.2" },
+    { name = "qrcode", marker = "extra == 'plugins-codex'", specifier = ">=8.2" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "rich-toolkit", specifier = ">=0.14.8" },
+    { name = "ruff", marker = "extra == 'dev'" },
     { name = "sortedcontainers", specifier = ">=2.4.0" },
+    { name = "sqlalchemy", marker = "extra == 'all'", specifier = ">=2.0.0" },
+    { name = "sqlalchemy", marker = "extra == 'plugins-storage'", specifier = ">=2.0.0" },
+    { name = "sqlmodel", marker = "extra == 'all'", specifier = ">=0.0.24" },
+    { name = "sqlmodel", marker = "extra == 'plugins-storage'", specifier = ">=0.0.24" },
     { name = "structlog", specifier = ">=25.4.0" },
+    { name = "textual", marker = "extra == 'all'", specifier = ">=3.7.1" },
+    { name = "textual", marker = "extra == 'plugins-tui'", specifier = ">=3.7.1" },
+    { name = "tox", marker = "extra == 'dev'" },
     { name = "typer", specifier = ">=0.16.0" },
+    { name = "types-aiofiles", marker = "extra == 'dev'", specifier = ">=24.0.0" },
+    { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12.12" },
     { name = "typing-extensions", specifier = ">=4.0.0" },
     { name = "uvicorn", specifier = ">=0.34.0" },
 ]
+provides-extras = ["all", "dev", "docs", "plugins-claude", "plugins-codex", "plugins-docker", "plugins-mcp", "plugins-metrics", "plugins-storage", "plugins-tui", "test"]
 
 [package.metadata.requires-dev]
 dev = [

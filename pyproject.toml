@@ -181,6 +181,7 @@ permissions = "ccproxy.plugins.permissions.plugin:factory"
 pricing = "ccproxy.plugins.pricing.plugin:factory"
 request_tracer = "ccproxy.plugins.request_tracer.plugin:factory"
 max_tokens = "ccproxy.plugins.max_tokens.plugin:factory"
+credential_balancer = "ccproxy.plugins.credential_balancer.plugin:factory"
 
 [tool.coverage.run]
 include = ["ccproxy/*"]
