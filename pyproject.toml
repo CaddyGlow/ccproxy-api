@@ -51,54 +51,7 @@ include = [
 ]
 
 [dependency-groups]
-plugins-claude = ["claude-code-sdk>=0.0.19", "qrcode>=8.2"]
-plugins-codex = ["qrcode>=8.2", "pyjwt>=2.10.1"]
-plugins-storage = [
-  "sqlmodel>=0.0.24",
-  "SQLAlchemy>=2.0.0",
-  "duckdb-engine>=0.17.0",
-  "duckdb>=1.1.0",
-]
-plugins-mcp = ["fastapi-mcp>=0.3.7"]
-plugins-tui = ["textual>=3.7.1", "aioconsole>=0.8.1"]
-plugins-metrics = ["prometheus-client>=0.22.1"]
-plugins-docker = []
-test = [
-  "mypy",
-  "pytest",
-  "pytest-asyncio",
-  "pytest-cov",
-  "pytest-timeout",
-  "pytest-env",
-  "pytest-httpx",
-  "pytest-xdist",
-]
-dev = [
-  "ruff",
-  "pre-commit",
-  "mypy",
-  "tox",
-  "bandit",
-  "types-aiofiles>=24.0.0",
-  "types-PyYAML>=6.0.12.12",
-]
-docs = [
-  "mkdocs>=1.5.3",
-  "mkdocs-material>=9.5.0",
-  "mkdocstrings[python]>=0.24.0",
-  "mkdocs-gen-files>=0.5.0",
-  "mkdocs-literate-nav>=0.6.0",
-  "mkdocs-section-index>=0.3.0",
-  "mkdocs-swagger-ui-tag>=0.6.0",
-  "mkdocs-include-markdown-plugin>=6.0.0",
-  "mkdocs-mermaid2-plugin>=1.1.0",
-  "mkdocs-glightbox>=0.3.0",
-  "mkdocs-minify-plugin>=0.7.0",
-  "mkdocs-redirects>=1.2.0",
-]
-
-[project.optional-dependencies]
-plugins-claude = ["claude-code-sdk>=0.0.19", "qrcode>=8.2"]
+plugins-claude = ["claude-agent-sdk>=0.0.19", "qrcode>=8.2"]
 plugins-codex = ["qrcode>=8.2", "pyjwt>=2.10.1"]
 plugins-storage = [
   "sqlmodel>=0.0.24",
@@ -144,7 +97,6 @@ docs = [
   "mkdocs-redirects>=1.2.0",
 ]
 all = [
-  "claude-code-sdk>=0.0.19",
   "qrcode>=8.2",
   "pyjwt>=2.10.1",
   "sqlmodel>=0.0.24",
@@ -155,6 +107,67 @@ all = [
   "textual>=3.7.1",
   "aioconsole>=0.8.1",
   "prometheus-client>=0.22.1",
+  "claude-agent-sdk>=0.1.0",
+]
+
+[project.optional-dependencies]
+plugins-claude = ["claude-agent-sdk>=0.0.19", "qrcode>=8.2"]
+plugins-codex = ["qrcode>=8.2", "pyjwt>=2.10.1"]
+plugins-storage = [
+  "sqlmodel>=0.0.24",
+  "SQLAlchemy>=2.0.0",
+  "duckdb-engine>=0.17.0",
+  "duckdb>=1.1.0",
+]
+plugins-mcp = ["fastapi-mcp>=0.3.7"]
+plugins-tui = ["textual>=3.7.1", "aioconsole>=0.8.1"]
+plugins-metrics = ["prometheus-client>=0.22.1"]
+plugins-docker = []
+test = [
+  "mypy",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "pytest-timeout",
+  "pytest-env",
+  "pytest-httpx",
+  "pytest-xdist",
+]
+dev = [
+  "ruff",
+  "pre-commit",
+  "mypy",
+  "tox",
+  "bandit",
+  "types-aiofiles>=24.0.0",
+  "types-PyYAML>=6.0.12.12",
+]
+docs = [
+  "mkdocs>=1.5.3",
+  "mkdocs-material>=9.5.0",
+  "mkdocstrings[python]>=0.24.0",
+  "mkdocs-gen-files>=0.5.0",
+  "mkdocs-literate-nav>=0.6.0",
+  "mkdocs-section-index>=0.3.0",
+  "mkdocs-swagger-ui-tag>=0.6.0",
+  "mkdocs-include-markdown-plugin>=6.0.0",
+  "mkdocs-mermaid2-plugin>=1.1.0",
+  "mkdocs-glightbox>=0.3.0",
+  "mkdocs-minify-plugin>=0.7.0",
+  "mkdocs-redirects>=1.2.0",
+]
+all = [
+  "qrcode>=8.2",
+  "pyjwt>=2.10.1",
+  "sqlmodel>=0.0.24",
+  "SQLAlchemy>=2.0.0",
+  "duckdb-engine>=0.17.0",
+  "duckdb>=1.1.0",
+  "fastapi-mcp>=0.3.7",
+  "textual>=3.7.1",
+  "aioconsole>=0.8.1",
+  "prometheus-client>=0.22.1",
+  "claude-agent-sdk>=0.1.0",
 ]
 
 [project.scripts]
@@ -443,7 +456,7 @@ include = ["ccproxy*"]
 package = true
 
 [tool.uv.sources]
-claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }
+claude-agent-sdk = { git = "https://github.com/anthropics/claude-agent-sdk-python.git" }
 
 
 [tool.pyright]

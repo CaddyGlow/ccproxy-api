@@ -35,7 +35,7 @@ class ClaudeCliInfo(BaseModel):
     return_code: str | None = None
 
 
-class ClaudeCodeHeaders(BaseModel):
+class ClaudeAgentHeaders(BaseModel):
     """Pydantic model for Claude CLI headers extraction with field aliases."""
 
     anthropic_beta: str = Field(

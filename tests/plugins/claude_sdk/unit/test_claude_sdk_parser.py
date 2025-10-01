@@ -21,12 +21,12 @@ class TestParseSystemMessageTags:
     @pytest.mark.unit
     def test_parse_valid_system_message(self) -> None:
         """Test parsing valid system message XML."""
-        system_data = {"source": "claude_code_sdk", "text": "System message content"}
+        system_data = {"source": "claude_agent_sdk", "text": "System message content"}
         xml_content = f"<system_message>{json.dumps(system_data)}</system_message>"
 
         result = parse_system_message_tags(xml_content)
 
-        assert result == "[claude_code_sdk]: System message content"
+        assert result == "[claude_agent_sdk]: System message content"
 
     @pytest.mark.unit
     def test_parse_system_message_default_source(self) -> None:
@@ -36,7 +36,7 @@ class TestParseSystemMessageTags:
 
         result = parse_system_message_tags(xml_content)
 
-        assert result == "[claude_code_sdk]: System message content"
+        assert result == "[claude_agent_sdk]: System message content"
 
     @pytest.mark.unit
     def test_parse_system_message_with_surrounding_text(self) -> None:
@@ -48,7 +48,7 @@ class TestParseSystemMessageTags:
 
         result = parse_system_message_tags(xml_content)
 
-        assert result == "Before [claude_code_sdk]: System message After"
+        assert result == "Before [claude_agent_sdk]: System message After"
 
     @pytest.mark.unit
     def test_parse_multiple_system_messages(self) -> None:
@@ -64,7 +64,7 @@ class TestParseSystemMessageTags:
 
         assert (
             result
-            == "[claude_code_sdk]: First message and [claude_code_sdk]: Second message"
+            == "[claude_agent_sdk]: First message and [claude_agent_sdk]: Second message"
         )
 
     @pytest.mark.unit
@@ -100,7 +100,9 @@ class TestParseToolUseSdkTags:
             xml_content, collect_tool_calls=False
         )
 
-        expected_text = '[claude_code_sdk tool_use tool_123]: search({"query": "test"})'
+        expected_text = (
+            '[claude_agent_sdk tool_use tool_123]: search({"query": "test"})'
+        )
         assert result_text == expected_text
         assert tool_calls == []
 
@@ -167,7 +169,7 @@ class TestParseToolUseSdkTags:
             xml_content, collect_tool_calls=False
         )
 
-        assert "[claude_code_sdk tool_use tool_123]: ping({})" in result_text
+        assert "[claude_agent_sdk tool_use tool_123]: ping({})" in result_text
 
 
 class TestParseToolResultSdkTags:
@@ -186,7 +188,7 @@ class TestParseToolResultSdkTags:
         result = parse_tool_result_sdk_tags(xml_content)
 
         expected = (
-            "[claude_code_sdk tool_result tool_123]: Search completed successfully"
+            "[claude_agent_sdk tool_result tool_123]: Search completed successfully"
         )
         assert result == expected
 
@@ -202,7 +204,7 @@ class TestParseToolResultSdkTags:
 
         result = parse_tool_result_sdk_tags(xml_content)
 
-        expected = "[claude_code_sdk tool_result tool_123 (ERROR)]: Search failed: invalid query"
+        expected = "[claude_agent_sdk tool_result tool_123 (ERROR)]: Search failed: invalid query"
         assert result == expected
 
     @pytest.mark.unit
@@ -213,7 +215,7 @@ class TestParseToolResultSdkTags:
 
         result = parse_tool_result_sdk_tags(xml_content)
 
-        expected = "[claude_code_sdk tool_result tool_123]: Result content"
+        expected = "[claude_agent_sdk tool_result tool_123]: Result content"
         assert result == expected
 
     @pytest.mark.unit
@@ -234,7 +236,7 @@ class TestParseResultMessageTags:
     def test_parse_result_message_complete(self) -> None:
         """Test parsing complete result message."""
         result_data = {
-            "source": "claude_code_sdk",
+            "source": "claude_agent_sdk",
             "session_id": "session_123",
             "stop_reason": "end_turn",
             "usage": {"input_tokens": 10, "output_tokens": 20},
@@ -245,7 +247,7 @@ class TestParseResultMessageTags:
         result = parse_result_message_tags(xml_content)
 
         expected = (
-            "[claude_code_sdk result session_123]: "
+            "[claude_agent_sdk result session_123]: "
             "stop_reason=end_turn, usage={'input_tokens': 10, 'output_tokens': 20}, "
             "cost_usd=0.001"
         )
@@ -255,7 +257,7 @@ class TestParseResultMessageTags:
     def test_parse_result_message_without_cost(self) -> None:
         """Test parsing result message without cost information."""
         result_data = {
-            "source": "claude_code_sdk",
+            "source": "claude_agent_sdk",
             "session_id": "session_123",
             "stop_reason": "end_turn",
             "usage": {"input_tokens": 10, "output_tokens": 20},
@@ -265,7 +267,7 @@ class TestParseResultMessageTags:
         result = parse_result_message_tags(xml_content)
 
         expected = (
-            "[claude_code_sdk result session_123]: "
+            "[claude_agent_sdk result session_123]: "
             "stop_reason=end_turn, usage={'input_tokens': 10, 'output_tokens': 20}"
         )
         assert result == expected
@@ -278,7 +280,7 @@ class TestParseResultMessageTags:
 
         result = parse_result_message_tags(xml_content)
 
-        expected = "[claude_code_sdk result ]: stop_reason=, usage={}"
+        expected = "[claude_agent_sdk result ]: stop_reason=, usage={}"
         assert result == expected
 
 
@@ -364,11 +366,11 @@ class TestParseFormattedSdkContent:
         )
 
         # Should process all types in sequence
-        assert "[claude_code_sdk]: System message" in result_text
+        assert "[claude_agent_sdk]: System message" in result_text
         assert "Some text content" in result_text
-        assert "[claude_code_sdk tool_use tool_1]: search" in result_text
-        assert "[claude_code_sdk tool_result tool_1]: result" in result_text
-        assert "[claude_code_sdk result sess_1]: stop_reason=end_turn" in result_text
+        assert "[claude_agent_sdk tool_use tool_1]: search" in result_text
+        assert "[claude_agent_sdk tool_result tool_1]: result" in result_text
+        assert "[claude_agent_sdk result sess_1]: stop_reason=end_turn" in result_text
         assert tool_calls == []
 
     @pytest.mark.unit
@@ -388,7 +390,7 @@ class TestParseFormattedSdkContent:
         )
 
         # Tool use should be removed from text but collected as tool call
-        assert "[claude_code_sdk]: System message" in result_text
+        assert "[claude_agent_sdk]: System message" in result_text
         assert "Some text content" in result_text
         assert "tool_use" not in result_text  # Tool use XML should be removed
 
@@ -411,7 +413,7 @@ class TestParseFormattedSdkContent:
         )
 
         # System message should be processed first, then text tags unwrapped
-        assert "[claude_code_sdk]: System message" in result_text
+        assert "[claude_agent_sdk]: System message" in result_text
         assert "Content here" in result_text
         assert "<text>" not in result_text
         assert "</text>" not in result_text
@@ -439,9 +441,9 @@ class TestParseFormattedSdkContent:
         )
 
         assert "I'll help you search for that information." in result_text
-        assert "[claude_code_sdk tool_use search_123]: web_search" in result_text
+        assert "[claude_agent_sdk tool_use search_123]: web_search" in result_text
         assert (
-            "[claude_code_sdk tool_result search_123]: Found 10 results" in result_text
+            "[claude_agent_sdk tool_result search_123]: Found 10 results" in result_text
         )
         assert "Based on the search results, here's what I found..." in result_text
         assert tool_calls == []

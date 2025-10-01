@@ -13,7 +13,7 @@ from collections.abc import Callable
 # Type alias for metrics factory function
 from typing import Any, TypeAlias
 
-from claude_code_sdk import ClaudeCodeOptions
+from claude_agent_sdk import ClaudeAgentOptions
 
 from ccproxy.core.errors import ClaudeProxyError
 from ccproxy.core.logging import get_plugin_logger
@@ -132,7 +132,7 @@ class SessionManager:
     async def get_session_client(
         self,
         session_id: str,
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
     ) -> SessionClient:
         """Get session-aware client."""
 

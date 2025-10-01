@@ -49,7 +49,7 @@ def parse_system_message_tags(text: str) -> str:
     def replace_system_message(match: re.Match[str]) -> str:
         try:
             system_data = json.loads(match.group(1))
-            source = system_data.get("source", "claude_code_sdk")
+            source = system_data.get("source", "claude_agent_sdk")
             system_text = system_data.get("text", "")
             return f"[{source}]: {system_text}"
         except json.JSONDecodeError:
@@ -93,7 +93,7 @@ def parse_tool_use_sdk_tags(
                 tool_id = tool_data.get("id", "")
                 tool_name = tool_data.get("name", "")
                 tool_input = tool_data.get("input", {})
-                return f"[claude_code_sdk tool_use {tool_id}]: {tool_name}({json.dumps(tool_input)})"
+                return f"[claude_agent_sdk tool_use {tool_id}]: {tool_name}({json.dumps(tool_input)})"
         except json.JSONDecodeError:
             # Keep original if parsing fails
             return match.group(0)
@@ -120,7 +120,7 @@ def parse_tool_result_sdk_tags(text: str) -> str:
             result_content = result_data.get("content", "")
             is_error = result_data.get("is_error", False)
             error_indicator = " (ERROR)" if is_error else ""
-            return f"[claude_code_sdk tool_result {tool_use_id}{error_indicator}]: {result_content}"
+            return f"[claude_agent_sdk tool_result {tool_use_id}{error_indicator}]: {result_content}"
         except json.JSONDecodeError:
             # Keep original if parsing fails
             return match.group(0)
@@ -142,7 +142,7 @@ def parse_result_message_tags(text: str) -> str:
     def replace_result_message(match: re.Match[str]) -> str:
         try:
             result_data = json.loads(match.group(1))
-            source = result_data.get("source", "claude_code_sdk")
+            source = result_data.get("source", "claude_agent_sdk")
             session_id = result_data.get("session_id", "")
             stop_reason = result_data.get("stop_reason", "")
             usage = result_data.get("usage", {})

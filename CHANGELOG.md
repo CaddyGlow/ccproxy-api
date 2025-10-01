@@ -467,7 +467,7 @@ This implementation provides a complete, production-ready OpenAI Codex proxy sol
   - Caches detection results per version to avoid repeated startup delays
   - Falls back to hardcoded values when detection fails
 - **Detection Models**: Added Pydantic models for Claude detection data:
-  - `ClaudeCodeHeaders` - Structured header extraction with field aliases
+  - `ClaudeAgentHeaders` - Structured header extraction with field aliases
   - `SystemPromptData` - System prompt content with cache control
   - `ClaudeCacheData` - Complete cached detection data with version tracking
 

@@ -7,7 +7,7 @@ import time
 from enum import Enum
 from typing import Any
 
-from claude_code_sdk import ClaudeCodeOptions
+from claude_agent_sdk import ClaudeAgentOptions
 from pydantic import BaseModel
 
 from ccproxy.core.async_task_manager import create_managed_task
@@ -17,7 +17,7 @@ from ccproxy.utils.id_generator import generate_client_id
 
 
 with patched_typing():
-    from claude_code_sdk import ClaudeSDKClient as ImportedClaudeSDKClient
+    from claude_agent_sdk import ClaudeSDKClient as ImportedClaudeSDKClient
 
 logger = get_plugin_logger()
 
@@ -58,7 +58,7 @@ class SessionClient:
     def __init__(
         self,
         session_id: str,
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
         client_id: str | None = None,
         ttl_seconds: int = 3600,
     ):

@@ -19,9 +19,9 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from claude_code_sdk import (
+from claude_agent_sdk import (
     AssistantMessage,
-    ClaudeCodeOptions,
+    ClaudeAgentOptions,
     ResultMessage,
     SystemMessage,
     TextBlock,
@@ -124,7 +124,7 @@ class TestClaudeSDKClientStatelessQueries:
     ) -> None:
         """Test successful stateless query execution."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         with patch(
             "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
@@ -155,7 +155,7 @@ class TestClaudeSDKClientStatelessQueries:
     ) -> None:
         """Test handling of CLINotFoundError."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         with (
             patch(
@@ -183,7 +183,7 @@ class TestClaudeSDKClientStatelessQueries:
     ) -> None:
         """Test handling of CLIConnectionError."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         with (
             patch(
@@ -211,7 +211,7 @@ class TestClaudeSDKClientStatelessQueries:
     ) -> None:
         """Test handling of ProcessError."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         with (
             patch(
@@ -240,7 +240,7 @@ class TestClaudeSDKClientStatelessQueries:
     ) -> None:
         """Test handling of CLIJSONDecodeError."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         with (
             patch(
@@ -269,7 +269,7 @@ class TestClaudeSDKClientStatelessQueries:
     ) -> None:
         """Test handling of unexpected errors."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         with (
             patch(
@@ -296,7 +296,7 @@ class TestClaudeSDKClientStatelessQueries:
     async def test_query_completion_unknown_message_type(self) -> None:
         """Test handling of unknown message types."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         # Create a mock unknown message type - descriptive mock for unknown type handling
         mock_unknown_message: Mock = Mock()
@@ -336,7 +336,7 @@ class TestClaudeSDKClientStatelessQueries:
     async def test_query_completion_message_conversion_failure(self) -> None:
         """Test handling of message conversion failures."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         # Create a message that will fail conversion
         bad_message: AssistantMessage = AssistantMessage(
@@ -383,7 +383,7 @@ class TestClaudeSDKClientStatelessQueries:
     async def test_query_completion_multiple_message_types(self) -> None:
         """Test handling of multiple message types in sequence."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         # Create a mock SDK client with multiple message types
         mock_sdk_client = AsyncMock()
@@ -445,7 +445,7 @@ class TestClaudeSDKClientStatelessQueries:
         without complex inline setup, improving test maintainability.
         """
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
+        options: ClaudeAgentOptions = ClaudeAgentOptions()
 
         # Organized fixtures provide pre-configured, consistent mock responses
         # Here we demonstrate that the fixture is available and properly structured

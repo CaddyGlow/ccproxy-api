@@ -4,7 +4,7 @@ This module provides Pydantic models that mirror the Claude SDK types from the
 official claude-code-sdk-python repository. These models enable strong typing
 throughout the proxy system and provide runtime validation.
 
-Based on: https://github.com/anthropics/claude-code-sdk-python/blob/main/src/claude_code_sdk/types.py
+Based on: https://github.com/anthropics/claude-code-sdk-python/blob/main/src/claude_agent_sdk/types.py
 """
 
 from __future__ import annotations
@@ -12,9 +12,9 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal, TypeVar, cast
 
 # Import Claude SDK types for isinstance checks
-from claude_code_sdk import TextBlock as SDKTextBlock
-from claude_code_sdk import ToolResultBlock as SDKToolResultBlock
-from claude_code_sdk import ToolUseBlock as SDKToolUseBlock
+from claude_agent_sdk import TextBlock as SDKTextBlock
+from claude_agent_sdk import ToolResultBlock as SDKToolResultBlock
+from claude_agent_sdk import ToolUseBlock as SDKToolUseBlock
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ccproxy.llms.models import anthropic as anthropic_models
@@ -69,7 +69,7 @@ class ToolUseBlock(BaseModel):
             "id": self.id,
             "name": self.name,
             "input": self.input,
-            "source": "claude_code_sdk",
+            "source": "claude_agent_sdk",
         }
 
 
@@ -96,7 +96,7 @@ class ToolResultBlock(BaseModel):
             "tool_use_id": self.tool_use_id,
             "content": self.content,
             "is_error": self.is_error,
-            "source": "claude_code_sdk",
+            "source": "claude_agent_sdk",
         }
 
 
@@ -281,7 +281,7 @@ class SDKMessageMode(SystemMessage):
     """Custom content block for system messages with source attribution."""
 
     type: Literal["system_message"] = "system_message"
-    source: str = "claude_code_sdk"
+    source: str = "claude_agent_sdk"
 
     model_config = ConfigDict(extra="allow")
 
@@ -293,7 +293,7 @@ class ToolUseSDKBlock(BaseModel):
     id: str = Field(..., description="Unique identifier for the tool use")
     name: str = Field(..., description="Name of the tool being used")
     input: dict[str, Any] = Field(..., description="Input parameters for the tool")
-    source: str = "claude_code_sdk"
+    source: str = "claude_agent_sdk"
 
 
 class ToolResultSDKBlock(BaseModel):
@@ -309,14 +309,14 @@ class ToolResultSDKBlock(BaseModel):
     is_error: bool | None = Field(
         None, description="Whether this result represents an error"
     )
-    source: str = "claude_code_sdk"
+    source: str = "claude_agent_sdk"
 
 
 class ResultMessageBlock(ResultMessage):
     """Custom content block for result messages with session data."""
 
     type: Literal["result_message"] = "result_message"
-    source: str = "claude_code_sdk"
+    source: str = "claude_agent_sdk"
 
 
 # Union type for all custom content blocks

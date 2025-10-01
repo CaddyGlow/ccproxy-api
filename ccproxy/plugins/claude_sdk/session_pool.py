@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 from typing import TYPE_CHECKING, Any
 
-from claude_code_sdk import ClaudeCodeOptions
+from claude_agent_sdk import ClaudeAgentOptions
 
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
@@ -86,7 +86,7 @@ class SessionPool:
         logger.debug("session_pool_stopped")
 
     async def get_session_client(
-        self, session_id: str, options: ClaudeCodeOptions
+        self, session_id: str, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Get or create a session context for the given session_id."""
         logger.debug(
@@ -129,7 +129,7 @@ class SessionPool:
             )
 
     async def _get_or_create_session(
-        self, session_id: str, options: ClaudeCodeOptions
+        self, session_id: str, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Get existing session or create new one (requires lock)."""
         # Check capacity limits for new sessions
@@ -157,7 +157,7 @@ class SessionPool:
             return await self._create_session_unlocked(session_id, options)
 
     async def _handle_existing_session(
-        self, session_id: str, options: ClaudeCodeOptions
+        self, session_id: str, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Handle an existing session based on its state (requires lock)."""
         session_client = self.sessions[session_id]
@@ -184,7 +184,7 @@ class SessionPool:
         )
 
     async def _handle_interrupting_session(
-        self, session_id: str, session_client: SessionClient, options: ClaudeCodeOptions
+        self, session_id: str, session_client: SessionClient, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Handle a session that is currently being interrupted (requires lock)."""
         logger.warning(
@@ -219,7 +219,7 @@ class SessionPool:
         return await self._create_session_unlocked(session_id, options)
 
     async def _handle_active_stream(
-        self, session_id: str, session_client: SessionClient, options: ClaudeCodeOptions
+        self, session_id: str, session_client: SessionClient, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Handle a session with an active stream (requires lock)."""
         logger.debug(
@@ -286,7 +286,7 @@ class SessionPool:
         return is_first_chunk_timeout, is_ongoing_timeout
 
     async def _handle_first_chunk_timeout(
-        self, session_id: str, session_client: SessionClient, options: ClaudeCodeOptions
+        self, session_id: str, session_client: SessionClient, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Handle first chunk timeout - terminate and recreate session (requires lock)."""
         old_handle_id = session_client.active_stream_handle.handle_id
@@ -385,7 +385,7 @@ class SessionPool:
         session_client.has_active_stream = False
 
     async def _handle_expired_or_unhealthy(
-        self, session_id: str, session_client: SessionClient, options: ClaudeCodeOptions
+        self, session_id: str, session_client: SessionClient, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Handle expired or unhealthy sessions (requires lock)."""
         # Check if session is expired
@@ -424,14 +424,14 @@ class SessionPool:
             )
 
     async def _create_session(
-        self, session_id: str, options: ClaudeCodeOptions
+        self, session_id: str, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Create a new session context (acquires lock)."""
         async with self._lock:
             return await self._create_session_unlocked(session_id, options)
 
     async def _create_session_unlocked(
-        self, session_id: str, options: ClaudeCodeOptions
+        self, session_id: str, options: ClaudeAgentOptions
     ) -> SessionClient:
         """Create a new session context (requires lock to be held)."""
         session_client = SessionClient(

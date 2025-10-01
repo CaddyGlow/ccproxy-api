@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Any
 
-from claude_code_sdk import ClaudeCodeOptions
+from claude_agent_sdk import ClaudeAgentOptions
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ccproxy.models.provider import ModelCard, ModelMappingRule, ProviderConfig
@@ -16,14 +16,14 @@ from ccproxy.plugins.claude_shared.model_defaults import (
 def _create_default_claude_code_options(
     builtin_permissions: bool = True,
     continue_conversation: bool = False,
-) -> ClaudeCodeOptions:
-    """Create ClaudeCodeOptions with default values.
+) -> ClaudeAgentOptions:
+    """Create ClaudeAgentOptions with default values.
 
     Args:
         builtin_permissions: Whether to include built-in permission handling defaults
     """
     if builtin_permissions:
-        return ClaudeCodeOptions(
+        return ClaudeAgentOptions(
             continue_conversation=continue_conversation,
             mcp_servers={
                 "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
@@ -31,7 +31,7 @@ def _create_default_claude_code_options(
             permission_prompt_tool_name="mcp__confirmation__check_permission",
         )
     else:
-        return ClaudeCodeOptions(
+        return ClaudeAgentOptions(
             mcp_servers={},
             permission_prompt_tool_name=None,
             continue_conversation=continue_conversation,

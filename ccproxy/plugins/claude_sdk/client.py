@@ -21,26 +21,26 @@ from .stream_handle import StreamHandle
 
 
 with patched_typing():
-    from claude_code_sdk import (
+    from claude_agent_sdk import (
         AssistantMessage as SDKAssistantMessage,
     )
-    from claude_code_sdk import (
-        ClaudeCodeOptions,
+    from claude_agent_sdk import (
+        ClaudeAgentOptions,
         CLIConnectionError,
         CLIJSONDecodeError,
         CLINotFoundError,
         ProcessError,
     )
-    from claude_code_sdk import (
+    from claude_agent_sdk import (
         ClaudeSDKClient as ImportedClaudeSDKClient,
     )
-    from claude_code_sdk import (
+    from claude_agent_sdk import (
         ResultMessage as SDKResultMessage,
     )
-    from claude_code_sdk import (
+    from claude_agent_sdk import (
         SystemMessage as SDKSystemMessage,
     )
-    from claude_code_sdk import (
+    from claude_agent_sdk import (
         UserMessage as SDKUserMessage,
     )
 
@@ -244,7 +244,7 @@ class ClaudeSDKClient:
     async def query_completion(
         self,
         message: SDKMessage,
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
         request_id: str | None = None,
         session_id: str | None = None,
     ) -> StreamHandle:
@@ -276,7 +276,7 @@ class ClaudeSDKClient:
     async def _create_direct_stream_handle(
         self,
         message: SDKMessage,
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
         request_id: str | None = None,
         session_id: str | None = None,
     ) -> StreamHandle:
@@ -315,7 +315,7 @@ class ClaudeSDKClient:
     async def _create_session_pool_stream_handle(
         self,
         message: SDKMessage,
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
         request_id: str | None = None,
         session_id: str | None = None,
     ) -> StreamHandle:
@@ -360,7 +360,7 @@ class ClaudeSDKClient:
     async def _query(
         self,
         message: SDKMessage,
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
         request_id: str | None = None,
         session_id: str | None = None,
     ) -> AsyncIterator[
@@ -403,7 +403,7 @@ class ClaudeSDKClient:
     async def _query_with_session_pool(
         self,
         message: SDKMessage,
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
         request_id: str | None = None,
         session_id: str | None = None,
     ) -> AsyncIterator[

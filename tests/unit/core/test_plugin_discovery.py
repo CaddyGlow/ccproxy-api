@@ -132,7 +132,7 @@ def test_entry_point_missing_dependency_logged(monkeypatch, caplog):
             self.value = "ccproxy.plugins.analytics.routes:factory"
 
         def load(self) -> object:
-            raise ModuleNotFoundError("claude_code_sdk")
+            raise ModuleNotFoundError("claude_agent_sdk")
 
     class FakeGroups:
         def select(self, group: str):
@@ -154,7 +154,7 @@ def test_entry_point_missing_dependency_logged(monkeypatch, caplog):
 
     log_output = caplog.text
     assert "plugin_dependency_missing" in log_output
-    assert "'dependency': 'claude_code_sdk'" in log_output
+    assert "'dependency': 'claude_agent_sdk'" in log_output
     assert "'details': 'entrypoint'" in log_output
 
 

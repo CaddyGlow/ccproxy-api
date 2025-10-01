@@ -3,7 +3,7 @@
 from typing import Any, cast
 
 import pytest
-from claude_code_sdk import ClaudeCodeOptions
+from claude_agent_sdk import ClaudeAgentOptions
 
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings
@@ -34,7 +34,7 @@ class TestOptionsHandler:
         """Test that default MCP configuration is applied from settings."""
         # Create settings with explicit MCP defaults
         claude_settings = ClaudeSDKSettings(
-            code_options=ClaudeCodeOptions(
+            code_options=ClaudeAgentOptions(
                 mcp_servers={
                     "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
                 },
@@ -64,10 +64,10 @@ class TestOptionsHandler:
     def test_create_options_with_custom_configuration(self) -> None:
         """Test that custom configuration overrides defaults."""
         # Create custom code options object with different values
-        custom_code_options = ClaudeCodeOptions(
+        custom_code_options = ClaudeAgentOptions(
             mcp_servers={"custom": {"type": "sse", "url": "http://localhost:9000/mcp"}},
             permission_prompt_tool_name="custom_permission_tool",
-            max_thinking_tokens=15000,
+            cwd="/custom/path",
         )
 
         claude_settings = ClaudeSDKSettings(code_options=custom_code_options)
@@ -83,13 +83,13 @@ class TestOptionsHandler:
         # Should have the custom permission tool name
         assert options.permission_prompt_tool_name == "custom_permission_tool"
         # Should have the custom max thinking tokens
-        assert options.max_thinking_tokens == 15000
+        assert options.cwd == "/custom/path"
 
     @pytest.mark.unit
     def test_create_options_api_parameters_override_settings(self) -> None:
         """Test that API parameters override settings."""
         claude_settings = ClaudeSDKSettings(
-            code_options=ClaudeCodeOptions(
+            code_options=ClaudeAgentOptions(
                 mcp_servers={
                     "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
                 },
@@ -103,12 +103,13 @@ class TestOptionsHandler:
             temperature=0.8,
             max_tokens=2000,
             system_message="Custom system prompt",
-            max_thinking_tokens=20000,  # Override default
+            max_thinking_tokens=20000,  # dont exist in the options
+            cwd="/custom/path",
         )
 
         assert options.model == "claude-3-5-sonnet-20241022"
         assert options.system_prompt == "Custom system prompt"
-        assert options.max_thinking_tokens == 20000
+        assert options.cwd == "/custom/path"
         # Should still have the default MCP configuration
         mcp_servers = cast(dict[str, Any], options.mcp_servers)
         assert "confirmation" in mcp_servers
@@ -120,7 +121,7 @@ class TestOptionsHandler:
     def test_create_options_with_kwargs_override(self) -> None:
         """Test that additional kwargs are applied correctly."""
         claude_settings = ClaudeSDKSettings(
-            code_options=ClaudeCodeOptions(
+            code_options=ClaudeAgentOptions(
                 mcp_servers={
                     "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
                 },
@@ -150,7 +151,7 @@ class TestOptionsHandler:
     def test_create_options_preserves_all_configuration_attributes(self) -> None:
         """Test that all attributes from configuration are properly copied."""
         # Create comprehensive configuration
-        custom_code_options = ClaudeCodeOptions(
+        custom_code_options = ClaudeAgentOptions(
             mcp_servers={
                 "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"},
                 "filesystem": {
@@ -160,10 +161,8 @@ class TestOptionsHandler:
                 },
             },
             permission_prompt_tool_name="mcp__confirmation__check_permission",
-            max_thinking_tokens=10000,
             allowed_tools=["Read", "Write", "Bash"],
             cwd="/project/root",
-            append_system_prompt="Additional context",
         )
 
         claude_settings = ClaudeSDKSettings(code_options=custom_code_options)
@@ -179,15 +178,13 @@ class TestOptionsHandler:
         assert (
             options.permission_prompt_tool_name == "mcp__confirmation__check_permission"
         )
-        assert options.max_thinking_tokens == 10000
         assert options.allowed_tools == ["Read", "Write", "Bash"]
         assert options.cwd == "/project/root"
-        assert options.append_system_prompt == "Additional context"
 
     @pytest.mark.unit
     def test_model_parameter_always_overrides_settings(self) -> None:
         """Test that the model parameter always takes precedence over settings."""
-        custom_code_options = ClaudeCodeOptions(
+        custom_code_options = ClaudeAgentOptions(
             model="claude-3-opus-20240229"  # Different model in settings
         )
 

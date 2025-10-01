@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from claude_code_sdk import ClaudeCodeOptions
+from claude_agent_sdk import ClaudeAgentOptions
 
 from .config import ClaudeSDKSettings
 
@@ -28,7 +28,7 @@ class OptionsHandler:
         max_tokens: int | None = None,
         system_message: str | None = None,
         **additional_options: Any,
-    ) -> ClaudeCodeOptions:
+    ) -> ClaudeAgentOptions:
         """
         Create Claude SDK options from API parameters.
 
@@ -37,10 +37,10 @@ class OptionsHandler:
             temperature: Temperature for response generation
             max_tokens: Maximum tokens in response
             system_message: System message to include
-            **additional_options: Additional options to set on the ClaudeCodeOptions instance
+            **additional_options: Additional options to set on the ClaudeAgentOptions instance
 
         Returns:
-            Configured ClaudeCodeOptions instance
+            Configured ClaudeAgentOptions instance
         """
         # Start with configured defaults if available, otherwise create fresh instance
         if self.config and self.config.code_options:
@@ -71,9 +71,9 @@ class OptionsHandler:
             )
             permission_mode = getattr(configured_opts, "permission_mode", None)
 
-            # Build ClaudeCodeOptions with proper type handling
+            # Build ClaudeAgentOptions with proper type handling
             # Start with a basic instance and set attributes individually for type safety
-            options = ClaudeCodeOptions(
+            options = ClaudeAgentOptions(
                 mcp_servers=mcp_servers,
                 permission_prompt_tool_name=permission_prompt_tool_name,
             )
@@ -96,12 +96,12 @@ class OptionsHandler:
             if permission_mode is not None:
                 options.permission_mode = permission_mode
         else:
-            options = ClaudeCodeOptions()
+            options = ClaudeAgentOptions()
 
         # Override the model (API parameter takes precedence)
         options.model = model
 
-        # Apply system message if provided (this is supported by ClaudeCodeOptions)
+        # Apply system message if provided (this is supported by ClaudeAgentOptions)
         if system_message is not None:
             options.system_prompt = system_message
 
@@ -110,7 +110,7 @@ class OptionsHandler:
         if additional_options.get("session_id"):
             options.continue_conversation = True
 
-        # Note: temperature and max_tokens are API-level parameters, not ClaudeCodeOptions parameters
+        # Note: temperature and max_tokens are API-level parameters, not ClaudeAgentOptions parameters
         # These are handled at the API request level, not in the options object
 
         # Handle additional options as needed

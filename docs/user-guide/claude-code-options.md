@@ -7,7 +7,7 @@ Advanced Claude Code SDK options can be passed through API requests using unoffi
 
 ## Overview
 
-The CCProxy API supports passing all ClaudeCodeOptions parameters through API requests. This allows you to configure advanced Claude Code features like tool permissions, thinking tokens, MCP integrations, and more directly through API calls.
+The CCProxy API supports passing all ClaudeAgentOptions parameters through API requests. This allows you to configure advanced Claude Code features like tool permissions, thinking tokens, MCP integrations, and more directly through API calls.
 
 ## Available Parameters
 

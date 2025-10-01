@@ -9,7 +9,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from claude_code_sdk import (
+from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
     ToolResultBlock,

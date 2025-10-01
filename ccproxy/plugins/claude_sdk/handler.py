@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
-from claude_code_sdk import ClaudeCodeOptions
+from claude_agent_sdk import ClaudeAgentOptions
 
 from ccproxy.auth.manager import AuthManager
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
@@ -123,7 +123,7 @@ class ClaudeSDKHandler:
         self,
         ctx: RequestContext,
         session_id: str | None,
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
     ) -> None:
         """Capture session metadata for access logging."""
         if (
@@ -244,7 +244,7 @@ class ClaudeSDKHandler:
         self,
         ctx: RequestContext,
         messages: list[dict[str, Any]],
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
         model: str,
         session_id: str | None = None,
         timestamp: str | None = None,
@@ -351,7 +351,7 @@ class ClaudeSDKHandler:
                                     tool_use_id=block.tool_use_id,
                                     content=block.content,
                                     is_error=block.is_error,
-                                    source="claude_code_sdk",
+                                    source="claude_agent_sdk",
                                 )
                             )
 
@@ -386,7 +386,7 @@ class ClaudeSDKHandler:
         self,
         ctx: RequestContext,
         messages: list[dict[str, Any]],
-        options: ClaudeCodeOptions,
+        options: ClaudeAgentOptions,
         model: str,
         session_id: str | None = None,
         timestamp: str | None = None,

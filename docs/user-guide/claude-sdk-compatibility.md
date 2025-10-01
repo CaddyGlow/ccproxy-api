@@ -52,8 +52,8 @@ Tool-related parameters have very limited compatibility:
 
 | Parameter | Support Level | Alternative |
 |-----------|---------------|-------------|
-| `tools` | Very Limited | Use `allowed_tools` in ClaudeCodeOptions |
-| `tool_choice` | Very Limited | Use `permission_mode` in ClaudeCodeOptions |
+| `tools` | Very Limited | Use `allowed_tools` in ClaudeAgentOptions |
+| `tool_choice` | Very Limited | Use `permission_mode` in ClaudeAgentOptions |
 | `parallel_tool_calls` | Ignored | Claude SDK controls tool execution |
 
 ## Why These Limitations Exist
@@ -106,7 +106,7 @@ These different design goals create fundamental incompatibilities.
 
 ### For Coding Applications
 
-**✅ Use ClaudeCodeOptions Instead:**
+**✅ Use ClaudeAgentOptions Instead:**
 ```json
 {
   "model": "claude-3-5-sonnet-20241022",
@@ -192,7 +192,7 @@ Consider whether Claude SDK limitations are acceptable:
    )
    ```
 
-2. **Add ClaudeCodeOptions for advanced features**:
+2. **Add ClaudeAgentOptions for advanced features**:
    ```python
    # After: Enhanced with Claude-specific options
    response = client.messages.create(
@@ -217,7 +217,7 @@ This will show which parameters are working and which are being ignored.
 ## Best Practices
 
 1. **Don't rely on ignored parameters**: Remove them from your code to avoid confusion
-2. **Use ClaudeCodeOptions**: Leverage Claude-specific features for better results
+2. **Use ClaudeAgentOptions**: Leverage Claude-specific features for better results
 3. **Test thoroughly**: Behavior may differ significantly from other APIs
 4. **Monitor logs**: Enable debug logging to see what's actually being passed to the SDK
 5. **Understand the trade-offs**: Accept limitations in exchange for powerful coding features
@@ -226,4 +226,4 @@ This will show which parameters are working and which are being ignored.
 
 The Claude Code Proxy provides powerful development capabilities through the Claude SDK, but with significant API compatibility limitations. Understanding these limitations is crucial for successful integration and avoiding unexpected behavior.
 
-For basic chat applications, the proxy works reasonably well with standard API formats. For advanced development workflows, ClaudeCodeOptions provide capabilities that exceed traditional APIs, but require learning Claude-specific parameters.
+For basic chat applications, the proxy works reasonably well with standard API formats. For advanced development workflows, ClaudeAgentOptions provide capabilities that exceed traditional APIs, but require learning Claude-specific parameters.

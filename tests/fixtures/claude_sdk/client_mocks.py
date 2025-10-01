@@ -1,6 +1,6 @@
 """Mock fixtures for Claude SDK client testing.
 
-These fixtures provide mocks for the claude_code_sdk client components
+These fixtures provide mocks for the claude_agent_sdk client components
 used in unit tests for the ClaudeSDKClient wrapper.
 """
 # mypy: disable-error-code="unreachable"
@@ -10,7 +10,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from claude_code_sdk import (
+from claude_agent_sdk import (
     AssistantMessage,
     CLIConnectionError,
     CLIJSONDecodeError,
