@@ -21,13 +21,13 @@ logger = get_plugin_logger(__name__)
 class CommandReplayHook(Hook):
     """Hook for generating curl and xh command replays of provider requests.
 
-    Listens for PROVIDER_REQUEST_SENT events and generates command line
+    Listens for PROVIDER_REQUEST_PREPARED events and generates command line
     equivalents that can be used to replay the exact same HTTP requests.
     """
 
     name = "command_replay"
     events = [
-        HookEvent.PROVIDER_REQUEST_SENT,
+        HookEvent.PROVIDER_REQUEST_PREPARED,
         # Also listen to HTTP_REQUEST for broader coverage
         HookEvent.HTTP_REQUEST,
     ]
@@ -76,7 +76,7 @@ class CommandReplayHook(Hook):
         )
 
         try:
-            if context.event == HookEvent.PROVIDER_REQUEST_SENT:
+            if context.event == HookEvent.PROVIDER_REQUEST_PREPARED:
                 await self._handle_provider_request(context)
             elif context.event == HookEvent.HTTP_REQUEST:
                 await self._handle_http_request(context)
@@ -89,7 +89,7 @@ class CommandReplayHook(Hook):
             )
 
     async def _handle_provider_request(self, context: HookContext) -> None:
-        """Handle PROVIDER_REQUEST_SENT event."""
+        """Handle PROVIDER_REQUEST_PREPARED event."""
         await self._generate_commands(context, is_provider_request=True)
 
     async def _handle_http_request(self, context: HookContext) -> None:
@@ -113,7 +113,7 @@ class CommandReplayHook(Hook):
 
         Args:
             context: Hook context with request data
-            is_provider_request: Whether this came from PROVIDER_REQUEST_SENT
+            is_provider_request: Whether this came from PROVIDER_REQUEST_PREPARED
         """
         # Extract request data
         method = context.data.get("method", "GET")

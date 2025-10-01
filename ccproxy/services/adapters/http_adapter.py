@@ -1,7 +1,8 @@
 import contextlib
 import json
 from abc import abstractmethod
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
@@ -10,6 +11,8 @@ from fastapi import HTTPException, Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.core.plugins.hooks.base import HookContext
+from ccproxy.core.plugins.hooks.events import HookEvent
 from ccproxy.models.provider import ProviderConfig
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.adapters.chain_composer import compose_from_chain
@@ -64,7 +67,7 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Step 1: Extract request data
         body = await request.body()
-        body = self._map_request_model(ctx, body)
+        body = await self._map_request_model(ctx, body)
         headers = extract_request_headers(request)
         method = request.method
         endpoint = ctx.metadata.get("endpoint", "")
@@ -215,6 +218,21 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Step 5: Execute HTTP request
         target_url = await self.get_target_url(endpoint)
+        (
+            method,
+            target_url,
+            prepared_body,
+            prepared_headers,
+        ) = await self._emit_provider_request_prepared(
+            request_obj=request,
+            ctx=ctx,
+            method=method,
+            endpoint=endpoint,
+            target_url=target_url,
+            prepared_body=prepared_body,
+            prepared_headers=prepared_headers,
+            is_streaming=False,
+        )
         provider_response = await self._execute_http_request(
             method,
             target_url,
@@ -376,11 +394,12 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Get context from middleware
         ctx = request.state.context
+        method = request.method
         self._ensure_tool_accumulator(ctx)
 
         # Extract request data
         body = await request.body()
-        body = self._map_request_model(ctx, body)
+        body = await self._map_request_model(ctx, body)
         headers = extract_request_headers(request)
 
         # Fail fast on missing format registry if chain configured
@@ -518,13 +537,29 @@ class BaseHTTPAdapter(BaseAdapter):
         # Get target URL for proper client pool management
         target_url = await self.get_target_url(endpoint)
 
+        (
+            method,
+            target_url,
+            prepared_body,
+            prepared_headers,
+        ) = await self._emit_provider_request_prepared(
+            request_obj=request,
+            ctx=ctx,
+            method=method,
+            endpoint=endpoint,
+            target_url=target_url,
+            prepared_body=prepared_body,
+            prepared_headers=prepared_headers,
+            is_streaming=True,
+        )
+
         # Get HTTP client from pool manager with base URL for hook integration
         parsed_url = urlparse(target_url)
         base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
 
         # Delegate to StreamingHandler - no format chain needed since adapter is in config
         return await self.streaming_handler.handle_streaming_request(
-            method=request.method,
+            method=method,
             url=target_url,
             headers=prepared_headers,  # Use prepared headers with auth
             body=prepared_body,  # Use prepared body
@@ -547,7 +582,7 @@ class BaseHTTPAdapter(BaseAdapter):
         )
         return response
 
-    def _map_request_model(self, ctx: Any, body: bytes) -> bytes:
+    async def _map_request_model(self, ctx: Any, body: bytes) -> bytes:
         """Apply provider model mapping to request payload if configured."""
 
         mapper = getattr(self, "model_mapper", None)
@@ -618,6 +653,211 @@ class BaseHTTPAdapter(BaseAdapter):
         )
 
         return self._encode_json_body(payload)
+
+    async def _emit_provider_request_prepared(
+        self,
+        *,
+        request_obj: Request | None,
+        ctx: Any,
+        method: str,
+        endpoint: str,
+        target_url: str,
+        prepared_body: bytes,
+        prepared_headers: dict[str, str],
+        is_streaming: bool,
+    ) -> tuple[str, str, bytes, dict[str, str]]:
+        """Emit hook before provider request is dispatched, allowing mutation."""
+
+        hook_manager = getattr(self.http_pool_manager, "hook_manager", None)
+        if not hook_manager:
+            return method, target_url, prepared_body, prepared_headers
+
+        provider_name = getattr(self.config, "name", None)
+        body_for_hooks, body_kind = self._prepare_body_for_hook(prepared_body)
+        hook_data: dict[str, Any] = {
+            "method": method,
+            "url": target_url,
+            "headers": dict(prepared_headers),
+            "body": body_for_hooks,
+            "body_raw": None,
+            "original_body_raw": prepared_body,
+            "body_kind": body_kind,
+            "is_streaming": is_streaming,
+            "endpoint": endpoint,
+        }
+
+        hook_metadata: dict[str, Any] = {}
+        request_id = getattr(ctx, "request_id", None)
+        if request_id:
+            hook_metadata["request_id"] = request_id
+        if endpoint:
+            hook_metadata["endpoint"] = endpoint
+
+        ctx_metadata = getattr(ctx, "metadata", None)
+        if isinstance(ctx_metadata, dict):
+            provider_model = ctx_metadata.get(
+                "_last_provider_model"
+            ) or ctx_metadata.get("model")
+            if provider_model:
+                hook_metadata.setdefault("provider_model", provider_model)
+
+        hook_context = HookContext(
+            event=HookEvent.PROVIDER_REQUEST_PREPARED,
+            timestamp=datetime.utcnow(),
+            data=hook_data,
+            metadata=hook_metadata,
+            request=request_obj,
+            provider=provider_name,
+        )
+
+        try:
+            await hook_manager.emit_with_context(hook_context, fire_and_forget=False)
+        except Exception as exc:  # pragma: no cover - defensive fallback
+            logger.debug(
+                "provider_request_prepared_hook_failed",
+                provider=provider_name,
+                error=str(exc),
+            )
+            return method, target_url, prepared_body, prepared_headers
+
+        mutated = hook_context.data or {}
+        mutated_method = str(mutated.get("method", method))
+        mutated_url = str(mutated.get("url", target_url))
+        mutated_headers = self._coerce_hook_headers(
+            mutated.get("headers"),
+            prepared_headers,
+        )
+        mutated_body = self._coerce_hook_body(
+            mutated.get("body"),
+            mutated.get("body_kind", body_kind),
+            mutated.get("body_raw"),
+            prepared_body,
+        )
+
+        return mutated_method, mutated_url, mutated_body, mutated_headers
+
+    def _prepare_body_for_hook(self, body: bytes) -> tuple[Any, str]:
+        """Return hook-friendly body representation and its kind."""
+
+        if not body:
+            return b"", "bytes"
+
+        try:
+            decoded = body.decode()
+        except UnicodeDecodeError:
+            return body, "bytes"
+
+        try:
+            parsed = json.loads(decoded)
+        except json.JSONDecodeError:
+            return decoded, "text"
+
+        return parsed, "json"
+
+    def _coerce_hook_body(
+        self,
+        body: Any,
+        body_kind: str,
+        body_raw: Any,
+        original: bytes,
+    ) -> bytes:
+        """Convert hook-mutated body back to bytes safely."""
+
+        coerced_raw = self._ensure_bytes(body_raw)
+        if coerced_raw is not None:
+            return coerced_raw
+
+        converted = self._convert_hook_body_payload(body, body_kind)
+        if converted is not None and converted != original:
+            return converted
+
+        if converted is not None:
+            return converted
+
+        return original
+
+    def _ensure_bytes(self, value: Any) -> bytes | None:
+        """Best-effort conversion to bytes."""
+
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            return value
+        if isinstance(value, bytearray):
+            return bytes(value)
+        if isinstance(value, memoryview):
+            return value.tobytes()
+        if isinstance(value, str):
+            return value.encode()
+        return None
+
+    def _coerce_hook_headers(
+        self,
+        headers: Any,
+        original: dict[str, str],
+    ) -> dict[str, str]:
+        """Sanitize hook-mutated headers."""
+
+        if headers is None:
+            return original
+
+        items: Sequence[tuple[Any, Any]] | None = None
+        if isinstance(headers, Mapping):
+            items = list(headers.items())
+        elif isinstance(headers, Sequence):
+            try:
+                items = [tuple(pair) for pair in headers]
+            except Exception:  # pragma: no cover - defensive
+                items = None
+
+        if not items:
+            return original
+
+        coerced: dict[str, str] = {}
+        for key, value in items:
+            try:
+                coerced_key = str(key).lower()
+                coerced_value = str(value)
+            except Exception:
+                logger.debug(
+                    "provider_request_prepared_header_dropped",
+                    header_key=key,
+                )
+                continue
+            coerced[coerced_key] = coerced_value
+
+        return coerced or original
+
+    def _convert_hook_body_payload(self, body: Any, body_kind: str) -> bytes | None:
+        """Convert hook-provided body payload into bytes when possible."""
+
+        if body is None:
+            return None
+
+        direct = self._ensure_bytes(body)
+        if direct is not None:
+            return direct
+
+        try:
+            if isinstance(body, dict | list) or body_kind == "json":
+                return json.dumps(body).encode()
+            if isinstance(body, int | float | bool):
+                return json.dumps(body).encode()
+            if isinstance(body, str):
+                return body.encode()
+        except (TypeError, ValueError) as exc:
+            logger.debug(
+                "provider_request_prepared_body_conversion_failed",
+                error=str(exc),
+            )
+            return None
+
+        logger.debug(
+            "provider_request_prepared_body_unmodified",
+            reason="unsupported_type",
+            body_type=type(body).__name__,
+        )
+        return None
 
     def _restore_model_response(self, response: Response, ctx: Any) -> Response:
         """Restore original model identifiers in JSON responses."""

@@ -111,7 +111,8 @@ other_plugin = "my_package.other:create_factory"
 ## Hooks
 
 - Subscribe to events with `HookSpec(hook_class=..., kwargs={...})`.
-- Common events are in `HookEvent`, e.g., `REQUEST_STARTED`, `REQUEST_COMPLETED`, `PROVIDER_REQUEST_SENT`, `PROVIDER_STREAM_*`.
+- Common events are in `HookEvent`, e.g., `REQUEST_STARTED`, `REQUEST_COMPLETED`, `PROVIDER_REQUEST_PREPARED`, `PROVIDER_STREAM_*`.
+- `PROVIDER_REQUEST_PREPARED` fires immediately before the upstream HTTP call; mutate `context.data["body"]`, `body_raw`, or `headers` to tweak the provider request.
 - Use hook priorities consistently. Avoid raising from hooks; log and continue.
 
 ## Services

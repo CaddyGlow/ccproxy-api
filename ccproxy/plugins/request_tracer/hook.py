@@ -34,7 +34,7 @@ class RequestTracerHook(Hook):
         HookEvent.REQUEST_STARTED,
         HookEvent.REQUEST_COMPLETED,
         HookEvent.REQUEST_FAILED,
-        HookEvent.PROVIDER_REQUEST_SENT,
+        HookEvent.PROVIDER_REQUEST_PREPARED,
         HookEvent.PROVIDER_RESPONSE_RECEIVED,
         HookEvent.PROVIDER_ERROR,
         HookEvent.PROVIDER_STREAM_START,
@@ -85,7 +85,7 @@ class RequestTracerHook(Hook):
             HookEvent.REQUEST_STARTED: self._handle_request_start,
             HookEvent.REQUEST_COMPLETED: self._handle_request_complete,
             HookEvent.REQUEST_FAILED: self._handle_request_failed,
-            HookEvent.PROVIDER_REQUEST_SENT: self._handle_provider_request,
+            HookEvent.PROVIDER_REQUEST_PREPARED: self._handle_provider_request,
             HookEvent.PROVIDER_RESPONSE_RECEIVED: self._handle_provider_response,
             HookEvent.PROVIDER_ERROR: self._handle_provider_error,
             HookEvent.PROVIDER_STREAM_START: self._handle_stream_start,
@@ -165,7 +165,7 @@ class RequestTracerHook(Hook):
         )
 
     async def _handle_provider_request(self, context: HookContext) -> None:
-        """Handle PROVIDER_REQUEST_SENT event."""
+        """Handle PROVIDER_REQUEST_PREPARED event."""
         if not self.config.log_provider_request:
             return
 
@@ -175,7 +175,7 @@ class RequestTracerHook(Hook):
         provider = context.provider or "unknown"
 
         logger.trace(
-            "provider_request_sent",
+            "provider_request_prepared",
             request_id=request_id,
             provider=provider,
             method=method,

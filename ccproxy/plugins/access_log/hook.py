@@ -28,7 +28,7 @@ class AccessLogHook(Hook):
         HookEvent.REQUEST_STARTED,
         HookEvent.REQUEST_COMPLETED,
         HookEvent.REQUEST_FAILED,
-        HookEvent.PROVIDER_REQUEST_SENT,
+        HookEvent.PROVIDER_REQUEST_PREPARED,
         HookEvent.PROVIDER_RESPONSE_RECEIVED,
         HookEvent.PROVIDER_ERROR,
         HookEvent.PROVIDER_STREAM_END,
@@ -94,7 +94,7 @@ class AccessLogHook(Hook):
             HookEvent.REQUEST_STARTED: self._handle_request_start,
             HookEvent.REQUEST_COMPLETED: self._handle_request_complete,
             HookEvent.REQUEST_FAILED: self._handle_request_failed,
-            HookEvent.PROVIDER_REQUEST_SENT: self._handle_provider_request,
+            HookEvent.PROVIDER_REQUEST_PREPARED: self._handle_provider_request,
             HookEvent.PROVIDER_RESPONSE_RECEIVED: self._handle_provider_response,
             HookEvent.PROVIDER_ERROR: self._handle_provider_error,
             HookEvent.PROVIDER_STREAM_END: self._handle_provider_stream_end,
@@ -322,7 +322,7 @@ class AccessLogHook(Hook):
         await self._maybe_ingest(log_data)
 
     async def _handle_provider_request(self, context: HookContext) -> None:
-        """Handle PROVIDER_REQUEST_SENT event."""
+        """Handle PROVIDER_REQUEST_PREPARED event."""
         if not self.config.provider_enabled:
             return
 

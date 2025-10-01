@@ -59,7 +59,7 @@ class CodexAdapter(BaseHTTPAdapter):
         self._ensure_tool_accumulator(ctx)
         endpoint = ctx.metadata.get("endpoint", "")
         body = await request.body()
-        body = self._map_request_model(ctx, body)
+        body = await self._map_request_model(ctx, body)
         headers = extract_request_headers(request)
 
         # Determine client streaming intent from body flag (fallback to False)
@@ -444,7 +444,7 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Extract body and headers
         body = await request.body()
-        body = self._map_request_model(ctx, body)
+        body = await self._map_request_model(ctx, body)
         headers = extract_request_headers(request)
 
         # Ensure format adapters are available when required

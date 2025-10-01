@@ -27,9 +27,4 @@ def create_service_container(settings: Settings | None = None) -> ServiceContain
 
     container = ServiceContainer(settings)
 
-    # You can add core, non-plugin service registrations here if needed.
-    # For example:
-    # from ccproxy.services.some_service import SomeService
-    # container.register_service(SomeService)
-
     return container

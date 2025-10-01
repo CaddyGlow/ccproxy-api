@@ -975,7 +975,8 @@ class MySystemRuntime(SystemPluginRuntime):
 - `REQUEST_STARTED`: Request initiated by client
 - `REQUEST_COMPLETED`: Request completed successfully
 - `REQUEST_FAILED`: Request failed with error
-- `PROVIDER_REQUEST_SENT`: Request sent to provider
+- `PROVIDER_REQUEST_PREPARED`: Request prepared just before dispatch (hooks may mutate payload/headers)
+- `PROVIDER_REQUEST_SENT`: Legacy event for backward compatibility
 - `PROVIDER_RESPONSE_RECEIVED`: Response received from provider
 - `PROVIDER_ERROR`: Provider request failed
 - `PROVIDER_STREAM_START`: Streaming response started

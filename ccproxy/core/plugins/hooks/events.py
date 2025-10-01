@@ -17,6 +17,7 @@ class HookEvent(str, Enum):
     REQUEST_FAILED = "request.failed"
 
     # Provider Integration
+    PROVIDER_REQUEST_PREPARED = "provider.request.prepared"  # Before sending upstream; payload mutable via hooks
     PROVIDER_REQUEST_SENT = "provider.request.sent"
     PROVIDER_RESPONSE_RECEIVED = "provider.response.received"
     PROVIDER_ERROR = "provider.error"
