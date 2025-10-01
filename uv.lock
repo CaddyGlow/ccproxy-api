@@ -144,7 +144,7 @@ dependencies = [
 [package.optional-dependencies]
 all = [
     { name = "aioconsole" },
-    { name = "claude-code-sdk" },
+    { name = "claude-agent-sdk" },
     { name = "duckdb" },
     { name = "duckdb-engine" },
     { name = "fastapi-mcp" },
@@ -179,7 +179,7 @@ docs = [
     { name = "mkdocstrings", extra = ["python"] },
 ]
 plugins-claude = [
-    { name = "claude-code-sdk" },
+    { name = "claude-agent-sdk" },
     { name = "qrcode" },
 ]
 plugins-codex = [
@@ -251,7 +251,7 @@ docs = [
     { name = "mkdocstrings", extra = ["python"] },
 ]
 plugins-claude = [
-    { name = "claude-code-sdk" },
+    { name = "claude-agent-sdk" },
     { name = "qrcode" },
 ]
 plugins-codex = [
@@ -291,8 +291,8 @@ requires-dist = [
     { name = "aioconsole", marker = "extra == 'plugins-tui'", specifier = ">=0.8.1" },
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "bandit", marker = "extra == 'dev'" },
-    { name = "claude-code-sdk", marker = "extra == 'all'", specifier = ">=0.0.19" },
-    { name = "claude-code-sdk", marker = "extra == 'plugins-claude'", specifier = ">=0.0.19" },
+    { name = "claude-agent-sdk", marker = "extra == 'all'", git = "https://github.com/anthropics/claude-agent-sdk-python.git" },
+    { name = "claude-agent-sdk", marker = "extra == 'plugins-claude'", git = "https://github.com/anthropics/claude-agent-sdk-python.git" },
     { name = "duckdb", marker = "extra == 'all'", specifier = ">=1.1.0" },
     { name = "duckdb", marker = "extra == 'plugins-storage'", specifier = ">=1.1.0" },
     { name = "duckdb-engine", marker = "extra == 'all'", specifier = ">=0.17.0" },
@@ -392,7 +392,7 @@ docs = [
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.24.0" },
 ]
 plugins-claude = [
-    { name = "claude-code-sdk", specifier = ">=0.0.19" },
+    { name = "claude-agent-sdk", git = "https://github.com/anthropics/claude-agent-sdk-python.git" },
     { name = "qrcode", specifier = ">=8.2" },
 ]
 plugins-codex = [
@@ -504,15 +504,12 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-code-sdk"
-version = "0.0.20"
-source = { registry = "https://pypi.org/simple" }
+name = "claude-agent-sdk"
+version = "0.1.0"
+source = { git = "https://github.com/anthropics/claude-agent-sdk-python.git#2a9693e2585228e956ab240c1fad557d4eb510d4" }
 dependencies = [
     { name = "anyio" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6b/c3/d40cf8bab3a5c75051914094990cff0a36ad13e4a2fe9ed85dbb4233a225/claude_code_sdk-0.0.20.tar.gz", hash = "sha256:5f9872f105563db8975de48ddc88c948d9c5e1244addca02241d6fcd2a47b3d6", size = 24329, upload-time = "2025-08-11T15:21:26.009Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/1d/fa06e77d4e7440d2f4998d8375eedc7dbb740d7e552d63f23c8b23661c91/claude_code_sdk-0.0.20-py3-none-any.whl", hash = "sha256:6183771f9663a47e9bda3c4f03e5619f2e41f9272a9e9bd9775bf2537177e4a0", size = 17575, upload-time = "2025-08-11T15:21:24.904Z" },
+    { name = "mcp" },
 ]
 
 [[package]]

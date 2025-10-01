@@ -359,7 +359,7 @@ class CodexDetectionService:
                     raise FileNotFoundError("Codex CLI not found for header detection")
 
                 # Prepare command
-                cmd = cli_info["command"] + ["exec", "test"]
+                cmd = cli_info["command"] + ["exec", "--skip-git-repo-check", "test"]
 
                 process = await asyncio.create_subprocess_exec(
                     *cmd,

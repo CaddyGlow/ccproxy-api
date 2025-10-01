@@ -127,7 +127,7 @@ class CodexSettings(ProviderConfig):
 
     # Detection configuration
     detection_home_mode: Literal["temp", "home"] = Field(
-        default="home",
+        default="temp",
         description="Home directory mode for CLI detection: 'temp' uses temporary directory, 'home' uses actual user HOME",
     )
 
