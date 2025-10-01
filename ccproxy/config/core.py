@@ -198,12 +198,14 @@ class LoggingSettings(BaseModel):
 def _default_plugin_directories() -> list[Path]:
     """Default directories scanned for filesystem plugins."""
 
-    package_plugins = Path(__file__).resolve().parent.parent / "plugins"
+    # package_plugins = Path(__file__).resolve().parent.parent.parent / "plugins"
+    # we don't include packages from ccproxy.plugins because they
+    # are using importlib.metadata entry points
     user_plugins = get_xdg_config_home() / "ccproxy" / "plugins"
 
     seen: set[Path] = set()
     ordered: list[Path] = []
-    for candidate in (package_plugins, user_plugins):
+    for candidate in [user_plugins]:
         normalized = candidate.resolve()
         if normalized in seen:
             continue
