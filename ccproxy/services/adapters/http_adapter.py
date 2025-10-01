@@ -700,6 +700,12 @@ class BaseHTTPAdapter(BaseAdapter):
             ) or ctx_metadata.get("model")
             if provider_model:
                 hook_metadata.setdefault("provider_model", provider_model)
+            client_model = ctx_metadata.get("_last_client_model")
+            if client_model:
+                hook_metadata.setdefault("client_model", client_model)
+            alias_map = ctx_metadata.get("_model_alias_map")
+            if isinstance(alias_map, dict) and alias_map:
+                hook_metadata.setdefault("_model_alias_map", dict(alias_map))
 
         hook_context = HookContext(
             event=HookEvent.PROVIDER_REQUEST_PREPARED,
