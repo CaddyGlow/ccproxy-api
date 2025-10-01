@@ -360,44 +360,34 @@ class TestCLICallbackServer:
         """Test callback server start/stop lifecycle."""
         server = CLICallbackServer(8080, "/callback")
 
-        with (
-            patch("aiohttp.web.AppRunner") as mock_runner_class,
-            patch("aiohttp.web.TCPSite") as mock_site_class,
-        ):
-            mock_runner = AsyncMock()
-            mock_runner_class.return_value = mock_runner
-            mock_site = AsyncMock()
-            mock_site_class.return_value = mock_site
+        with patch("uvicorn.Server") as mock_server_class:
+            mock_server = MagicMock()
+            mock_server.serve = AsyncMock()
+            mock_server.should_exit = False
+            mock_server_class.return_value = mock_server
 
             await server.start()
-            assert server.server == mock_runner
-            mock_runner.setup.assert_called_once()
-            mock_site.start.assert_called_once()
+            assert server.server == mock_server
+            mock_server.serve.assert_called_once()
 
             await server.stop()
             assert server.server is None
-            mock_runner.cleanup.assert_called_once()
+            assert mock_server.should_exit is True
 
     @pytest.mark.asyncio
     async def test_callback_server_port_bind_error(self) -> None:
         """Test callback server port binding error."""
         server = CLICallbackServer(8080, "/callback")
 
-        with (
-            patch("aiohttp.web.AppRunner") as mock_runner_class,
-            patch("aiohttp.web.TCPSite") as mock_site_class,
-        ):
-            mock_runner = AsyncMock()
-            mock_runner_class.return_value = mock_runner
-            mock_site = AsyncMock()
-            mock_site_class.return_value = mock_site
+        with patch("uvicorn.Server") as mock_server_class:
+            mock_server = MagicMock()
+            # Simulate uvicorn's behavior of calling sys.exit(1) on port binding errors
+            mock_server.serve = AsyncMock(side_effect=SystemExit(1))
+            mock_server_class.return_value = mock_server
 
-            # Simulate port already in use
-            bind_error = OSError("Address already in use")
-            bind_error.errno = 48
-            mock_site.start.side_effect = bind_error
-
-            with pytest.raises(PortBindError, match="Port 8080 is already in use"):
+            with pytest.raises(
+                PortBindError, match="Failed to start callback server on port 8080"
+            ):
                 await server.start()
 
     @pytest.mark.asyncio

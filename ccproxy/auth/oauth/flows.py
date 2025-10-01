@@ -33,52 +33,98 @@ class CLICallbackServer:
         self.port = port
         self.callback_path = callback_path
         self.server: Any = None
+        self._server_task: asyncio.Task[Any] | None = None
         self.callback_received = False
         self.callback_data: dict[str, Any] = {}
         self.callback_future: asyncio.Future[dict[str, Any]] | None = None
 
     async def start(self) -> None:
         """Start the callback server."""
-        import aiohttp.web
+        import uvicorn
 
-        app = aiohttp.web.Application()
-        app.router.add_get(self.callback_path, self._handle_callback)
-
-        # Create server on specified port
-        try:
-            runner = aiohttp.web.AppRunner(app)
-            await runner.setup()
-
-            site = aiohttp.web.TCPSite(runner, "localhost", self.port)
-            await site.start()
-
-            self.server = runner
-            logger.debug(
-                "cli_callback_server_started", port=self.port, path=self.callback_path
-            )
-        except OSError as e:
-            if e.errno == 48:  # Address already in use
-                raise PortBindError(
-                    f"Port {self.port} is already in use. Please close other applications using this port."
-                ) from e
+        # Create minimal ASGI app
+        async def app(scope: dict[str, Any], receive: Any, send: Any) -> None:
+            if scope["type"] == "http" and scope["path"] == self.callback_path:
+                await self._handle_callback(scope, receive, send)
             else:
-                raise PortBindError(
-                    f"Failed to start callback server on port {self.port}: {e}"
-                ) from e
+                # 404 for other paths
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 404,
+                        "headers": [[b"content-type", b"text/plain"]],
+                    }
+                )
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": b"Not Found",
+                    }
+                )
+
+        # Create server config
+        config = uvicorn.Config(
+            app=app,
+            host="localhost",
+            port=self.port,
+            log_level="error",  # Suppress uvicorn logs
+        )
+
+        # Create and start server
+        self.server = uvicorn.Server(config)
+
+        # Start server in background task with error handling
+        async def _serve_with_error_handling() -> None:
+            try:
+                await self.server.serve()
+            except (OSError, SystemExit) as e:
+                # Uvicorn calls sys.exit(1) on startup errors, convert to PortBindError
+                if isinstance(e, SystemExit):
+                    raise PortBindError(
+                        f"Failed to start callback server on port {self.port}"
+                    ) from e
+                elif e.errno == 48:  # Address already in use
+                    raise PortBindError(
+                        f"Port {self.port} is already in use. Please close other applications using this port."
+                    ) from e
+                else:
+                    raise PortBindError(
+                        f"Failed to start callback server on port {self.port}: {e}"
+                    ) from e
+
+        self._server_task = asyncio.create_task(_serve_with_error_handling())
+
+        # Wait briefly and check if server started successfully
+        await asyncio.sleep(0.1)
+        if self._server_task.done():
+            # Server failed to start, re-raise the exception
+            await self._server_task
+
+        logger.debug(
+            "cli_callback_server_started", port=self.port, path=self.callback_path
+        )
 
     async def stop(self) -> None:
         """Stop the callback server."""
         if self.server:
-            await self.server.cleanup()
+            self.server.should_exit = True
+            if hasattr(self, "_server_task") and self._server_task is not None:
+                try:
+                    await asyncio.wait_for(self._server_task, timeout=2.0)
+                except TimeoutError:
+                    self._server_task.cancel()
             self.server = None
             logger.debug("cli_callback_server_stopped", port=self.port)
 
-    async def _handle_callback(self, request: Any) -> Any:
+    async def _handle_callback(
+        self, scope: dict[str, Any], receive: Any, send: Any
+    ) -> None:
         """Handle OAuth callback requests."""
-        import aiohttp.web
+        from urllib.parse import parse_qs
 
-        # Extract callback parameters
-        query_params = dict(request.query)
+        # Extract query parameters from scope
+        query_string = scope.get("query_string", b"").decode()
+        query_params = {k: v[0] for k, v in parse_qs(query_string).items()}
 
         # Store callback data
         self.callback_data = query_params
@@ -109,7 +155,19 @@ class CLICallbackServer:
         </html>
         """
 
-        return aiohttp.web.Response(text=html_content, content_type="text/html")
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"text/html"]],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": html_content.encode(),
+            }
+        )
 
     async def wait_for_callback(
         self, expected_state: str | None = None, timeout: float = 300

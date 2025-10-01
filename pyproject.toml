@@ -72,7 +72,6 @@ test = [
   "pytest-env",
   "pytest-httpx",
   "pytest-xdist",
-  "aiohttp>=3.12.15",
 ]
 dev = [
   "ruff",
@@ -121,6 +120,7 @@ oauth_codex = "ccproxy.plugins.oauth_codex.plugin:factory"
 permissions = "ccproxy.plugins.permissions.plugin:factory"
 pricing = "ccproxy.plugins.pricing.plugin:factory"
 request_tracer = "ccproxy.plugins.request_tracer.plugin:factory"
+max_tokens = "ccproxy.plugins.max_tokens.plugin:factory"
 
 [tool.coverage.run]
 include = ["ccproxy/*"]

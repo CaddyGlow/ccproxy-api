@@ -513,7 +513,6 @@ def setup_logging(
         "urllib3",
         "urllib3.connectionpool",
         "requests",
-        "aiohttp",
         "httpcore",
         "httpcore.http11",
         "fastapi_mcp",
