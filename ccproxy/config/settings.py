@@ -121,9 +121,9 @@ class Settings(BaseSettings):
     )
 
     enabled_plugins: list[str] | None = Field(
-        default=None,
+        default=["codex", "copilot", "claude_api", "claude_sdk", "access_log"],
         description="List of explicitly enabled plugins (None = all enabled). Takes precedence over disabled_plugins.",
-        json_schema_extra={"config_example_hidden": True},
+        json_schema_extra={"config_example_hidden": False},
     )
 
     disabled_plugins: list[str] | None = Field(

@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from starlette import status
 
 import ccproxy.core.logging
-from ccproxy.auth.conditional import ConditionalAuthDep
+from ccproxy.auth.dependencies import ConditionalAuthDep
 
 
 logger = ccproxy.core.logging.get_logger(__name__)

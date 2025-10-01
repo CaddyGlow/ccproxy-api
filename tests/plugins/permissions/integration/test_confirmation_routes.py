@@ -14,7 +14,7 @@ from httpx import ASGITransport, AsyncClient
 from ccproxy.api.app import create_app, initialize_plugins_startup
 from ccproxy.api.bootstrap import create_service_container
 from ccproxy.api.dependencies import get_cached_settings
-from ccproxy.auth.conditional import get_conditional_auth_manager
+from ccproxy.auth.dependencies import get_conditional_auth_manager
 from ccproxy.config.core import LoggingSettings
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager

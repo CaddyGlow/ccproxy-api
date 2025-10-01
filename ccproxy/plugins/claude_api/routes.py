@@ -11,7 +11,7 @@ from ccproxy.api.dependencies import (
     get_plugin_adapter,
     get_provider_config_dependency,
 )
-from ccproxy.auth.conditional import ConditionalAuthDep
+from ccproxy.auth.dependencies import ConditionalAuthDep
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
     FORMAT_OPENAI_CHAT,

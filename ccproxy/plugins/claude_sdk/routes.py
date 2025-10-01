@@ -7,7 +7,7 @@ from starlette.responses import Response, StreamingResponse
 
 from ccproxy.api.decorators import with_format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
-from ccproxy.auth.conditional import ConditionalAuthDep
+from ccproxy.auth.dependencies import ConditionalAuthDep
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
     FORMAT_OPENAI_CHAT,

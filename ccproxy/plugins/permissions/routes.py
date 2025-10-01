@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     pass
 
 from ccproxy.api.dependencies import OptionalSettingsDep
-from ccproxy.auth.conditional import ConditionalAuthDep
+from ccproxy.auth.dependencies import ConditionalAuthDep
 from ccproxy.core.errors import (
     PermissionAlreadyResolvedError,
     PermissionNotFoundError,

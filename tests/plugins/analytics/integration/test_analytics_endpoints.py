@@ -95,7 +95,7 @@ async def storage_with_data(
 @pytest.fixture(scope="module")
 def app(storage_with_data: SimpleDuckDBStorage) -> FastAPI:
     """FastAPI app with analytics routes and storage dependency."""
-    from ccproxy.auth.conditional import get_conditional_auth_manager
+    from ccproxy.auth.dependencies import get_conditional_auth_manager
     from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
     app = FastAPI()
@@ -114,7 +114,7 @@ def app(storage_with_data: SimpleDuckDBStorage) -> FastAPI:
 @pytest.fixture(scope="module")
 def app_no_storage() -> FastAPI:
     """FastAPI app with analytics routes but no storage."""
-    from ccproxy.auth.conditional import get_conditional_auth_manager
+    from ccproxy.auth.dependencies import get_conditional_auth_manager
 
     app = FastAPI()
     app.include_router(analytics_router, prefix="/logs")
@@ -288,7 +288,7 @@ class TestAnalyticsResetEndpoint:
 
     def test_reset_endpoint_storage_without_reset_method(self) -> None:
         """Test reset endpoint with storage that doesn't support reset."""
-        from ccproxy.auth.conditional import get_conditional_auth_manager
+        from ccproxy.auth.dependencies import get_conditional_auth_manager
 
         # Create mock storage without reset_data method
         class MockStorageWithoutReset:

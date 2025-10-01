@@ -9,7 +9,7 @@ from starlette.requests import Request
 
 from ccproxy.api.routes.plugins import plugin_health
 from ccproxy.api.routes.plugins import router as plugins_router
-from ccproxy.auth.conditional import get_conditional_auth_manager
+from ccproxy.auth.dependencies import get_conditional_auth_manager
 
 
 class _StubRuntime:
