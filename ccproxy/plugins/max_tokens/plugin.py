@@ -181,7 +181,7 @@ class MaxTokensFactory(SystemPluginFactory):
         # Create manifest - max_tokens logic is now integrated into HTTP adapter
         manifest = PluginManifest(
             name="max_tokens",
-            version="1.0.0",
+            version="0.1.0",
             description="Automatically sets max_tokens based on model limits when missing or invalid",
             is_provider=False,
             config_class=MaxTokensConfig,

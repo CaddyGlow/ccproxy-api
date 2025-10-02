@@ -23,7 +23,15 @@ class TokenLimitsService:
         self._pricing_cache_path = (
             Path.home() / ".cache" / "ccproxy" / "model_pricing.json"
         )
-        self._load_limits_from_pricing_cache()
+
+        if self.config.prioritize_local_file:
+            # Load local file first (takes precedence)
+            self._load_limits_from_local_file()
+            self._load_limits_from_pricing_cache()
+        else:
+            # Load pricing cache first, local file as fallback
+            self._load_limits_from_pricing_cache()
+            self._load_limits_from_local_file()
 
     def _load_limits_from_pricing_cache(self) -> None:
         """Load token limits from pricing plugin cache."""
@@ -87,6 +95,91 @@ class TokenLimitsService:
                 exc_info=e,
             )
 
+    def _load_limits_from_local_file(self) -> None:
+        """Load token limits from local token_limits.json file."""
+        local_file_path = Path(self.config.default_token_limits_file)
+
+        logger.debug(
+            "loading_token_limits_from_local_file",
+            file_path=str(local_file_path),
+        )
+
+        if not local_file_path.exists():
+            logger.debug(
+                "local_token_limits_file_not_found",
+                file_path=str(local_file_path),
+            )
+            return
+
+        try:
+            with local_file_path.open("r", encoding="utf-8") as f:
+                local_data = json.load(f)
+
+            # Handle flat structure like pricing cache (no nested "models" object)
+            models_data = {}
+            if "models" in local_data:
+                # Old format with nested models
+                models_data = local_data.get("models", {})
+                if not isinstance(models_data, dict):
+                    logger.warning(
+                        "invalid_local_token_limits_format",
+                        file_path=str(local_file_path),
+                        reason="models section is not a dictionary",
+                    )
+                    return
+            else:
+                # New flat format like pricing cache
+                models_data = {
+                    k: v
+                    for k, v in local_data.items()
+                    if not k.startswith("_") and isinstance(v, dict)
+                }
+
+            loaded_count = 0
+            for model_name, model_limits in models_data.items():
+                if not isinstance(model_limits, dict):
+                    continue
+
+                max_output = model_limits.get("max_output_tokens")
+                max_input = model_limits.get("max_input_tokens")
+
+                if isinstance(max_output, int) and max_output > 0:
+                    if self.config.prioritize_local_file:
+                        # Local file values take precedence over pricing cache
+                        self.token_limits_data.models[model_name] = ModelTokenLimits(
+                            max_output_tokens=max_output,
+                            max_input_tokens=max_input
+                            if isinstance(max_input, int) and max_input > 0
+                            else None,
+                        )
+                        loaded_count += 1
+                    else:
+                        # Local file is fallback - only add if model doesn't exist
+                        if model_name not in self.token_limits_data.models:
+                            self.token_limits_data.models[model_name] = (
+                                ModelTokenLimits(
+                                    max_output_tokens=max_output,
+                                    max_input_tokens=max_input
+                                    if isinstance(max_input, int) and max_input > 0
+                                    else None,
+                                )
+                            )
+                            loaded_count += 1
+
+            logger.debug(
+                "token_limits_loaded_from_local_file",
+                file_path=str(local_file_path),
+                model_count=loaded_count,
+            )
+
+        except Exception as e:
+            logger.error(
+                "failed_to_load_local_token_limits_file",
+                file_path=str(local_file_path),
+                error=str(e),
+                exc_info=e,
+            )
+
     def get_max_output_tokens(self, model_name: str) -> int | None:
         """Get maximum output tokens for a model."""
         return self.token_limits_data.get_max_output_tokens(model_name)
@@ -96,6 +189,10 @@ class TokenLimitsService:
     ) -> tuple[bool, str]:
         """Determine if max_tokens should be modified for the request."""
         current_max_tokens = request_data.get("max_tokens")
+
+        # Enforce mode: always modify to set max_tokens to model limit
+        if self.config.enforce_mode:
+            return True, "enforced"
 
         # Case 1: No max_tokens provided
         if current_max_tokens is None:
@@ -169,4 +266,6 @@ class TokenLimitsService:
             models_count=len(self.token_limits_data.models),
             pricing_cache=str(self._pricing_cache_path),
             fallback=self.config.fallback_max_tokens,
+            enforce_mode=self.config.enforce_mode,
+            prioritize_local_file=self.config.prioritize_local_file,
         )

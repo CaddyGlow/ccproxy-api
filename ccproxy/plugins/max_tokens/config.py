@@ -39,11 +39,27 @@ class MaxTokensConfig(BaseModel):
     log_modifications: bool = Field(
         default=True, description="Whether to log max_tokens modifications"
     )
+    enforce_mode: bool = Field(
+        default=False,
+        description=(
+            "When enabled, always set max_tokens to the model's maximum limit, "
+            "ignoring the request's current max_tokens value"
+        ),
+    )
+    prioritize_local_file: bool = Field(
+        default=False,
+        description=(
+            "When enabled, local token_limits.json values take precedence over "
+            "pricing cache values. When disabled, local file is only used as fallback "
+            "when pricing cache is unavailable or model is not found in cache."
+        ),
+    )
     modification_reasons: dict[str, str] = Field(
         default_factory=lambda: {
             "missing": "max_tokens was missing from request",
             "invalid": "max_tokens was invalid or too high",
             "exceeded": "max_tokens exceeded model limit",
+            "enforced": "max_tokens enforced to model limit (enforce mode)",
         },
         description="Reason templates for modifications",
     )

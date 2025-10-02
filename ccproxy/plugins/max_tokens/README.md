@@ -7,37 +7,11 @@ Automatically sets `max_tokens` in requests based on model limits when the value
 - **Automatic max_tokens injection**: Adds `max_tokens` when missing from requests
 - **Validation**: Fixes invalid values (negative, zero, non-integer)
 - **Limit enforcement**: Prevents exceeding model-specific token limits
+- **Enforce mode**: Always sets `max_tokens` to the model's maximum limit, ignoring existing values
 - **Alias-aware adjustments**: When model aliases map to provider identifiers,
   the hook realigns `max_output_tokens` to the mapped model's limit
 - **Pattern matching**: Supports wildcard patterns for model variants
 - **Provider filtering**: Can target specific providers
-
-## Installation
-
-The plugin is registered in `pyproject.toml` and wires itself through the CCProxy
-hook system. When the plugin is enabled, it registers a `MaxTokensHook` handler
-for the `provider.request.prepared` (the new **PREPARE_REQUEST** stage) hook,
-allowing the request payload to be modified immediately before it is dispatched
-upstream.
-
-If you're integrating the service outside of the plugin runtime, register the
-hook manually:
-
-```python
-from ccproxy.core.plugins.hooks import HookRegistry, HookEvent
-from ccproxy.plugins.max_tokens.adapter import MaxTokensHook
-from ccproxy.plugins.max_tokens.config import MaxTokensConfig
-from ccproxy.plugins.max_tokens.service import TokenLimitsService
-
-config = MaxTokensConfig()
-service = TokenLimitsService(config)
-service.initialize()
-
-hook = MaxTokensHook(config, service)
-registry = HookRegistry()
-registry.register(hook)
-# The hook will now fire for HookEvent.PROVIDER_REQUEST_PREPARED events
-```
 
 ## Configuration
 
@@ -56,33 +30,27 @@ MAX_TOKENS__TARGET_PROVIDERS='["claude_api", "claude_sdk"]'
 
 # Disable modification logging
 MAX_TOKENS__LOG_MODIFICATIONS=false
+
+# Enable enforce mode (always set max_tokens to model limit)
+MAX_TOKENS__ENFORCE_MODE=true
+
+# Prioritize local token_limits.json over pricing cache
+MAX_TOKENS__PRIORITIZE_LOCAL_FILE=true
 ```
 
-## Model Token Limits
+or via the config file:
 
-The plugin includes token limits for:
-
-### Claude Models
-- **Claude 3.5 Sonnet** (`claude-3-5-sonnet-*`): 64,000 tokens
-- **Claude 3.5 Haiku** (`claude-3-5-haiku-*`): 8,192 tokens
-- **Claude 4 Sonnet** (`claude-4-sonnet-*`): 64,000 tokens
-- **Claude 4 Haiku** (`claude-4-haiku-*`): 8,192 tokens
-- **Claude 4 Opus** (`claude-4-opus-*`): 32,000 tokens
-- **Claude 3 Opus** (`claude-3-opus-*`): 4,096 tokens
-- **Claude 3 Sonnet** (`claude-3-sonnet-*`): 4,096 tokens
-- **Claude 3 Haiku** (`claude-3-haiku-*`): 4,096 tokens
-
-### OpenAI Models
-- **GPT-4o Mini**: 16,384 tokens
-- **GPT-4o**: 4,096 tokens
-- **GPT-4 Turbo**: 4,096 tokens
-- **GPT-4**: 8,192 tokens
-
-### Wildcard Patterns
-- `*sonnet*`: 64,000 tokens
-- `*haiku*`: 8,192 tokens
-- `*opus*`: 32,000 tokens
-
+```toml
+[plugins.max_tokens]
+enabled = true
+fallback_max_tokens = 2048
+apply_to_all_providers = false
+target_providers = ["claude_api", "claude_sdk"]
+log_modifications = true
+enforce_mode = true
+prioritize_local_file = true
+default_token_limits_file = "/path/to/token_limits.json"
+```
 ## How It Works
 
 1. **Hook Invocation**: The `MaxTokensHook` listens for
@@ -117,14 +85,68 @@ The plugin includes token limits for:
 }
 ```
 
+## Enforce Mode
+
+When `enforce_mode=true`, the plugin will always set `max_tokens` to the model's maximum limit, regardless of the existing value in the request. This ensures that all requests use the maximum possible output tokens for the selected model.
+
+**Example with enforce mode enabled:**
+
+**Original Request:**
+```json
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "max_tokens": 1000,
+  "messages": [{"role": "user", "content": "Hello"}]
+}
+```
+
+**Modified Request** (enforce mode):
+```json
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "max_tokens": 8192,  // Set to model's maximum
+  "messages": [{"role": "user", "content": "Hello"}]
+}
+```
+
+**Key behaviors in enforce mode:**
+- Always modifies requests to set `max_tokens` to the model's limit
+- Ignores existing valid `max_tokens` values
+- Still respects provider filtering (only applies to configured providers)
+- Uses fallback limits for unknown models when configured
+- Logs modifications with "enforced" reason
+
+## Local File Priority
+
+The plugin supports two modes for handling the local `token_limits.json` file:
+
+### Default Mode (Fallback)
+- **Pricing cache first**: Uses pricing cache values when available
+- **Local file as fallback**: Only uses local file for models not found in pricing cache
+- **Recommended**: Ensures you get the most up-to-date pricing data
+
+```toml
+[plugins.max_tokens]
+prioritize_local_file = false  # Default behavior
+```
+
+### Prioritize Mode (Override)
+- **Local file first**: Local file values take precedence over pricing cache
+- **Pricing cache as fallback**: Only uses pricing cache for models not in local file
+- **Use case**: When you want to enforce specific limits regardless of pricing cache
+
+```toml
+[plugins.max_tokens]
+prioritize_local_file = true  # Local file overrides pricing cache
+```
+
 ## Limitations
 
 - **JSON bodies**: Only requests that encode a JSON object with a `model` field
   can be modified.
 - **Provider filtering**: Ensure the plugin is configured to target the provider
   that raised the hook; otherwise no change is applied.
-- **Static limits**: Token limits are derived from cached pricing data or the
-  fallback value (extend via custom JSON if required).
+- **Static limits**: Token limits are derived from cached pricing data of LiteLLM
 
 ## Custom Token Limits
 
@@ -132,11 +154,9 @@ To add custom token limits, create a `token_limits.json` file:
 
 ```json
 {
-  "models": {
-    "my-custom-model": {
-      "max_output_tokens": 10000,
-      "max_input_tokens": 50000
-    }
+  "my-custom-model": {
+    "max_output_tokens": 10000,
+    "max_input_tokens": 50000
   }
 }
 ```

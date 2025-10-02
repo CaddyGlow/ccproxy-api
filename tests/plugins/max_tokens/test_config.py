@@ -72,3 +72,32 @@ class TestMaxTokensConfig:
 
         assert isinstance(config.target_providers, list)
         assert config.target_providers == ["claude_api"]
+
+    def test_enforce_mode_default(self) -> None:
+        """Test that enforce_mode defaults to False."""
+        config = MaxTokensConfig()
+        assert config.enforce_mode is False
+
+    def test_enforce_mode_enabled(self) -> None:
+        """Test enforce_mode configuration."""
+        config = MaxTokensConfig(enforce_mode=True)
+        assert config.enforce_mode is True
+
+    def test_modification_reasons_includes_enforced(self) -> None:
+        """Test that modification reasons include enforce mode."""
+        config = MaxTokensConfig()
+        assert "enforced" in config.modification_reasons
+        assert (
+            config.modification_reasons["enforced"]
+            == "max_tokens enforced to model limit (enforce mode)"
+        )
+
+    def test_prioritize_local_file_default(self) -> None:
+        """Test that prioritize_local_file defaults to False."""
+        config = MaxTokensConfig()
+        assert config.prioritize_local_file is False
+
+    def test_prioritize_local_file_enabled(self) -> None:
+        """Test prioritize_local_file configuration."""
+        config = MaxTokensConfig(prioritize_local_file=True)
+        assert config.prioritize_local_file is True
