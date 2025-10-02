@@ -45,9 +45,8 @@ class RequestTracerRuntime(SystemPluginRuntime):
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, RequestTracerConfig):
-            logger.debug("plugin_no_config")
             config = RequestTracerConfig()
-            logger.debug("plugin_using_default_config")
+
         self.config = config
 
         # Debug log the actual configuration being used
@@ -75,10 +74,6 @@ class RequestTracerRuntime(SystemPluginRuntime):
             )
             for error in validation_errors:
                 logger.warning("config_validation_warning", issue=error)
-
-        if not self.config.enabled:
-            logger.debug("request_tracer_disabled")
-            return
 
         # Try to get hook registry from context
         hook_registry: HookRegistry | None = self.context.get("hook_registry")
@@ -193,7 +188,7 @@ class RequestTracerRuntime(SystemPluginRuntime):
             if plugin_base:
                 override_base = Path(plugin_base) / "tracer"
 
-        fields_set = getattr(self.config, "model_fields_set", set())
+        fields_set: set[str] = getattr(self.config, "model_fields_set", set())
         if override_base:
             if "request_log_dir" not in fields_set and "log_dir" not in fields_set:
                 json_log_dir = override_base

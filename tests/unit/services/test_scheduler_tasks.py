@@ -429,11 +429,17 @@ class TestVersionUpdateCheckTask:
                 "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
             ) as mock_load,
             patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_version,
+            patch(
+                "ccproxy.scheduler.tasks.extract_commit_from_version"
+            ) as mock_extract,
         ):
             # Mock failed fetch
             mock_fetch.return_value = None
             mock_load.return_value = None  # No previous state
             mock_path.return_value = "/tmp/version_check.json"
+            mock_version.return_value = "1.0.0"  # Stable version (not dev release)
+            mock_extract.return_value = None  # No commit info
 
             task = VersionUpdateCheckTask(
                 name="version_fetch_fail_test",
