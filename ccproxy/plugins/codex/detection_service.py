@@ -70,7 +70,7 @@ class CodexDetectionService:
                            If None, uses default configuration.
         """
         self.settings = settings
-        self.codex_settings = codex_settings
+        self.codex_settings = codex_settings if codex_settings else CodexSettings()
         self.cache_dir = get_ccproxy_cache_dir()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._cached_data: CodexCacheData | None = None
