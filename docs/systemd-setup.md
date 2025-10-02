@@ -141,7 +141,6 @@ SERVER__PORT=8000
 LOGGING__LEVEL=INFO
 LOGGING__FORMAT=json
 LOGGING__FILE=/var/log/ccproxy/app.log
-LOGGING__ENABLE_PLUGIN_LOGGING=true
 
 # Security
 SECURITY__AUTH_TOKEN=your-secure-token

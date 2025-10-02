@@ -22,6 +22,16 @@ from .utils import SchedulerSettings, find_toml_config_file, get_ccproxy_config_
 
 _CONFIG_MISSING_LOGGED = False
 
+# Default plugins enabled when no config file exists
+DEFAULT_ENABLED_PLUGINS = [
+    "codex",
+    "copilot",
+    "claude_api",
+    "claude_sdk",
+    "oauth_codex",
+    "oauth_claude",
+]
+
 
 def _auth_default() -> AuthSettings:
     return AuthSettings(credentials_ttl_seconds=3600.0)
@@ -121,14 +131,7 @@ class Settings(BaseSettings):
     )
 
     enabled_plugins: list[str] | None = Field(
-        default=[
-            "codex",
-            "copilot",
-            "claude_api",
-            "claude_sdk",
-            "oauth_codex",
-            "oauth_claude",
-        ],
+        default=None,
         description="List of explicitly enabled plugins (None = all enabled). Takes precedence over disabled_plugins.",
         json_schema_extra={"config_example_hidden": False},
     )
@@ -446,6 +449,12 @@ class Settings(BaseSettings):
                 env_key = key.upper()
                 if os.getenv(env_key) is None:
                     setattr(settings, key, value)
+
+        # Smart default: if no config file exists and enabled_plugins is still None,
+        # set a curated default list of core plugins
+        if not config_path or not config_path.exists():
+            if settings.enabled_plugins is None:
+                settings.enabled_plugins = DEFAULT_ENABLED_PLUGINS
 
         # Apply direct kwargs overrides (highest precedence within process)
         if kwargs:

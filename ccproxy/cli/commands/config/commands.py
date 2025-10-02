@@ -539,6 +539,8 @@ def _generate_default_config_from_model(
     settings_class: type[Settings],
 ) -> dict[str, Any]:
     """Generate a default configuration dictionary from the Settings model."""
+    from ccproxy.config.settings import DEFAULT_ENABLED_PLUGINS
+
     default_settings = settings_class()
 
     config_data: dict[str, Any] = {}
@@ -548,6 +550,11 @@ def _generate_default_config_from_model(
             continue
 
         field_value = getattr(default_settings, field_name)
+
+        # Special case: enabled_plugins should use DEFAULT_ENABLED_PLUGINS for config init
+        if field_name == "enabled_plugins" and field_value is None:
+            config_data[field_name] = DEFAULT_ENABLED_PLUGINS
+            continue
 
         if isinstance(field_value, BaseModel):
             nested_config = _generate_nested_config_from_model(field_value)
@@ -595,7 +602,22 @@ def _write_toml_config_with_comments(
         f.write("# Most settings are commented out with their default values\n")
         f.write("# Uncomment and modify as needed\n\n")
 
-        for field_name, field_info in settings_class.model_fields.items():
+        # Reorder fields to put enabled_plugins first
+        field_items = list(settings_class.model_fields.items())
+        priority_fields = ["enabled_plugins", "disabled_plugins"]
+
+        # Separate priority fields from others
+        priority_items = [
+            (name, info) for name, info in field_items if name in priority_fields
+        ]
+        other_items = [
+            (name, info) for name, info in field_items if name not in priority_fields
+        ]
+
+        # Combine with priority fields first
+        ordered_items = priority_items + other_items
+
+        for field_name, field_info in ordered_items:
             if _is_hidden_in_example(field_info):
                 continue
 
@@ -648,7 +670,7 @@ def _format_config_value_for_toml(value: Any) -> str:
                 )  # Correctly escape quotes within list strings
             else:
                 formatted_items.append(str(item))
-        return f"[{', '.join(formatted_items)}]]"
+        return f"[{', '.join(formatted_items)}]"
     elif isinstance(value, dict):
         if not value:
             return "{{}}"

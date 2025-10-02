@@ -206,7 +206,6 @@ enabled = true
 Environment variable equivalents (nested with `__`):
 
 ```bash
-export ENABLE_PLUGINS=true
 export PLUGINS__ACCESS_LOG__ENABLED=true
 export PLUGINS__ACCESS_LOG__CLIENT_ENABLED=true
 export PLUGINS__ACCESS_LOG__CLIENT_FORMAT=structured

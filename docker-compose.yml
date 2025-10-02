@@ -10,7 +10,6 @@ services:
       - SERVER__PORT=8000
       - LOGGING__LEVEL=INFO
       - LOGGING__FORMAT=json
-      - LOGGING__ENABLE_PLUGIN_LOGGING=true
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     # env_file:

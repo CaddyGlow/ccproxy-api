@@ -205,7 +205,6 @@ dev:
 	LOGGING__LEVEL=trace \
 		LOGGING__FILE=/tmp/ccproxy/ccproxy.log \
 		LOGGING__VERBOSE_API=true \
-		LOGGING__ENABLE_PLUGIN_LOGGING=true \
 		LOGGING__PLUGIN_LOG_BASE_DIR=/tmp/ccproxy \
 		PLUGINS__REQUEST_TRACER__ENABLED=true \
 		PLUGINS__ACCESS_LOG__ENABLED=true \

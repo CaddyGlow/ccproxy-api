@@ -94,8 +94,6 @@ enabled = true
 ### Environment variables (nested with `__`)
 
 ```bash
-export ENABLE_PLUGINS=true
-# export ENABLED_PLUGINS="metrics,analytics"  # Optional allow list
 export DISABLED_PLUGINS="duckdb_storage"      # Optional block list
 export PLUGINS__ACCESS_LOG__ENABLED=true
 export PLUGINS__ACCESS_LOG__CLIENT_ENABLED=true

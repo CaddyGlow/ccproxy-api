@@ -635,8 +635,6 @@ For quick inspection, run `ccproxy plugins list` to see discovered plugins and
 
 Environment variables:
 ```bash
-export ENABLE_PLUGINS=true
-export ENABLED_PLUGINS="claude_api,raw_http_logger"
 export DISABLED_PLUGINS="codex"
 ```
 
