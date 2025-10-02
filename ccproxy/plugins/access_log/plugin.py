@@ -7,6 +7,8 @@ from ccproxy.core.plugins import (
     SystemPluginRuntime,
 )
 from ccproxy.core.plugins.hooks import HookRegistry
+from ccproxy.plugins.analytics.ingest import AnalyticsIngestService
+from ccproxy.services.container import ServiceContainer
 
 from .config import AccessLogConfig
 from .hook import AccessLogHook
@@ -32,84 +34,44 @@ class AccessLogRuntime(SystemPluginRuntime):
             raise RuntimeError("Context not set")
 
         # Get configuration
-        config = self.context.get("config")
-        if not isinstance(config, AccessLogConfig):
-            logger.debug("plugin_no_config")
+        config: AccessLogConfig | None = self.context.get("config")
+        if config is None or not isinstance(config, AccessLogConfig):
             config = AccessLogConfig()
-            logger.debug("plugin_using_default_config")
         self.config = config
 
         if not config.enabled:
-            logger.info("access_log_disabled")
             return
 
-        # Create hook instance
         self.hook = AccessLogHook(config)
 
-        # Get hook registry from context
-        hook_registry = None
+        hook_registry = self.context.get(HookRegistry)
 
-        # Try direct from context first (provided by ServiceContainer)
-        hook_registry = self.context.get("hook_registry")
-        logger.debug(
-            "hook_registry_from_context",
-            found=hook_registry is not None,
-            context_keys=list(self.context.keys()) if self.context else [],
-        )
+        if hook_registry is None or not isinstance(hook_registry, HookRegistry):
+            raise RuntimeError("Hook registry not found in context")
 
-        # If not found, try app state
-        if not hook_registry:
-            app = self.context.get("app")
-            if app and hasattr(app, "state") and hasattr(app.state, "hook_registry"):
-                hook_registry = app.state.hook_registry
-                logger.debug("hook_registry_from_app_state", found=True)
-
-        if hook_registry and isinstance(hook_registry, HookRegistry):
-            hook_registry.register(self.hook)
-            logger.debug(
-                "hook_registered",
-                mode="hooks",
-                client_enabled=config.client_enabled,
-                client_format=config.client_format,
-                client_log_file=config.client_log_file,
-                provider_enabled=config.provider_enabled,
-                provider_log_file=config.provider_log_file,
-            )
-            # Consolidated ready summary at INFO
-            logger.debug(
-                "access_log_ready",
-                client_enabled=config.client_enabled,
-                provider_enabled=config.provider_enabled,
-                client_format=config.client_format,
-                client_log_file=config.client_log_file,
-                provider_log_file=config.provider_log_file,
-            )
-        else:
-            logger.warning(
-                "hook_registry_not_available",
-                mode="hooks",
-                fallback="No fallback - access logging disabled",
-            )
+        hook_registry.register(self.hook)
 
         # Try to wire analytics ingest service if available
         try:
-            if self.context and self.hook:
-                registry = self.context.get("plugin_registry")
-                ingest_service = None
-                if registry:
-                    from ccproxy.plugins.analytics.ingest import AnalyticsIngestService
-
-                    ingest_service = registry.get_service(
-                        "analytics_ingest", AnalyticsIngestService
-                    )
-                if not ingest_service and self.context.get("app"):
-                    # Not registered in registry; skip silently
-                    pass
-                if ingest_service:
-                    self.hook.ingest_service = ingest_service
-                    logger.debug("access_log_ingest_service_connected")
+            registry = self.context.get(ServiceContainer)
+            self.hook.ingest_service = registry.get_service(AnalyticsIngestService)
+            if not self.hook.ingest_service:
+                # optional service
+                logger.debug("access_log_analytics_service_not_found")
         except Exception as e:
-            logger.debug("access_log_ingest_service_connect_failed", error=str(e))
+            logger.warning(
+                "access_log_ingest_service_connect_failed", error=str(e), exc_info=e
+            )
+        #
+        # Consolidated ready summary at INFO
+        logger.trace(
+            "access_log_ready",
+            client_enabled=config.client_enabled,
+            provider_enabled=config.provider_enabled,
+            client_format=config.client_format,
+            client_log_file=config.client_log_file,
+            provider_log_file=config.provider_log_file,
+        )
 
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""
@@ -130,11 +92,11 @@ class AccessLogRuntime(SystemPluginRuntime):
 
             if hook_registry and isinstance(hook_registry, HookRegistry):
                 hook_registry.unregister(self.hook)
-                logger.debug("access_log_hook_unregistered")
+                logger.trace("access_log_hook_unregistered")
 
             # Close hook (flushes writers)
             await self.hook.close()
-            logger.debug("access_log_shutdown")
+            logger.trace("access_log_shutdown")
 
     async def _get_health_details(self) -> dict[str, Any]:
         """Get health check details."""
@@ -146,7 +108,6 @@ class AccessLogRuntime(SystemPluginRuntime):
             "enabled": config.enabled if config else False,
             "client_enabled": config.client_enabled if config else False,
             "provider_enabled": config.provider_enabled if config else False,
-            "mode": "hooks",  # Now integrated with Hook system
         }
 
     def get_hook(self) -> AccessLogHook | None:
@@ -164,7 +125,7 @@ class AccessLogFactory(SystemPluginFactory):
             description="Simple access logging with Common, Combined, and Structured formats",
             is_provider=False,
             config_class=AccessLogConfig,
-            dependencies=["analytics"],
+            # dependencies=["analytics"], # optional, handled at runtime
         )
         super().__init__(manifest)
 
