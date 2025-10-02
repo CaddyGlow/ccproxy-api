@@ -5,9 +5,28 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+import pytest_asyncio
 
 from ccproxy.plugins.permissions.handlers.terminal import TerminalPermissionHandler
 from ccproxy.plugins.permissions.models import PermissionRequest
+
+
+# Module-level task manager fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module", autouse=True)
+async def task_manager_fixture():
+    """Start and stop task manager for all tests in this module."""
+    from ccproxy.api.bootstrap import create_service_container
+    from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
+    from ccproxy.services.container import ServiceContainer
+
+    container = ServiceContainer.get_current(strict=False)
+    if container is None:
+        container = create_service_container()
+    await start_task_manager(container=container)
+    try:
+        yield
+    finally:
+        await stop_task_manager(container=container)
 
 
 @pytest.fixture

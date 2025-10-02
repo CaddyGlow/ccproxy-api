@@ -27,7 +27,7 @@ def _mk(ts: float, rid: str) -> dict[str, object]:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_service_pagination_asc_desc() -> None:
+async def test_service_pagination_asc_desc(task_manager_fixture) -> None:
     """Test pagination with ascending and descending order."""
     storage = SimpleDuckDBStorage(":memory:")
     await storage.initialize()

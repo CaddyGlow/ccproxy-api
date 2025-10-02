@@ -4,10 +4,29 @@ import time
 from collections.abc import AsyncGenerator
 
 import pytest
+import pytest_asyncio
 from sqlmodel import Session, select
 
 from ccproxy.plugins.analytics.models import AccessLog, AccessLogPayload
 from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
+
+
+# Module-level task manager fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="module", autouse=True)
+async def task_manager_fixture():
+    """Start and stop task manager for all tests in this module."""
+    from ccproxy.api.bootstrap import create_service_container
+    from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
+    from ccproxy.services.container import ServiceContainer
+
+    container = ServiceContainer.get_current(strict=False)
+    if container is None:
+        container = create_service_container()
+    await start_task_manager(container=container)
+    try:
+        yield
+    finally:
+        await stop_task_manager(container=container)
 
 
 # Optimized database fixture with minimal teardown

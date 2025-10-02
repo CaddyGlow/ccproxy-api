@@ -57,7 +57,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 # Global fixture for task manager (needed by many async tests)
-@pytest.fixture(autouse=True)
+@pytest.fixture
 async def task_manager_fixture():
     """Start and stop the global task manager for each test.
 
