@@ -285,12 +285,9 @@ class CodexAdapter(BaseHTTPAdapter):
         body_data["stream"] = True
         body_data["store"] = False
 
-        # Codex does not support max_output_tokens, remove if present
-        if "max_output_tokens" in body_data:
-            body_data.pop("max_output_tokens")
-        # Codex does not support max_output_tokens, remove if present
-        if "max_completion_tokens" in body_data:
-            body_data.pop("max_completion_tokens")
+        # Remove unsupported keys for Codex
+        for key in ("max_output_tokens", "max_completion_tokens", "temperature"):
+            body_data.pop(key, None)
 
         list_input = body_data.get("input", [])
         # Remove any input types that Codex does not support
