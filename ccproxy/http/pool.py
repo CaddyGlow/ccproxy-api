@@ -45,7 +45,7 @@ class HTTPPoolManager:
         self._shared_client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()
 
-        logger.debug("http_pool_manager_initialized", category="lifecycle")
+        logger.trace("http_pool_manager_initialized", category="lifecycle")
 
     async def get_client(
         self,
@@ -76,7 +76,7 @@ class HTTPPoolManager:
         async with self._lock:
             # Check if we already have a client for this base URL
             if pool_key in self._pools:
-                logger.debug(
+                logger.trace(
                     "reusing_existing_pool",
                     base_url=base_url,
                     pool_key=pool_key,
@@ -85,7 +85,7 @@ class HTTPPoolManager:
                 return self._pools[pool_key]
 
             # Create a new client for this base URL
-            logger.info(
+            logger.trace(
                 "creating_new_pool",
                 base_url=base_url,
                 pool_key=pool_key,
@@ -129,7 +129,7 @@ class HTTPPoolManager:
         """
         async with self._lock:
             if self._shared_client is None:
-                logger.info("default_client_created")
+                logger.trace("default_client_created")
                 self._shared_client = HTTPClientFactory.create_client(
                     settings=self.settings,
                     hook_manager=self.hook_manager,
@@ -174,7 +174,7 @@ class HTTPPoolManager:
             The default httpx.AsyncClient instance
         """
         if self._shared_client is None:
-            logger.debug("default_client_created_sync")
+            logger.trace("default_client_created_sync")
             self._shared_client = HTTPClientFactory.create_client(
                 settings=self.settings,
                 hook_manager=self.hook_manager,
@@ -220,7 +220,7 @@ class HTTPPoolManager:
             if pool_key in self._pools:
                 client = self._pools.pop(pool_key)
                 await client.aclose()
-                logger.info(
+                logger.trace(
                     "pool_closed",
                     base_url=base_url,
                     pool_key=pool_key,
@@ -236,7 +236,7 @@ class HTTPPoolManager:
             for pool_key, client in self._pools.items():
                 try:
                     await client.aclose()
-                    logger.debug("pool_closed", pool_key=pool_key)
+                    logger.trace("pool_closed", pool_key=pool_key)
                 except Exception as e:
                     logger.error(
                         "pool_close_error",
@@ -251,7 +251,7 @@ class HTTPPoolManager:
             if self._shared_client:
                 try:
                     await self._shared_client.aclose()
-                    logger.debug("default_client_closed")
+                    logger.trace("default_client_closed")
                 except Exception as e:
                     logger.error(
                         "default_client_close_error",
@@ -260,7 +260,7 @@ class HTTPPoolManager:
                     )
                 self._shared_client = None
 
-            logger.info("all_pools_closed")
+            logger.trace("all_pools_closed")
 
     def get_pool_stats(self) -> dict[str, Any]:
         """Get statistics about the current connection pools.

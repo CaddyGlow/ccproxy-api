@@ -18,6 +18,9 @@ from structlog.typing import ExcInfo, Processor
 from ccproxy.core.id_utils import generate_short_id
 
 
+DEFAULT_LOG_LEVEL_NAME = "WARNING"
+
+
 # Custom protocol for BoundLogger with trace method
 class TraceBoundLogger(Protocol):
     """Protocol defining BoundLogger with trace method."""
@@ -158,15 +161,27 @@ def format_category_for_console(
     logger: Any, method_name: str, event_dict: MutableMapping[str, Any]
 ) -> MutableMapping[str, Any]:
     """Format category field for better visibility in console output."""
-    if "category" in event_dict:
-        category = event_dict.pop("category")  # Remove from key-value pairs
-        # Prepend category to the event message
-        event = event_dict.get("event", "")
-        event_dict["event"] = f"[{category.upper()}] {event}"
+    logger_name = event_dict.get("logger", "") or ""
+    category = event_dict.get("category")
+    event = event_dict.get("event", "")
+
+    # Treat non-ccproxy/plugin loggers as external for display purposes.
+    is_external_logger = not (
+        logger_name.startswith("ccproxy") or logger_name.startswith("plugins")
+    )
+
+    if category:
+        category_upper = str(category).upper()
+
+        # Avoid echoing redundant [GENERAL] prefixes for external libraries.
+        if not (category_upper == "GENERAL" and is_external_logger):
+            event_dict["event"] = f"[{category_upper}] {event}"
     else:
-        # Add default category if missing
-        event = event_dict.get("event", "")
-        event_dict["event"] = f"[GENERAL] {event}"
+        # Add default category if missing.
+        event_dict["category"] = "general"
+        if not is_external_logger:
+            event_dict["event"] = f"[GENERAL] {event}"
+
     return event_dict
 
 
@@ -505,7 +520,7 @@ def setup_logging(
     httpx_logger = logging.getLogger("httpx")
     httpx_logger.handlers = []
     httpx_logger.propagate = True
-    # httpx_logger.setLevel(logging.INFO if log_level < logging.INFO else logging.WARNING)
+    httpx_logger.setLevel(logging.INFO if log_level < logging.INFO else logging.WARNING)
 
     # Set noisy HTTP-related loggers to WARNING
     noisy_log_level = logging.WARNING if log_level <= logging.WARNING else log_level
@@ -615,9 +630,6 @@ def _parse_arg_value(argv: list[str], flag: str) -> str | None:
         # Be forgiving in bootstrap parsing
         return None
     return None
-
-
-DEFAULT_LOG_LEVEL_NAME = "INFO"
 
 
 def bootstrap_cli_logging(argv: list[str] | None = None) -> None:

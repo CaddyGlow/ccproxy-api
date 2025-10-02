@@ -235,13 +235,6 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
             "startup_hook_failed", error=str(e), exc_info=e, category="lifecycle"
         )
 
-    # Consolidated hooks summary at INFO
-    logger.info(
-        "hooks_registered",
-        total=len(hook_registry._hooks),
-        category="hooks",
-    )
-
 
 LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
     {

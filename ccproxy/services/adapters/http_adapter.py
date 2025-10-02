@@ -600,7 +600,7 @@ class BaseHTTPAdapter(BaseAdapter):
                         model_value = parsed.get("model")
                 except Exception:
                     model_value = None
-                logger.warning(
+                logger.debug(
                     "model_mapper_missing",
                     has_mapper=bool(mapper),
                     has_rules=getattr(mapper, "has_rules", False),

@@ -404,7 +404,7 @@ class Settings(BaseSettings):
         config_data: dict[str, Any] = {}
         if config_path and config_path.exists():
             config_data = cls.load_config_file(config_path)
-            logger.info(
+            logger.debug(
                 "config_file_loaded",
                 path=str(config_path),
                 category="config",
@@ -417,7 +417,7 @@ class Settings(BaseSettings):
             }
             if config_path is not None:
                 log_kwargs["path"] = str(config_path)
-            logger.info("config_file_missing", **log_kwargs)
+            logger.warning("config_file_missing", **log_kwargs)
             _CONFIG_MISSING_LOGGED = True
 
         cls._validate_deprecated_keys(config_data)
