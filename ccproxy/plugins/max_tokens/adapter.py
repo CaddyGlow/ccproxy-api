@@ -165,7 +165,7 @@ class MaxTokensAdapter:
                     hook_registry = container.get_hook_registry()
                     if hook_registry:
                         hook_registry.register(self.hook)
-                        logger.info(
+                        logger.debug(
                             "max_tokens_hook_registered",
                             hook_name=self.hook.name,
                             events=[event.value for event in self.hook.events],

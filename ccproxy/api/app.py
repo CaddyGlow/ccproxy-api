@@ -246,7 +246,7 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
         )
 
         hook_registry.register(core_http_tracer)
-        logger.info(
+        logger.debug(
             "core_http_tracer_registered",
             hook_name=core_http_tracer.name,
             events=core_http_tracer.events,

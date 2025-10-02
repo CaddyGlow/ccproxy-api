@@ -119,7 +119,7 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
         if not self._initialized:
             if self.session_manager:
                 await self.session_manager.start()
-                logger.info("session_manager_started")
+                logger.debug("session_manager_started")
             self._initialized = True
 
     def set_detection_service(self, detection_service: Any) -> None:

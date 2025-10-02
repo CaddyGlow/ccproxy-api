@@ -47,7 +47,7 @@ class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
             # Use parent class's atomic write with backup
             await self._write_json(data)
 
-            logger.info(
+            logger.debug(
                 "claude_oauth_credentials_saved",
                 has_oauth=bool(credentials.claude_ai_oauth),
                 storage_path=str(self.file_path),
@@ -73,7 +73,7 @@ class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
                 return None
 
             credentials = ClaudeCredentials.model_validate(data)
-            logger.info(
+            logger.debug(
                 "claude_oauth_credentials_loaded",
                 has_oauth=bool(credentials.claude_ai_oauth),
                 category="auth",
@@ -195,7 +195,7 @@ class ClaudeProfileStorage:
                 return None
 
             profile = ClaudeProfileInfo.from_api_response(data)
-            logger.info(
+            logger.debug(
                 "claude_profile_loaded",
                 account_id=profile.account_id,
                 email=profile.email,

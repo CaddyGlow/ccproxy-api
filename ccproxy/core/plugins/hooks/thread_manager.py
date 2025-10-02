@@ -42,26 +42,22 @@ class BackgroundHookThreadManager:
         if self._running:
             return
 
-        self._logger.info("starting_background_hook_thread")
-
-        # Create and start the background thread
         self._thread = threading.Thread(
             target=self._run_background_loop, name="hook-background-thread", daemon=True
         )
         self._thread.start()
 
-        # Wait a moment for the thread to initialize
         time.sleep(0.01)
         self._running = True
 
-        self._logger.info("background_hook_thread_started")
+        self._logger.debug("background_hook_thread_started")
 
     def stop(self, timeout: float = 5.0) -> None:
         """Gracefully shutdown the background thread."""
         if not self._running:
             return
 
-        self._logger.info("stopping_background_hook_thread")
+        self._logger.debug("stopping_background_hook_thread")
 
         # Signal shutdown to the background loop
         if self._loop and self._shutdown_event:
@@ -79,7 +75,7 @@ class BackgroundHookThreadManager:
         self._queue = None
         self._shutdown_event = None
 
-        self._logger.info("background_hook_thread_stopped")
+        self._logger.debug("background_hook_thread_stopped")
 
     def emit_async(self, context: HookContext, registry: Any) -> None:
         """Queue a hook task for background execution.

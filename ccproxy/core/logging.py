@@ -617,6 +617,9 @@ def _parse_arg_value(argv: list[str], flag: str) -> str | None:
     return None
 
 
+DEFAULT_LOG_LEVEL_NAME = "INFO"
+
+
 def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
     """Best-effort early logging setup from env and CLI args.
 
@@ -637,7 +640,7 @@ def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
             argv = sys.argv[1:]
 
         # Env-based defaults
-        env_level = os.getenv("LOGGING__LEVEL")
+        env_level = os.getenv("LOGGING__LEVEL") or os.getenv("CCPROXY_LOG_LEVEL")
         env_file = os.getenv("LOGGING__FILE")
         env_format = os.getenv("LOGGING__FORMAT")
 
@@ -645,13 +648,10 @@ def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
         arg_level = _parse_arg_value(argv, "--log-level")
         arg_file = _parse_arg_value(argv, "--log-file")
 
-        # Decide whether to bootstrap at all: only if any override present
-        any_override = any([env_level, env_file, env_format, arg_level, arg_file])
-        if not any_override:
-            return
-
+        # We always want a predictable, quiet baseline before full config.
+        # Default to INFO unless an explicit override requests another level.
         # Resolve effective values (CLI > env)
-        level = (arg_level or env_level or "INFO").upper()
+        level = (arg_level or env_level or DEFAULT_LOG_LEVEL_NAME).upper()
         log_file = arg_file or env_file
 
         # JSON if explicitly requested via env
@@ -660,6 +660,9 @@ def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
             json_logs = env_format.lower() == "json"
 
         # Apply early setup. Safe to run again later with final settings.
+        # Never escalate to DEBUG/TRACE unless explicitly requested via env/argv.
+        if level not in {"TRACE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
+            level = DEFAULT_LOG_LEVEL_NAME
         setup_logging(json_logs=json_logs, log_level_name=level, log_file=log_file)
     except Exception:
         # Never break CLI due to bootstrap; final setup will run later.

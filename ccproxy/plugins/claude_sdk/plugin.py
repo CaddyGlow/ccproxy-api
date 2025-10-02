@@ -56,7 +56,7 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
             self.session_manager = self.adapter.session_manager
             if self.session_manager:
                 await self.session_manager.start()
-                logger.info("session_manager_started")
+                logger.debug("session_manager_started")
 
         # Initialize detection service if present
         if self.detection_service and hasattr(

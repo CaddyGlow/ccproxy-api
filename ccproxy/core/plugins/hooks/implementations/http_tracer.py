@@ -48,7 +48,7 @@ class HTTPTracerHook(Hook):
         self.raw_formatter = raw_formatter
 
         if self.enabled:
-            logger.info(
+            logger.debug(
                 "core_http_tracer_hook_initialized",
                 json_logs=json_formatter is not None,
                 raw_http=raw_formatter is not None,

@@ -290,8 +290,7 @@ class PluginDiscovery:
                 )
                 return None
 
-            trace_logger = getattr(logger_fs, "trace", logger_fs.debug)
-            trace_logger(
+            logger_fs.debug(
                 "plugin_factory_loaded",
                 version=factory.get_manifest().version,
             )
@@ -335,9 +334,9 @@ class PluginDiscovery:
                 factories[name] = factory
 
         if skipped_names:
-            logger_fs.info("plugin_skipped_before_load", names=skipped_names)
+            logger_fs.debug("plugin_skipped_before_load", names=skipped_names)
 
-        logger_fs.info(
+        logger_fs.debug(
             "plugin_factories_loaded",
             count=len(factories),
             names=list(factories.keys()),

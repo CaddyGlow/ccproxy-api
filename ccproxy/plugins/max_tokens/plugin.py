@@ -83,7 +83,7 @@ class MaxTokensRuntime(SystemPluginRuntime):
         if hook_registry and isinstance(hook_registry, HookRegistry):
             hook_registry.register(self.hook)
             self.hook_registered = True
-            logger.info(
+            logger.debug(
                 "max_tokens_hook_registered",
                 providers="*"
                 if self.config.apply_to_all_providers

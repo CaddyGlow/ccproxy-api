@@ -120,7 +120,7 @@ class CopilotDetectionService:
             last_check=datetime.now(),
         )
 
-        logger.info(
+        logger.debug(
             "github_cli_detection_completed",
             cli_available=cli_available,
             cli_version=cli_version,
