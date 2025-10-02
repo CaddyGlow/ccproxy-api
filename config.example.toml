@@ -34,6 +34,12 @@ graceful_shutdown_timeout = 30.0
 default_retry_attempts = 3
 default_retry_delay = 60.0
 
+# Logging settings
+[logging]
+level = "INFO"
+format = "auto"
+plugin_log_base_dir = "/tmp/ccproxy"
+
 # Plugin system settings
 enable_plugins = true
 

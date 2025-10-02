@@ -41,7 +41,7 @@ from ccproxy.testing.endpoints import (
 
 if TYPE_CHECKING:
     from tests.factories import FastAPIAppFactory, FastAPIClientFactory
-from ccproxy.config.core import ServerSettings
+from ccproxy.config.core import LoggingSettings, ServerSettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.settings import Settings
 
@@ -54,6 +54,9 @@ def pytest_configure(config: pytest.Config) -> None:
     # Reuse the application logging pipeline to ensure structlog processors
     # (categories, exception handling, formatting) behave identically in tests.
     setup_logging(json_logs=False, log_level_name="DEBUG")
+
+    # Disable raw HTTP trace files by default to avoid leaking request.http artifacts.
+    os.environ.setdefault("PLUGINS__REQUEST_TRACER__RAW_HTTP_ENABLED", "false")
 
 
 # Global fixture for task manager (needed by many async tests)
@@ -188,8 +191,12 @@ def test_settings(isolated_environment: Path) -> Settings:
     - No authentication by default
     - Test environment enabled
     """
+    log_dir = isolated_environment / "logs"
+    log_dir.mkdir(exist_ok=True)
+
     return Settings(
         server=ServerSettings(log_level="WARNING"),
+        logging=LoggingSettings(plugin_log_base_dir=str(log_dir)),
         security=SecuritySettings(auth_token=None),  # No auth by default
         plugins={
             "duckdb_storage": {
@@ -198,6 +205,11 @@ def test_settings(isolated_environment: Path) -> Settings:
                 "register_app_state_alias": True,
             },
             "analytics": {"enabled": True},
+            "request_tracer": {
+                "enabled": True,
+                "json_logs_enabled": False,
+                "raw_http_enabled": False,
+            },
         },
     )
 
@@ -211,8 +223,12 @@ def auth_settings(isolated_environment: Path) -> Settings:
     - Authentication token configured for testing
     - Observability endpoints enabled for testing
     """
+    log_dir = isolated_environment / "logs"
+    log_dir.mkdir(exist_ok=True)
+
     return Settings(
         server=ServerSettings(log_level="WARNING"),
+        logging=LoggingSettings(plugin_log_base_dir=str(log_dir)),
         security=SecuritySettings(
             auth_token=SecretStr("test-auth-token-12345")
         ),  # Auth enabled
@@ -223,6 +239,11 @@ def auth_settings(isolated_environment: Path) -> Settings:
                 "register_app_state_alias": True,
             },
             "analytics": {"enabled": True},
+            "request_tracer": {
+                "enabled": True,
+                "json_logs_enabled": False,
+                "raw_http_enabled": False,
+            },
         },
     )
 

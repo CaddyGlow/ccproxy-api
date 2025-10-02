@@ -53,6 +53,14 @@ def _build_isolated_plugin_settings(
         }
         requested_plugins.add("duckdb_storage")
 
+    # Ensure request tracer is present with raw logging disabled by default
+    request_tracer_cfg = plugin_configs.get("request_tracer", {})
+    request_tracer_cfg.setdefault("enabled", True)
+    request_tracer_cfg.setdefault("json_logs_enabled", False)
+    request_tracer_cfg.setdefault("raw_http_enabled", False)
+    plugin_configs["request_tracer"] = request_tracer_cfg
+    requested_plugins.add("request_tracer")
+
     disabled_plugins = sorted(_available_plugin_names() - requested_plugins)
 
     if extra_disabled:

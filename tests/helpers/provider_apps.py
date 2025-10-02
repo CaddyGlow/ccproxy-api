@@ -32,11 +32,16 @@ async def copilot_app() -> AsyncIterator[FastAPI]:
         enable_plugins=True,
         enabled_plugins=["copilot", "oauth_copilot"],
         logging=LoggingSettings(
-            **{
-                "level": "ERROR",  # Changed from DEBUG to ERROR
-                "verbose_api": False,  # Changed from True to False
-            }
+            level="ERROR",  # Changed from DEBUG to ERROR
+            verbose_api=False,  # Changed from True to False
         ),
+        plugins={
+            "request_tracer": {
+                "enabled": True,
+                "json_logs_enabled": False,
+                "raw_http_enabled": False,
+            }
+        },
     )
 
     service_container = create_service_container(settings)
@@ -94,6 +99,13 @@ async def codex_app() -> AsyncIterator[FastAPI]:
         enable_plugins=True,
         plugins_disable_local_discovery=False,
         enabled_plugins=["codex", "oauth_codex"],
+        plugins={
+            "request_tracer": {
+                "enabled": True,
+                "json_logs_enabled": False,
+                "raw_http_enabled": False,
+            }
+        },
     )
 
     service_container = create_service_container(settings)
@@ -161,6 +173,13 @@ async def claude_app() -> AsyncIterator[FastAPI]:
     settings = Settings(
         enable_plugins=True,
         enabled_plugins=["claude_api", "oauth_claude"],
+        plugins={
+            "request_tracer": {
+                "enabled": True,
+                "json_logs_enabled": False,
+                "raw_http_enabled": False,
+            }
+        },
     )
 
     service_container = create_service_container(settings)

@@ -1,5 +1,6 @@
-"""Request Tracer plugin implementation -  after refactoring."""
+"""Request Tracer plugin implementation - after refactoring."""
 
+from pathlib import Path
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
@@ -9,6 +10,11 @@ from ccproxy.core.plugins import (
     SystemPluginRuntime,
 )
 from ccproxy.core.plugins.hooks import HookRegistry
+from ccproxy.core.plugins.hooks.implementations import HTTPTracerHook
+from ccproxy.core.plugins.hooks.implementations.formatters import (
+    JSONFormatter,
+    RawHTTPFormatter,
+)
 
 from .config import RequestTracerConfig
 from .hook import RequestTracerHook
@@ -29,6 +35,7 @@ class RequestTracerRuntime(SystemPluginRuntime):
         super().__init__(manifest)
         self.config: RequestTracerConfig | None = None
         self.hook: RequestTracerHook | None = None
+        self.http_tracer_hook: HTTPTracerHook | None = None
 
     async def _on_initialize(self) -> None:
         """Initialize the  request tracer."""
@@ -69,44 +76,63 @@ class RequestTracerRuntime(SystemPluginRuntime):
             for error in validation_errors:
                 logger.warning("config_validation_warning", issue=error)
 
-        if self.config.enabled:
-            # Register  hook for REQUEST_* events only
-            self.hook = RequestTracerHook(self.config)
-
-            # Try to get hook registry from context
-            hook_registry = self.context.get("hook_registry")
-
-            # If not found, try app state
-            if not hook_registry:
-                app = self.context.get("app")
-                if app and hasattr(app.state, "hook_registry"):
-                    hook_registry = app.state.hook_registry
-
-            if hook_registry and isinstance(hook_registry, HookRegistry):
-                hook_registry.register(self.hook)
-                logger.debug(
-                    "request_tracer_hook_registered",
-                    mode="hooks",
-                    json_logs=self.config.json_logs_enabled,
-                    verbose_api=self.config.verbose_api,
-                    note="HTTP events handled by core HTTPTracerHook",
-                )
-            else:
-                logger.warning(
-                    "hook_registry_not_available",
-                    mode="hooks",
-                    fallback="disabled",
-                )
-
-            logger.debug(
-                "request_tracer_enabled",
-                log_dir=self.config.log_dir,
-                json_logs=self.config.json_logs_enabled,
-                exclude_paths=self.config.exclude_paths,
-                architecture="hooks_only",
-            )
-        else:
+        if not self.config.enabled:
             logger.debug("request_tracer_disabled")
+            return
+
+        # Try to get hook registry from context
+        hook_registry: HookRegistry | None = self.context.get("hook_registry")
+
+        # If not found, try app state
+        if not hook_registry:
+            app = self.context.get("app")
+            if app and hasattr(app.state, "hook_registry"):
+                hook_registry = app.state.hook_registry
+
+        if not hook_registry or not isinstance(hook_registry, HookRegistry):
+            logger.warning(
+                "hook_registry_not_available",
+                mode="hooks",
+                fallback="disabled",
+            )
+            return
+
+        settings = self.context.get("settings") if self.context else None
+
+        json_formatter, raw_formatter = self._build_formatters(settings)
+
+        self.http_tracer_hook = HTTPTracerHook(
+            json_formatter=json_formatter,
+            raw_formatter=raw_formatter,
+            enabled=True,
+        )
+        hook_registry.register(self.http_tracer_hook)
+        logger.debug(
+            "core_http_tracer_registered",
+            mode="hooks",
+            json_logs_enabled=self.config.json_logs_enabled,
+            raw_http_enabled=(raw_formatter is not None),
+            log_dir=json_formatter.log_dir if json_formatter else None,
+        )
+
+        # Register REQUEST_* hook for contextual logging
+        self.hook = RequestTracerHook(self.config)
+        hook_registry.register(self.hook)
+        logger.debug(
+            "request_tracer_hook_registered",
+            mode="hooks",
+            json_logs=self.config.json_logs_enabled,
+            verbose_api=self.config.verbose_api,
+            note="HTTP events handled by core HTTPTracerHook",
+        )
+
+        logger.debug(
+            "request_tracer_enabled",
+            log_dir=self.config.log_dir,
+            json_logs=self.config.json_logs_enabled,
+            exclude_paths=self.config.exclude_paths,
+            architecture="hooks_only",
+        )
 
     def _validate_config(self, config: RequestTracerConfig) -> list[str]:
         """Validate plugin configuration.
@@ -121,8 +147,6 @@ class RequestTracerRuntime(SystemPluginRuntime):
 
         # Basic path validation
         try:
-            from pathlib import Path
-
             log_path = Path(config.log_dir)
             if not log_path.parent.exists():
                 errors.append(
@@ -147,7 +171,60 @@ class RequestTracerRuntime(SystemPluginRuntime):
         if self.hook:
             logger.debug("shutting_down_request_tracer_hook")
             self.hook = None
+        self.http_tracer_hook = None
         logger.debug("request_tracer_plugin_shutdown_complete")
+
+    def _build_formatters(
+        self,
+        settings: Any,
+    ) -> tuple[JSONFormatter | None, RawHTTPFormatter | None]:
+        """Construct formatters based on plugin and global logging settings."""
+
+        if not self.config:
+            return (None, None)
+
+        # Determine logging base directory overrides from global settings
+        json_log_dir = Path(self.config.get_json_log_dir())
+        raw_log_dir = Path(self.config.get_raw_log_dir())
+
+        override_base: Path | None = None
+        if settings and getattr(settings, "logging", None):
+            plugin_base = getattr(settings.logging, "plugin_log_base_dir", None)
+            if plugin_base:
+                override_base = Path(plugin_base) / "tracer"
+
+        fields_set = getattr(self.config, "model_fields_set", set())
+        if override_base:
+            if "request_log_dir" not in fields_set and "log_dir" not in fields_set:
+                json_log_dir = override_base
+            if "raw_log_dir" not in fields_set and "log_dir" not in fields_set:
+                raw_log_dir = override_base
+
+        json_formatter: JSONFormatter | None = None
+        if self.config.json_logs_enabled:
+            json_formatter = JSONFormatter(
+                log_dir=str(json_log_dir),
+                verbose_api=self.config.verbose_api,
+                json_logs_enabled=self.config.json_logs_enabled,
+                redact_sensitive=self.config.redact_sensitive,
+                truncate_body_preview=self.config.truncate_body_preview,
+            )
+
+        raw_formatter: RawHTTPFormatter | None = None
+        raw_logging_enabled = self.config.raw_http_enabled
+        if raw_logging_enabled:
+            raw_formatter = RawHTTPFormatter(
+                log_dir=str(raw_log_dir),
+                enabled=True,
+                log_client_request=self.config.log_client_request,
+                log_client_response=self.config.log_client_response,
+                log_provider_request=self.config.log_provider_request,
+                log_provider_response=self.config.log_provider_response,
+                max_body_size=self.config.max_body_size,
+                exclude_headers=self.config.exclude_headers,
+            )
+
+        return (json_formatter, raw_formatter)
 
 
 class RequestTracerFactory(SystemPluginFactory):

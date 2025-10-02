@@ -80,8 +80,18 @@ def _status_client() -> TestClient:
     settings = Settings(
         enable_plugins=True,
         plugins_disable_local_discovery=False,
-        plugins={"metrics": {"enabled": True, "metrics_endpoint_enabled": True}},
-        logging=LoggingSettings(level="ERROR", verbose_api=False),
+        plugins={
+            "metrics": {"enabled": True, "metrics_endpoint_enabled": True},
+            "request_tracer": {
+                "enabled": True,
+                "json_logs_enabled": False,
+                "raw_http_enabled": False,
+            },
+        },
+        logging=LoggingSettings(
+            level="ERROR",
+            verbose_api=False,
+        ),
     )
 
     with patch("ccproxy.api.app.load_plugin_system", _fake_load_plugin_system):

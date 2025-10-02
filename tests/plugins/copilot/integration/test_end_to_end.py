@@ -601,7 +601,12 @@ async def copilot_integration_app():
         plugins={
             "copilot": {
                 "enabled": True,
-            }
+            },
+            "request_tracer": {
+                "enabled": True,
+                "json_logs_enabled": False,
+                "raw_http_enabled": False,
+            },
         },
         logging={
             "level": "ERROR",  # Minimal logging for speed

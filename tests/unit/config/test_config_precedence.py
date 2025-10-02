@@ -27,7 +27,10 @@ def test_cli_overrides_env(tmp_path, monkeypatch):
     # env sets INFO, CLI sets DEBUG
     monkeypatch.setenv("LOGGING__LEVEL", "INFO")
 
-    settings = Settings.from_config(config_path=None, logging={"level": "DEBUG"})
+    settings = Settings.from_config(
+        config_path=None,
+        logging={"level": "DEBUG"},
+    )
     assert settings.logging.level == "DEBUG"  # cli > env
 
 

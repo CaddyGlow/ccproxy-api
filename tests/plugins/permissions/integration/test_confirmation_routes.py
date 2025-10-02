@@ -59,17 +59,22 @@ async def app(confirmation_service: PermissionService) -> FastAPI:
     container.register_service(PermissionService, instance=confirmation_service)
 
     enabled_plugins = ["permissions"]
-    plugin_configs = {"permissions": {"enabled": True}}
+    plugin_configs = {
+        "permissions": {"enabled": True},
+        "request_tracer": {
+            "enabled": True,
+            "json_logs_enabled": False,
+            "raw_http_enabled": False,
+        },
+    }
     settings = Settings(
         enable_plugins=True,
         plugins_disable_local_discovery=True,
         enabled_plugins=enabled_plugins,
         plugins=plugin_configs,
         logging=LoggingSettings(
-            **{
-                "level": "TRACE",
-                "verbose_api": False,
-            }
+            level="TRACE",
+            verbose_api=False,
         ),
     )
 

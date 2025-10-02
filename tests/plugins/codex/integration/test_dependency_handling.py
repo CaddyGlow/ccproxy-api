@@ -159,6 +159,12 @@ def _make_settings(
         normalized_configs["duckdb_storage"] = {"enabled": False}
         explicit_disabled.add("duckdb_storage")
 
+    request_tracer_cfg = normalized_configs.get("request_tracer", {})
+    request_tracer_cfg.setdefault("enabled", True)
+    request_tracer_cfg.setdefault("json_logs_enabled", False)
+    request_tracer_cfg.setdefault("raw_http_enabled", False)
+    normalized_configs["request_tracer"] = request_tracer_cfg
+
     final_disabled: list[str] | None
     if disabled_plugins is not None:
         final_disabled = disabled_plugins
@@ -172,10 +178,8 @@ def _make_settings(
         disabled_plugins=final_disabled,
         plugins=normalized_configs,
         logging=LoggingSettings(
-            **{
-                "level": "DEBUG",
-                "verbose_api": False,
-            }
+            level="DEBUG",
+            verbose_api=False,
         ),
     )
 

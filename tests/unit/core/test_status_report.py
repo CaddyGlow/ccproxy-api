@@ -39,7 +39,18 @@ def build_settings(**overrides: object) -> Settings:
         "enable_plugins": True,
         "plugins_disable_local_discovery": False,
         "plugin_discovery": {"directories": []},
+        "plugins": {
+            "request_tracer": {
+                "enabled": True,
+                "json_logs_enabled": False,
+                "raw_http_enabled": False,
+            }
+        },
     }
+    logging_overrides = overrides.pop("logging", None)
+    if logging_overrides is not None:
+        data["logging"].update(logging_overrides)  # type: ignore[arg-type]
+
     data.update(overrides)
     return Settings.model_validate(data)
 
