@@ -360,38 +360,6 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
 
         return credentials.copilot_token.token.get_secret_value()
 
-    async def ensure_copilot_token(self) -> str:
-        """Ensure we have a valid Copilot token, refreshing if necessary.
-
-        Returns:
-            Valid Copilot token
-
-        Raises:
-            ValueError: If unable to get valid token
-        """
-        credentials = await self.storage.load_credentials()
-        if not credentials:
-            raise ValueError("No credentials found - authorization required")
-
-        if credentials.oauth_token.is_expired:
-            raise ValueError("OAuth token expired - re-authorization required")
-
-        # If no Copilot token or expired, refresh it
-        if not credentials.copilot_token or credentials.copilot_token.is_expired:
-            if not credentials.copilot_token:
-                logger.info("no_copilot_token_refreshing")
-            else:
-                logger.info(
-                    "copilot_token_expired_refreshing",
-                    expires_at=credentials.copilot_token.expires_at,
-                )
-            credentials = await self.client.refresh_copilot_token(credentials)
-
-        if not credentials.copilot_token:
-            raise ValueError("Failed to obtain Copilot token")
-
-        return credentials.copilot_token.token.get_secret_value()
-
     async def ensure_oauth_token(self) -> str:
         """Ensure we have a valid OAuth token.
 

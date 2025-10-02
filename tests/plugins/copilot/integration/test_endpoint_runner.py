@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -32,7 +34,7 @@ SAMPLES = provider_sample_names(PROVIDER)
 async def test_copilot_endpoint_sample(
     sample_name: str,
     request: pytest.FixtureRequest,
-    httpx_mock,
+    httpx_mock: Any,
 ) -> None:
     fixture_name = PROVIDER_FIXTURES.get(PROVIDER)
     if fixture_name:

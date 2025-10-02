@@ -19,7 +19,7 @@ def test_stop_reason_mapping_stop() -> None:
         created=0,
         model="gpt-x",
         choices=[
-            {
+            {  # type: ignore[list-item]
                 "index": 0,
                 "message": {"role": "assistant", "content": "ok"},
                 "finish_reason": "stop",
@@ -41,7 +41,7 @@ def test_stop_reason_mapping_length() -> None:
         created=0,
         model="gpt-x",
         choices=[
-            {
+            {  # type: ignore[list-item]
                 "index": 0,
                 "message": {"role": "assistant", "content": "ok"},
                 "finish_reason": "length",
@@ -77,7 +77,7 @@ def test_usage_mapping_cached_tokens() -> None:
         created=0,
         model="gpt-x",
         choices=[
-            {
+            {  # type: ignore[list-item]
                 "index": 0,
                 "message": {"role": "assistant", "content": "ok"},
                 "finish_reason": "stop",
@@ -109,15 +109,17 @@ def test_tool_calls_strict_arguments_json() -> None:
         object="chat.completion",
         created=0,
         model="gpt-x",
-        choices=[{"index": 0, "message": msg, "finish_reason": "tool_calls"}],
+        choices=[{"index": 0, "message": msg, "finish_reason": "tool_calls"}],  # type: ignore[list-item]
         usage=openai_models.CompletionUsage(
             prompt_tokens=1, completion_tokens=1, total_tokens=2
         ),
     )
     out = convert__openai_chat_to_anthropic_messages__response(resp)
     names: list[str] = [
-        b.name for b in out.content if getattr(b, "type", None) == "tool_use"
-    ]  # type: ignore[list-item]
+        getattr(b, "name", "")
+        for b in out.content
+        if getattr(b, "type", None) == "tool_use"
+    ]
     assert names == ["do"]
 
 
@@ -139,7 +141,7 @@ def test_tool_calls_strict_arguments_invalid_raises() -> None:
         object="chat.completion",
         created=0,
         model="gpt-x",
-        choices=[{"index": 0, "message": msg2, "finish_reason": "tool_calls"}],
+        choices=[{"index": 0, "message": msg2, "finish_reason": "tool_calls"}],  # type: ignore[list-item]
         usage=openai_models.CompletionUsage(
             prompt_tokens=1, completion_tokens=1, total_tokens=2
         ),
@@ -286,7 +288,7 @@ async def test_openai_chat_stream_to_anthropic_events_with_tool_call() -> None:
         if isinstance(evt, anthropic_models.ContentBlockStartEvent)
         and getattr(evt.content_block, "type", None) == "tool_use"
     )
-    assert tool_start.content_block.input == {
+    assert getattr(tool_start.content_block, "input", None) == {
         "city": "Seattle",
         "units": "metric",
     }

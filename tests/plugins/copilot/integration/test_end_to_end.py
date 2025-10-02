@@ -1,6 +1,8 @@
 """End-to-end integration tests for Copilot plugin."""
 
 import json
+from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,7 +37,7 @@ class TestCopilotEndToEnd:
 
         copilot_token = CopilotTokenResponse(
             token=SecretStr("copilot_test_service_token"),
-            expires_at="2024-12-31T23:59:59Z",
+            expires_at=datetime.fromisoformat("2024-12-31T23:59:59+00:00"),
         )
 
         return CopilotCredentials(
@@ -47,7 +49,7 @@ class TestCopilotEndToEnd:
     @pytest.mark.asyncio
     async def test_copilot_models_endpoint(
         self,
-        copilot_integration_client,
+        copilot_integration_client: Any,
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test Copilot models endpoint integration."""
@@ -102,7 +104,7 @@ class TestCopilotEndToEnd:
     @pytest.mark.asyncio
     async def test_copilot_chat_completions_non_streaming(
         self,
-        copilot_integration_client,
+        copilot_integration_client: Any,
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test Copilot chat completions endpoint (non-streaming)."""
@@ -183,7 +185,7 @@ class TestCopilotEndToEnd:
     @pytest.mark.asyncio
     async def test_copilot_chat_completions_streaming(
         self,
-        copilot_integration_client,
+        copilot_integration_client: Any,
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test Copilot chat completions endpoint (streaming)."""
@@ -290,7 +292,7 @@ class TestCopilotEndToEnd:
     @pytest.mark.asyncio
     async def test_copilot_authentication_required(
         self,
-        copilot_integration_client,
+        copilot_integration_client: Any,
     ) -> None:
         """Test that Copilot endpoints require authentication."""
         client = copilot_integration_client
@@ -330,7 +332,7 @@ class TestCopilotEndToEnd:
     @pytest.mark.asyncio
     async def test_copilot_format_adapter_integration(
         self,
-        copilot_integration_client,
+        copilot_integration_client: Any,
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test format adapter integration with OpenAI to Copilot conversion."""
@@ -414,7 +416,7 @@ class TestCopilotEndToEnd:
     @pytest.mark.asyncio
     async def test_copilot_error_handling(
         self,
-        copilot_integration_client,
+        copilot_integration_client: Any,
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test Copilot API error handling."""
@@ -469,7 +471,7 @@ class TestCopilotEndToEnd:
     @pytest.mark.asyncio
     async def test_copilot_usage_endpoint(
         self,
-        copilot_integration_client,
+        copilot_integration_client: Any,
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test Copilot usage endpoint."""
@@ -518,7 +520,7 @@ class TestCopilotEndToEnd:
     @pytest.mark.asyncio
     async def test_copilot_token_info_endpoint(
         self,
-        copilot_integration_client,
+        copilot_integration_client: Any,
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test Copilot token info endpoint."""
@@ -558,8 +560,12 @@ class TestCopilotEndToEnd:
                                 "provider": "copilot",
                                 "account_type": "individual",
                                 "copilot_access": True,
-                                "oauth_expires_at": mock_token_info.oauth_expires_at.isoformat(),
-                                "copilot_expires_at": mock_token_info.copilot_expires_at.isoformat(),
+                                "oauth_expires_at": mock_token_info.oauth_expires_at.isoformat()
+                                if mock_token_info.oauth_expires_at
+                                else None,
+                                "copilot_expires_at": mock_token_info.copilot_expires_at.isoformat()
+                                if mock_token_info.copilot_expires_at
+                                else None,
                             }
                         ),
                         media_type="application/json",
@@ -588,6 +594,7 @@ async def copilot_integration_app():
     """Pre-configured app for Copilot plugin integration tests - session scoped."""
     from ccproxy.api.app import create_app
     from ccproxy.api.bootstrap import create_service_container
+    from ccproxy.config.core import LoggingSettings
     from ccproxy.config.settings import Settings
     from ccproxy.core.logging import setup_logging
 
@@ -608,10 +615,10 @@ async def copilot_integration_app():
                 "raw_http_enabled": False,
             },
         },
-        logging={
-            "level": "ERROR",  # Minimal logging for speed
-            "verbose_api": False,
-        },
+        logging=LoggingSettings(
+            level="ERROR",  # Minimal logging for speed
+            verbose_api=False,
+        ),
     )
 
     service_container = create_service_container(settings)

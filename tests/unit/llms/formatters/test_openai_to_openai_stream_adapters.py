@@ -1,3 +1,6 @@
+from collections.abc import AsyncGenerator
+from typing import Any
+
 import pytest
 
 from ccproxy.llms.formatters import openai_to_openai as formatter_module
@@ -6,7 +9,7 @@ from ccproxy.llms.formatters import openai_to_openai as formatter_module
 pytestmark = pytest.mark.asyncio
 
 
-async def _dummy_stream() -> None:
+async def _dummy_stream() -> AsyncGenerator[None, None]:
     yield None
 
 
@@ -14,7 +17,7 @@ async def test_convert_responses_stream_uses_adapter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stream_instance = _dummy_stream()
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class DummyAdapter:
         def __init__(self) -> None:
@@ -35,11 +38,11 @@ async def test_convert_responses_stream_uses_adapter(
     )
 
     result = formatter_module.convert__openai_responses_to_openai_chat__stream(
-        stream_instance
+        stream_instance  # type: ignore[arg-type]
     )
 
     chunk = await anext(result)
-    assert chunk == "chunk"
+    assert chunk == "chunk"  # type: ignore[comparison-overlap]
     await result.aclose()
     await stream_instance.aclose()
 
@@ -51,7 +54,7 @@ async def test_convert_chat_stream_uses_adapter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stream_instance = _dummy_stream()
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
     class DummyAdapter:
         def __init__(self) -> None:
@@ -72,11 +75,11 @@ async def test_convert_chat_stream_uses_adapter(
     )
 
     result = formatter_module.convert__openai_chat_to_openai_responses__stream(
-        stream_instance
+        stream_instance  # type: ignore[arg-type]
     )
 
     chunk = await anext(result)
-    assert chunk == {"type": "chunk"}
+    assert chunk == {"type": "chunk"}  # type: ignore[comparison-overlap]
     await result.aclose()
     await stream_instance.aclose()
 

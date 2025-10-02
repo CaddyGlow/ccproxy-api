@@ -109,7 +109,7 @@ class TestCopilotPluginLifecycle:
             "service_container": MagicMock(),
         }
 
-        runtime.context = mock_context
+        runtime.context = mock_context  # type: ignore[assignment]
 
         # Initialize runtime
         await runtime._on_initialize()
@@ -187,7 +187,7 @@ class TestCopilotPluginLifecycle:
             "cli_detection_service": MagicMock(),
         }
 
-        oauth_provider = factory.create_oauth_provider(mock_context)
+        oauth_provider = factory.create_oauth_provider(mock_context)  # type: ignore[arg-type]
 
         assert oauth_provider is not None
         assert oauth_provider.http_client is mock_context["http_client"]
@@ -208,7 +208,7 @@ class TestCopilotPluginLifecycle:
             "cli_detection_service": mock_cli_service,
         }
 
-        detection_service = factory.create_detection_service(mock_context)
+        detection_service = factory.create_detection_service(mock_context)  # type: ignore[arg-type]
 
         assert detection_service is not None
         # Would need to check internal state, but this verifies creation doesn't fail
@@ -221,7 +221,7 @@ class TestCopilotPluginLifecycle:
         with pytest.raises(
             ValueError, match="Settings and CLI detection service required"
         ):
-            factory.create_detection_service({})
+            factory.create_detection_service({})  # type: ignore[arg-type]
 
     @pytest.mark.asyncio
     async def test_detection_service_creation_requires_dependencies(self) -> None:
@@ -232,7 +232,7 @@ class TestCopilotPluginLifecycle:
         with pytest.raises(
             ValueError, match=r"Settings and CLI detection service required"
         ):
-            factory.create_detection_service({})
+            factory.create_detection_service({})  # type: ignore[arg-type]
 
         # Test with context missing required services
         mock_context = {
@@ -241,7 +241,7 @@ class TestCopilotPluginLifecycle:
         with pytest.raises(
             ValueError, match=r"Settings and CLI detection service required"
         ):
-            factory.create_detection_service(mock_context)
+            factory.create_detection_service(mock_context)  # type: ignore[arg-type]
 
     @pytest.mark.asyncio
     async def test_adapter_creation(self) -> None:
@@ -269,17 +269,17 @@ class TestCopilotPluginLifecycle:
             "service_container": MagicMock(),  # For format registry
         }
 
-        adapter = await factory.create_adapter(mock_context)
+        adapter = await factory.create_adapter(mock_context)  # type: ignore[arg-type]
 
         assert adapter is not None
         # Verify adapter was created with proper dependencies
         assert adapter.config is mock_config
-        assert adapter.oauth_provider is mock_oauth_provider
-        assert adapter.detection_service is mock_detection_service
+        assert adapter.oauth_provider is mock_oauth_provider  # type: ignore[attr-defined]
+        assert adapter.detection_service is mock_detection_service  # type: ignore[attr-defined]
         # Note: metrics, hook_manager, http_client are passed to BaseHTTPAdapter
         # but not stored as instance attributes directly
-        assert adapter.auth_manager is not None
-        assert adapter.http_pool_manager is not None
+        assert adapter.auth_manager is not None  # type: ignore[attr-defined]
+        assert adapter.http_pool_manager is not None  # type: ignore[attr-defined]
 
     @pytest.mark.asyncio
     async def test_adapter_creation_requires_context(self) -> None:
@@ -287,7 +287,7 @@ class TestCopilotPluginLifecycle:
         factory = CopilotPluginFactory()
 
         with pytest.raises(ValueError, match="Context required for adapter"):
-            await factory.create_adapter(None)
+            await factory.create_adapter(None)  # type: ignore[arg-type]
 
     @pytest.mark.asyncio
     async def test_adapter_creation_with_missing_config(self) -> None:
@@ -306,7 +306,7 @@ class TestCopilotPluginLifecycle:
             "service_container": MagicMock(),  # For format registry
         }
 
-        adapter = await factory.create_adapter(mock_context)
+        adapter = await factory.create_adapter(mock_context)  # type: ignore[arg-type]
 
         assert adapter is not None
         # Should have created default config

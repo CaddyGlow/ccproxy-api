@@ -45,7 +45,7 @@ class TestModelValidationErrors:
         with pytest.raises(ValidationError) as exc_info:
             OpenAIChatRequest(
                 model="gpt-4o",
-                messages=[{"role": "user", "content": "Hello"}],
+                messages=[OpenAIChatMessage(role="user", content="Hello")],
                 top_p=1.5,  # Invalid: should be <= 1.0
             )
 
@@ -122,7 +122,7 @@ class TestEdgeCases:
         # Test with 0 (edge case)
         request = OpenAIChatRequest(
             model="gpt-4o",
-            messages=[{"role": "user", "content": "Hello"}],
+            messages=[OpenAIChatMessage(role="user", content="Hello")],
             max_completion_tokens=0,
         )
         assert request.max_completion_tokens == 0
@@ -130,7 +130,7 @@ class TestEdgeCases:
         # Test with very large value (reduced from 2M to safer 100k)
         request = OpenAIChatRequest(
             model="gpt-4o",
-            messages=[{"role": "user", "content": "Hello"}],
+            messages=[OpenAIChatMessage(role="user", content="Hello")],
             max_completion_tokens=100000,
         )
         assert request.max_completion_tokens == 100000
@@ -163,11 +163,12 @@ class TestEdgeCases:
 
         request = AnthropicCreateMessageRequest(
             model="claude-3-opus-20240229",
-            messages=[{"role": "user", "content": "hi"}],
+            messages=[AnthropicMessage(role="user", content="hi")],
             max_tokens=128,
-            tools=[payload],
+            tools=[payload],  # type: ignore[list-item]
         )
 
+        assert request.tools is not None
         tool = request.tools[0]
         assert tool.type == "tool"
         assert tool.name == "read_file"
@@ -187,11 +188,12 @@ class TestEdgeCases:
 
         request = AnthropicCreateMessageRequest(
             model="claude-3-opus-20240229",
-            messages=[{"role": "user", "content": "hi"}],
+            messages=[AnthropicMessage(role="user", content="hi")],
             max_tokens=128,
-            tools=[payload],
+            tools=[payload],  # type: ignore[list-item]
         )
 
+        assert request.tools is not None
         tool = request.tools[0]
         assert tool.type == "custom"
         assert tool.name == "write_file"
@@ -208,11 +210,12 @@ class TestEdgeCases:
 
         request = AnthropicCreateMessageRequest(
             model="claude-3-opus-20240229",
-            messages=[{"role": "user", "content": "hi"}],
+            messages=[AnthropicMessage(role="user", content="hi")],
             max_tokens=128,
-            tools=[payload],
+            tools=[payload],  # type: ignore[list-item]
         )
 
+        assert request.tools is not None
         tool = request.tools[0]
         assert tool.type == "custom"
         assert tool.name == "list"

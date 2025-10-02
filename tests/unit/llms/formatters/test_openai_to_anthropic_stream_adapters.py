@@ -1,3 +1,5 @@
+from collections.abc import AsyncGenerator
+
 import pytest
 
 from ccproxy.llms.formatters import openai_to_anthropic as formatter_module
@@ -6,11 +8,11 @@ from ccproxy.llms.formatters import openai_to_anthropic as formatter_module
 pytestmark = pytest.mark.asyncio
 
 
-async def _dummy_responses_stream() -> None:
+async def _dummy_responses_stream() -> AsyncGenerator[None, None]:
     yield None
 
 
-async def _dummy_chat_stream() -> None:
+async def _dummy_chat_stream() -> AsyncGenerator[None, None]:
     yield None
 
 
@@ -35,11 +37,11 @@ async def test_responses_stream_wrapper_uses_adapter(
     )
 
     result = formatter_module.convert__openai_responses_to_anthropic_messages__stream(
-        stream_instance
+        stream_instance  # type: ignore[arg-type]
     )
 
     event = await anext(result)
-    assert event == "anthropic-event"
+    assert event == "anthropic-event"  # type: ignore[comparison-overlap]
     await result.aclose()
     await stream_instance.aclose()
 
@@ -72,11 +74,11 @@ async def test_chat_stream_wrapper_uses_adapter(
     )
 
     result = formatter_module.convert__openai_chat_to_anthropic_messages__stream(
-        stream_instance
+        stream_instance  # type: ignore[arg-type]
     )
 
     chunk = await anext(result)
-    assert chunk == {"type": "anthropic-chunk"}
+    assert chunk == {"type": "anthropic-chunk"}  # type: ignore[comparison-overlap]
     await result.aclose()
     await stream_instance.aclose()
 

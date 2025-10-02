@@ -116,9 +116,9 @@ def test_openai_chat_response_to_anthropic(
 async def test_openai_chat_request_to_anthropic_includes_custom_tools() -> None:
     request = openai_models.ChatCompletionRequest(
         model="gpt-4o",
-        messages=[{"role": "user", "content": "Hello"}],
+        messages=[{"role": "user", "content": "Hello"}],  # type: ignore[list-item]
         tools=[
-            {
+            {  # type: ignore[list-item]
                 "type": "function",
                 "function": {
                     "name": "get_weather",
@@ -147,7 +147,7 @@ async def test_openai_chat_request_to_anthropic_includes_custom_tools() -> None:
     assert getattr(first_tool, "type", None) == "custom"
     assert getattr(first_tool, "name", None) == "get_weather"
     assert getattr(first_tool, "description", None) == "Get weather"
-    assert first_tool.input_schema["required"] == ["location"]
+    assert getattr(first_tool, "input_schema", {}).get("required") == ["location"]
 
     assert converted.messages[0].role == "user"
     assert converted.messages[0].content == "Hello"
@@ -243,7 +243,7 @@ async def test_openai_chat_stream_to_anthropic(
 async def test_openai_chat_stream_request_to_anthropic() -> None:
     request = openai_models.ChatCompletionRequest(
         model="gpt-4o",
-        messages=[{"role": "user", "content": "Hi"}],
+        messages=[{"role": "user", "content": "Hi"}],  # type: ignore[list-item]
         stream=True,
     )
 
@@ -355,7 +355,7 @@ def test_openai_responses_request_to_anthropic_includes_tools() -> None:
     tool = converted.tools[0]
     assert getattr(tool, "type", None) == "custom"
     assert getattr(tool, "name", None) == "get_weather"
-    assert tool.input_schema["required"] == ["location"]
+    assert getattr(tool, "input_schema", {}).get("required") == ["location"]
 
     assert converted.tool_choice is not None
     assert getattr(converted.tool_choice, "type", None) == "tool"
@@ -486,7 +486,8 @@ def test_anthropic_message_request_to_openai_chat_handles_tools() -> None:
 
     assert converted.model == request.model
     assert converted.messages[-1].role == "user"
-    assert "weather" in converted.messages[-1].content
+    content = converted.messages[-1].content
+    assert isinstance(content, str) and "weather" in content
 
     assert converted.tools
     tool = converted.tools[0]
@@ -508,7 +509,9 @@ async def test_anthropic_stream_to_openai_chat(
     sample_name: str, expect: dict[str, bool]
 ) -> None:
     sample = load_sample(sample_name)
-    adapter = TypeAdapter(anthropic_models.MessageStreamEvent)
+    adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
+        anthropic_models.MessageStreamEvent
+    )
 
     events: list[Any] = []
     for evt in sample["response"].get("events", []):
@@ -569,10 +572,11 @@ def test_anthropic_message_to_openai_responses(
 
     assert converted.output
     message_output = converted.output[0]
-    assert message_output.type == "message"
+    assert getattr(message_output, "type", None) == "message"
 
     text = ""
-    for content in message_output.content:
+    content_items = getattr(message_output, "content", [])
+    for content in content_items:
         if isinstance(content, dict) and content.get("type") == "output_text":
             text = content.get("text", "")
             break
@@ -620,12 +624,12 @@ def test_anthropic_message_request_to_openai_responses_includes_tools() -> None:
     assert converted.model == request.model
     assert converted.input
     item = converted.input[0]
-    assert item["type"] == "message"
+    assert isinstance(item, dict) and item.get("type") == "message"
 
     assert converted.tools
     tool = converted.tools[0]
-    assert tool["type"] == "function"
-    assert tool["name"] == "calculate"
+    assert isinstance(tool, dict) and tool.get("type") == "function"
+    assert isinstance(tool, dict) and tool.get("name") == "calculate"
 
 
 ANTHROPIC_RESPONSES_STREAM_CASES = [
@@ -641,7 +645,9 @@ async def test_anthropic_stream_to_openai_responses(
     sample_name: str, expect: dict[str, bool]
 ) -> None:
     sample = load_sample(sample_name)
-    adapter = TypeAdapter(anthropic_models.MessageStreamEvent)
+    adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
+        anthropic_models.MessageStreamEvent
+    )
 
     events: list[Any] = []
     for evt in sample["response"].get("events", []):

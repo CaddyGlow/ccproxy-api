@@ -1,6 +1,7 @@
 """Unit tests for CopilotOAuthClient."""
 
 from datetime import UTC, datetime
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -36,7 +37,7 @@ class TestCopilotOAuthClient:
         )
 
     @pytest.fixture
-    def mock_storage(self) -> CopilotOAuthStorage:
+    def mock_storage(self) -> Any:
         """Create mock storage."""
         storage = MagicMock(spec=CopilotOAuthStorage)
         storage.store_credentials = AsyncMock()
@@ -261,7 +262,7 @@ class TestCopilotOAuthClient:
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
             result = await client.poll_for_token(
-                "device-code", 0.01, 60
+                "device-code", 1, 60
             )  # Much faster interval for tests
 
         assert isinstance(result, CopilotOAuthToken)
@@ -292,7 +293,7 @@ class TestCopilotOAuthClient:
             pytest.raises(TimeoutError, match="Device code has expired"),
         ):
             await client.poll_for_token(
-                "device-code", 0.01, 60
+                "device-code", 1, 60
             )  # Much faster interval for tests
 
     async def test_poll_for_token_denied(
@@ -320,7 +321,7 @@ class TestCopilotOAuthClient:
             pytest.raises(ValueError, match="User denied authorization"),
         ):
             await client.poll_for_token(
-                "device-code", 0.01, 60
+                "device-code", 1, 60
             )  # Much faster interval for tests
 
     async def test_exchange_for_copilot_token_success(
@@ -527,7 +528,7 @@ class TestCopilotOAuthClient:
 
         mock_copilot_token = CopilotTokenResponse(
             token=SecretStr("copilot-token"),
-            expires_at="2024-12-31T23:59:59Z",
+            expires_at=datetime.fromisoformat("2024-12-31T23:59:59+00:00"),
         )
 
         mock_profile = CopilotProfileInfo(
@@ -556,7 +557,7 @@ class TestCopilotOAuthClient:
         assert result.account_type == "individual"
 
         # Verify storage was called
-        mock_storage.store_credentials.assert_called_once_with(result)
+        mock_storage.store_credentials.assert_called_once_with(result)  # type: ignore[attr-defined]
 
     async def test_refresh_copilot_token_success(
         self,
@@ -574,7 +575,7 @@ class TestCopilotOAuthClient:
 
         old_copilot_token = CopilotTokenResponse(
             token=SecretStr("old-copilot-token"),
-            expires_at="2024-06-01T12:00:00Z",
+            expires_at=datetime.fromisoformat("2024-06-01T12:00:00+00:00"),
         )
 
         credentials = CopilotCredentials(
@@ -585,7 +586,7 @@ class TestCopilotOAuthClient:
 
         new_copilot_token = CopilotTokenResponse(
             token=SecretStr("new-copilot-token"),
-            expires_at="2024-12-31T23:59:59Z",
+            expires_at=datetime.fromisoformat("2024-12-31T23:59:59+00:00"),
         )
 
         client = CopilotOAuthClient(
@@ -600,7 +601,7 @@ class TestCopilotOAuthClient:
 
         assert result.copilot_token is new_copilot_token
         assert result.oauth_token is oauth_token  # Should remain same
-        mock_storage.store_credentials.assert_called_once_with(result)
+        mock_storage.store_credentials.assert_called_once_with(result)  # type: ignore[attr-defined]
 
     async def test_close_with_owned_client(
         self,
@@ -615,12 +616,12 @@ class TestCopilotOAuthClient:
 
         # Create client to own
         await client._get_http_client()
-        mock_client = client._http_client
-        mock_client.aclose = AsyncMock()
-
-        await client.close()
-
-        mock_client.aclose.assert_called_once()
+        assert client._http_client is not None
+        with patch.object(
+            client._http_client, "aclose", new_callable=AsyncMock
+        ) as mock_aclose:
+            await client.close()
+            mock_aclose.assert_called_once()
         assert client._http_client is None
 
     async def test_close_with_external_client(

@@ -13,8 +13,8 @@ async def test_openai_chat_request_to_anthropic_messages_basic() -> None:
     req = openai_models.ChatCompletionRequest(
         model="gpt-4o",
         messages=[
-            {"role": "system", "content": "sys"},
-            {"role": "user", "content": "Hello"},
+            {"role": "system", "content": "sys"},  # type: ignore[list-item]
+            {"role": "user", "content": "Hello"},  # type: ignore[list-item]
         ],
         max_completion_tokens=128,
         temperature=0.2,
@@ -41,9 +41,9 @@ async def test_openai_chat_tools_and_choice_mapping() -> None:
 
     req = openai_models.ChatCompletionRequest(
         model="gpt-4o",
-        messages=[{"role": "user", "content": "calc"}],
+        messages=[{"role": "user", "content": "calc"}],  # type: ignore[list-item]
         tools=[
-            {
+            {  # type: ignore[list-item]
                 "type": "function",
                 "function": {
                     "name": "calc",

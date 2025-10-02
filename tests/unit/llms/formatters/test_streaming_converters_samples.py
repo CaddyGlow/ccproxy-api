@@ -38,14 +38,19 @@ async def test_claude_stream_to_openai_responses_sample() -> None:
     instructions = request_model.system
     if isinstance(instructions, list):
         instructions_text = "\n".join(
-            part.get("text", "") for part in instructions if isinstance(part, dict)
+            getattr(part, "text", "")
+            if hasattr(part, "text")
+            else (part.get("text", "") if isinstance(part, dict) else "")
+            for part in instructions
         )
     else:
         instructions_text = instructions or ""
 
     register_request(request_model, instructions_text)
 
-    adapter = TypeAdapter(anthropic_models.MessageStreamEvent)
+    adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
+        anthropic_models.MessageStreamEvent
+    )
     events: list[Any] = []
     for raw_event in sample["response"].get("events", []):
         payload = raw_event.get("json")
@@ -75,9 +80,10 @@ async def test_claude_stream_to_openai_responses_sample() -> None:
         assert response.instructions == instructions_text
 
     message_output = response.output[0]
+    content = getattr(message_output, "content", [])
     tool_blocks = [
         block
-        for block in message_output.content  # type: ignore[assignment]
+        for block in content
         if isinstance(block, dict) and block.get("type") == "tool_use"
     ]
     assert tool_blocks, "expected tool_use block in final response"
@@ -118,7 +124,9 @@ async def test_openai_chat_stream_to_anthropic_sample() -> None:
         if isinstance(evt, anthropic_models.ContentBlockStartEvent)
         and getattr(evt.content_block, "type", None) == "tool_use"
     )
-    assert tool_event.content_block.input, "tool input should be populated"
+    assert getattr(tool_event.content_block, "input", None), (
+        "tool input should be populated"
+    )
 
     message_delta = next(
         evt for evt in streamed if isinstance(evt, anthropic_models.MessageDeltaEvent)

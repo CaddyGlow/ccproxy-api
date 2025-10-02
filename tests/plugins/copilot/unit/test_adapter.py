@@ -1,5 +1,6 @@
 """Unit tests for CopilotAdapter."""
 
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -60,8 +61,8 @@ class TestCopilotAdapter:
         self,
         mock_oauth_provider: CopilotOAuthProvider,
         config: CopilotConfig,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_auth_manager: Any,
+        mock_http_pool_manager: Any,
         mock_detection_service: CopilotDetectionService,
     ) -> CopilotAdapter:
         """Create CopilotAdapter instance."""
@@ -162,8 +163,8 @@ class TestCopilotAdapter:
         self,
         mock_oauth_provider: CopilotOAuthProvider,
         config: CopilotConfig,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_auth_manager: Any,
+        mock_http_pool_manager: Any,
         mock_detection_service: CopilotDetectionService,
     ) -> None:
         """Test that OAuth provider is called for token."""

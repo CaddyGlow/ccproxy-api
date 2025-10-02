@@ -32,6 +32,7 @@ async def test_convert__anthropic_message_to_openai_chat__response_basic() -> No
     assert out.object == "chat.completion"
     assert out.choices and out.choices[0].message.content == "Hello"
     assert out.choices[0].finish_reason == "stop"
+    assert out.usage is not None
     assert out.usage.total_tokens == 3
 
 
@@ -42,7 +43,7 @@ async def test_convert__anthropic_message_to_openai_responses__stream_minimal() 
             model="claude-3",
             system="system instructions",
             max_tokens=32,
-            messages=[{"role": "user", "content": "Hi"}],
+            messages=[anthropic_models.Message(role="user", content="Hi")],
         ),
         "system instructions",
     )
@@ -99,7 +100,7 @@ async def test_convert__anthropic_message_to_openai_responses__stream_minimal() 
     ]
 
     text_deltas = [
-        evt.delta
+        getattr(evt, "delta", "")
         for evt in chunks
         if getattr(evt, "type", "") == "response.output_text.delta"
     ]
@@ -108,19 +109,22 @@ async def test_convert__anthropic_message_to_openai_responses__stream_minimal() 
     done_event = next(
         evt for evt in chunks if getattr(evt, "type", "") == "response.output_text.done"
     )
-    assert done_event.text == "Hi"
+    assert getattr(done_event, "text", "") == "Hi"
 
     completed = chunks[-1]
-    assert completed.type == "response.completed"
-    assert completed.response.output
-    message = completed.response.output[0]
-    assert message.content and message.content[0].text == "Hi"
-    assert completed.response.usage is not None
-    assert completed.response.instructions == "system instructions"
+    assert getattr(completed, "type", "") == "response.completed"
+    completed_response = completed.response  # type: ignore[union-attr]
+    assert completed_response.output
+    message = completed_response.output[0]
+    content = getattr(message, "content", None)
+    assert content and getattr(content[0], "text", "") == "Hi"
+    assert completed_response.usage is not None
+    assert completed_response.instructions == "system instructions"
 
     created = chunks[0]
-    assert created.response.background is None
-    assert created.response.parallel_tool_calls is True
+    created_response = created.response  # type: ignore[union-attr]
+    assert getattr(created_response, "background", None) is None
+    assert created_response.parallel_tool_calls is True
 
 
 @pytest.mark.asyncio
@@ -132,7 +136,7 @@ async def test_convert__anthropic_message_to_openai_responses__stream_with_think
             model="claude-3-opus",
             system="assistant system",
             max_tokens=128,
-            messages=[{"role": "user", "content": "lookup weather"}],
+            messages=[anthropic_models.Message(role="user", content="lookup weather")],
         ),
         "assistant system",
     )
@@ -213,7 +217,7 @@ async def test_convert__anthropic_message_to_openai_responses__stream_with_think
     assert "response.function_call_arguments.done" in event_types
 
     reasoning_deltas = [
-        evt.delta
+        getattr(evt, "delta", "")
         for evt in events
         if getattr(evt, "type", "") == "response.reasoning_summary_text.delta"
     ]
@@ -222,40 +226,44 @@ async def test_convert__anthropic_message_to_openai_responses__stream_with_think
     complete_event = next(
         evt for evt in events if getattr(evt, "type", "") == "response.completed"
     )
-    assert complete_event.response.usage is not None
-    assert complete_event.response.usage.input_tokens == 11
-    assert complete_event.response.usage.output_tokens == 7
-    assert complete_event.response.instructions == "assistant system"
+    complete_response = complete_event.response  # type: ignore[union-attr]
+    assert complete_response.usage is not None
+    assert complete_response.usage.input_tokens == 11
+    assert complete_response.usage.output_tokens == 7
+    assert complete_response.instructions == "assistant system"
 
     reasoning_output = next(
         out
-        for out in complete_event.response.output
+        for out in complete_response.output
         if getattr(out, "type", "") == "reasoning"
     )
     summary = getattr(reasoning_output, "summary", [])
-    assert summary and summary[0]["text"] == "Analyzing request"
-    assert summary[0]["signature"] == "sig-123"
+    assert summary and summary[0]["text"] == "Analyzing request"  # type: ignore[comparison-overlap]
+    assert summary[0]["signature"] == "sig-123"  # type: ignore[comparison-overlap]
 
     function_output = next(
         out
-        for out in complete_event.response.output
+        for out in complete_response.output
         if getattr(out, "type", "") == "function_call"
     )
-    assert function_output.name == "get_weather"
-    assert function_output.arguments == '{"location":"seattle","units":"metric"}'
+    assert getattr(function_output, "name", "") == "get_weather"
+    assert (
+        getattr(function_output, "arguments", "")
+        == '{"location":"seattle","units":"metric"}'
+    )
 
-    tool_calls = getattr(complete_event.response, "tool_calls", []) or []
+    tool_calls = getattr(complete_response, "tool_calls", []) or []
     assert tool_calls
     parsed_arguments = json.loads(tool_calls[0]["function"]["arguments"])
     assert parsed_arguments == {"location": "seattle", "units": "metric"}
 
     message_outputs = [
         out
-        for out in complete_event.response.output
+        for out in getattr(complete_response, "output", [])
         if getattr(out, "type", "") == "message"
     ]
     if message_outputs:
-        assert not message_outputs[0].content
+        assert not getattr(message_outputs[0], "content", None)
 
 
 @pytest.mark.asyncio
@@ -263,7 +271,7 @@ async def test_convert__anthropic_message_to_openai_responses__request_basic() -
     req = anthropic_models.CreateMessageRequest(
         model="claude-3",
         system="sys",
-        messages=[{"role": "user", "content": "Hi"}],
+        messages=[anthropic_models.Message(role="user", content="Hi")],
         max_tokens=256,
         stream=True,
     )

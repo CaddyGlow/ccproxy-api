@@ -25,10 +25,10 @@ class CopilotOAuthToken(BaseModel):
 
     access_token: SecretStr = Field(..., alias="access_token")
     token_type: str = Field(default="bearer", alias="token_type")
-    expires_in: int | None = Field(None, alias="expires_in")
+    expires_in: int | None = Field(default=None, alias="expires_in")
     refresh_token: SecretStr | None = Field(default=None, alias="refresh_token")
     scope: str = Field(default="read:user", alias="scope")
-    created_at: int | None = Field(None, alias="created_at")
+    created_at: int | None = Field(default=None, alias="created_at")
 
     @field_serializer("access_token", "refresh_token")
     def serialize_secret(self, value: SecretStr | None) -> str | None:
@@ -102,12 +102,12 @@ class CopilotOAuthToken(BaseModel):
 class CopilotEndpoints(BaseModel):
     """Copilot API endpoints configuration."""
 
-    api: str | None = Field(None, description="API endpoint URL")
+    api: str | None = Field(default=None, description="API endpoint URL")
     origin_tracker: str | None = Field(
-        None, alias="origin-tracker", description="Origin tracker endpoint URL"
+        default=None, alias="origin-tracker", description="Origin tracker endpoint URL"
     )
-    proxy: str | None = Field(None, description="Proxy endpoint URL")
-    telemetry: str | None = Field(None, description="Telemetry endpoint URL")
+    proxy: str | None = Field(default=None, description="Proxy endpoint URL")
+    telemetry: str | None = Field(default=None, description="Telemetry endpoint URL")
 
 
 class CopilotTokenResponse(BaseModel):
@@ -115,57 +115,71 @@ class CopilotTokenResponse(BaseModel):
 
     # Core required fields (backward compatibility)
     token: SecretStr = Field(..., description="Copilot service token")
-    expires_at: datetime | None = Field(None, description="Token expiration datetime")
-    refresh_in: int | None = Field(None, description="Refresh interval in seconds")
+    expires_at: datetime | None = Field(
+        default=None, description="Token expiration datetime"
+    )
+    refresh_in: int | None = Field(
+        default=None, description="Refresh interval in seconds"
+    )
 
     # Extended optional fields from full API response
     annotations_enabled: bool | None = Field(
-        None, description="Whether annotations are enabled"
+        default=None, description="Whether annotations are enabled"
     )
     blackbird_clientside_indexing: bool | None = Field(
-        None, description="Whether blackbird clientside indexing is enabled"
+        default=None, description="Whether blackbird clientside indexing is enabled"
     )
-    chat_enabled: bool | None = Field(None, description="Whether chat is enabled")
+    chat_enabled: bool | None = Field(
+        default=None, description="Whether chat is enabled"
+    )
     chat_jetbrains_enabled: bool | None = Field(
-        None, description="Whether JetBrains chat is enabled"
+        default=None, description="Whether JetBrains chat is enabled"
     )
     code_quote_enabled: bool | None = Field(
-        None, description="Whether code quote is enabled"
+        default=None, description="Whether code quote is enabled"
     )
     code_review_enabled: bool | None = Field(
-        None, description="Whether code review is enabled"
+        default=None, description="Whether code review is enabled"
     )
-    codesearch: bool | None = Field(None, description="Whether code search is enabled")
+    codesearch: bool | None = Field(
+        default=None, description="Whether code search is enabled"
+    )
     copilotignore_enabled: bool | None = Field(
-        None, description="Whether copilotignore is enabled"
+        default=None, description="Whether copilotignore is enabled"
     )
     endpoints: CopilotEndpoints | None = Field(
-        None, description="API endpoints configuration"
+        default=None, description="API endpoints configuration"
     )
     individual: bool | None = Field(
-        None, description="Whether this is an individual account"
+        default=None, description="Whether this is an individual account"
     )
     limited_user_quotas: dict[str, Any] | None = Field(
-        None, description="Limited user quotas if any"
+        default=None, description="Limited user quotas if any"
     )
     limited_user_reset_date: int | None = Field(
-        None, description="Limited user reset date if any"
+        default=None, description="Limited user reset date if any"
     )
-    prompt_8k: bool | None = Field(None, description="Whether 8k prompts are enabled")
+    prompt_8k: bool | None = Field(
+        default=None, description="Whether 8k prompts are enabled"
+    )
     public_suggestions: str | None = Field(
-        None, description="Public suggestions setting"
+        default=None, description="Public suggestions setting"
     )
-    sku: str | None = Field(None, description="SKU identifier")
+    sku: str | None = Field(default=None, description="SKU identifier")
     snippy_load_test_enabled: bool | None = Field(
-        None, description="Whether snippy load test is enabled"
+        default=None, description="Whether snippy load test is enabled"
     )
-    telemetry: str | None = Field(None, description="Telemetry setting")
-    tracking_id: str | None = Field(None, description="Tracking ID")
+    telemetry: str | None = Field(default=None, description="Telemetry setting")
+    tracking_id: str | None = Field(default=None, description="Tracking ID")
     vsc_electron_fetcher_v2: bool | None = Field(
-        None, description="Whether VSCode electron fetcher v2 is enabled"
+        default=None, description="Whether VSCode electron fetcher v2 is enabled"
     )
-    xcode: bool | None = Field(None, description="Whether Xcode integration is enabled")
-    xcode_chat: bool | None = Field(None, description="Whether Xcode chat is enabled")
+    xcode: bool | None = Field(
+        default=None, description="Whether Xcode integration is enabled"
+    )
+    xcode_chat: bool | None = Field(
+        default=None, description="Whether Xcode chat is enabled"
+    )
 
     @field_serializer("token")
     def serialize_secret(self, value: SecretStr) -> str:
@@ -280,10 +294,12 @@ class CopilotProfileInfo(BaseProfileInfo):
 
     # GitHub-specific fields
     login: str = Field(..., description="GitHub username")
-    name: str | None = Field(None, description="Full name")
-    avatar_url: str | None = Field(None, description="Avatar URL")
-    html_url: str | None = Field(None, description="Profile URL")
-    copilot_plan: str | None = Field(None, description="Copilot subscription plan")
+    name: str | None = Field(default=None, description="Full name")
+    avatar_url: str | None = Field(default=None, description="Avatar URL")
+    html_url: str | None = Field(default=None, description="Profile URL")
+    copilot_plan: str | None = Field(
+        default=None, description="Copilot subscription plan"
+    )
     copilot_access: bool = Field(default=False, description="Has Copilot access")
 
     @computed_field
@@ -334,12 +350,14 @@ class DeviceCodeResponse(BaseModel):
 class DeviceTokenPollResponse(BaseModel):
     """Response from device code token polling."""
 
-    access_token: str | None = Field(None, description="Access token if authorized")
-    token_type: str | None = Field(None, description="Token type")
-    scope: str | None = Field(None, description="Granted scopes")
-    error: str | None = Field(None, description="Error code if any")
-    error_description: str | None = Field(None, description="Error description")
-    error_uri: str | None = Field(None, description="Error URI")
+    access_token: str | None = Field(
+        default=None, description="Access token if authorized"
+    )
+    token_type: str | None = Field(default=None, description="Token type")
+    scope: str | None = Field(default=None, description="Granted scopes")
+    error: str | None = Field(default=None, description="Error code if any")
+    error_description: str | None = Field(default=None, description="Error description")
+    error_uri: str | None = Field(default=None, description="Error URI")
 
     @property
     def is_pending(self) -> bool:

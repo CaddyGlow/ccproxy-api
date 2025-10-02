@@ -2,8 +2,10 @@
 
 import json
 import tempfile
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import SecretStr
@@ -20,7 +22,7 @@ class TestCopilotOAuthStorage:
     """Test cases for CopilotOAuthStorage."""
 
     @pytest.fixture
-    def temp_storage_dir(self) -> Path:
+    def temp_storage_dir(self) -> Iterator[Path]:
         """Create temporary directory for storage tests."""
         with tempfile.TemporaryDirectory() as temp_dir:
             yield Path(temp_dir)
@@ -42,7 +44,7 @@ class TestCopilotOAuthStorage:
         """Create mock Copilot token."""
         return CopilotTokenResponse(
             token=SecretStr("copilot_test_token"),
-            expires_at="2024-12-31T23:59:59Z",
+            expires_at=datetime.fromisoformat("2024-12-31T23:59:59+00:00"),
         )
 
     @pytest.fixture
@@ -390,7 +392,7 @@ class TestCopilotOAuthStorage:
             return await storage_with_temp_dir.load()
 
         # Run fewer concurrent operations for faster tests
-        tasks = []
+        tasks: list[Any] = []
         for _ in range(2):  # Reduced from 5 to 2 for faster execution
             tasks.append(save_credentials(mock_credentials))
             tasks.append(load_credentials())

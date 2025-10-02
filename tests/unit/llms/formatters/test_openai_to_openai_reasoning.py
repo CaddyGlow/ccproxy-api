@@ -85,16 +85,16 @@ async def test_chat_to_responses_extracts_thinking() -> None:
         entry for entry in response.output if _get_type(entry) == "reasoning"
     ]
     assert len(reasoning_items) == 1
-    summary = reasoning_items[0].summary  # type: ignore[attr-defined]
+    summary = getattr(reasoning_items[0], "summary", None)  # type: ignore[union-attr]
     assert summary is not None
-    assert summary[0]["text"] == "Thoughts"
-    assert summary[0]["signature"] == "sig"
+    assert summary[0]["text"] == "Thoughts"  # type: ignore[comparison-overlap]
+    assert summary[0]["signature"] == "sig"  # type: ignore[comparison-overlap]
 
     message_items = [
         entry for entry in response.output if _get_type(entry) == "message"
     ]
     assert len(message_items) == 1
-    content = message_items[0].content[0].text  # type: ignore[attr-defined]
+    content = getattr(getattr(message_items[0], "content", [{}])[0], "text", "")  # type: ignore[union-attr]
     assert content == "Final answer"
 
     assert response.reasoning is not None
@@ -243,7 +243,8 @@ async def test_responses_request_promotes_developer_to_system() -> None:
     chat_request = await convert__openai_responses_to_openaichat__request(request)
 
     assert chat_request.messages[0].role == "system"
-    assert "Developer instructions" in chat_request.messages[0].content
+    content = chat_request.messages[0].content
+    assert isinstance(content, str) and "Developer instructions" in content
     assert chat_request.messages[1].role == "user"
     assert chat_request.messages[1].content == "hello"
 
@@ -285,7 +286,7 @@ async def test_responses_fixture_request_converts_to_chat_messages() -> None:
     assert system_message.content.startswith(
         "You are a coding agent running in the opencode, a terminal-based"
     )
-    assert "## Planning" in system_message.content
+    assert "## Planning" in system_message.content  # type: ignore[operator]
 
     # Spot-check early conversational turns.
     assert chat_request.messages[1].role == "user"
@@ -370,9 +371,9 @@ async def test_chat_stream_to_responses_emits_full_lifecycle() -> None:
             ],
         }
 
-    events: list[openai_models.BaseStreamEvent] = []
+    events: list[openai_models.StreamEventType] = []
     async for chunk in convert__openai_chat_to_openai_responses__stream(source()):
-        events.append(chunk)
+        events.append(chunk)  # type: ignore[arg-type]
 
     types = [getattr(evt, "type", None) for evt in events]
     assert types[0] == "response.created"
@@ -382,7 +383,7 @@ async def test_chat_stream_to_responses_emits_full_lifecycle() -> None:
     assert "response.output_text.done" in types
 
     deltas = [
-        evt.delta
+        getattr(evt, "delta", "")
         for evt in events
         if getattr(evt, "type", "") == "response.output_text.delta"
     ]
@@ -391,28 +392,33 @@ async def test_chat_stream_to_responses_emits_full_lifecycle() -> None:
     done = next(
         evt for evt in events if getattr(evt, "type", "") == "response.output_text.done"
     )
-    assert done.text == "Hello"
+    assert getattr(done, "text", "") == "Hello"
 
     created = events[0]
-    assert created.response.background is None
-    assert created.response.instructions == "Be helpful"
-    assert created.response.parallel_tool_calls is True
-    assert created.response.temperature == pytest.approx(1.0)
-    assert created.response.top_p == pytest.approx(1.0)
-    assert created.response.text == {"format": {"type": "text"}, "verbosity": "low"}
+    assert getattr(created, "response", None) is not None
+    created_response = created.response  # type: ignore[union-attr]
+    assert getattr(created_response, "background", None) is None
+    assert created_response.instructions == "Be helpful"
+    assert created_response.parallel_tool_calls is True
+    assert created_response.temperature == pytest.approx(1.0)
+    assert created_response.top_p == pytest.approx(1.0)
+    assert created_response.text == {"format": {"type": "text"}, "verbosity": "low"}
 
     in_progress = events[1]
-    assert in_progress.type == "response.in_progress"
-    assert in_progress.response.parallel_tool_calls is True
-    assert in_progress.response.instructions == "Be helpful"
+    assert getattr(in_progress, "type", "") == "response.in_progress"
+    in_progress_response = in_progress.response  # type: ignore[union-attr]
+    assert in_progress_response.parallel_tool_calls is True
+    assert in_progress_response.instructions == "Be helpful"
 
     completed = events[-1]
-    assert completed.type == "response.completed"
-    assert completed.response.output
-    final_message = completed.response.output[0]
-    assert final_message.content and final_message.content[0].text == "Hello"
-    assert completed.response.usage is not None
-    assert completed.response.instructions == "Be helpful"
+    assert getattr(completed, "type", "") == "response.completed"
+    completed_response = completed.response  # type: ignore[union-attr]
+    assert completed_response.output
+    final_message = completed_response.output[0]
+    content = getattr(final_message, "content", None)
+    assert content and getattr(content[0], "text", "") == "Hello"
+    assert completed_response.usage is not None
+    assert completed_response.instructions == "Be helpful"
 
 
 @pytest.mark.asyncio
@@ -457,9 +463,9 @@ async def test_chat_stream_to_responses_includes_usage_from_final_chunk() -> Non
             },
         }
 
-    events: list[openai_models.BaseStreamEvent] = []
+    events: list[openai_models.StreamEventType] = []
     async for chunk in convert__openai_chat_to_openai_responses__stream(source()):
-        events.append(chunk)
+        events.append(chunk)  # type: ignore[arg-type]
 
     types = [getattr(evt, "type", None) for evt in events]
     assert types[0] == "response.created"
@@ -469,13 +475,16 @@ async def test_chat_stream_to_responses_includes_usage_from_final_chunk() -> Non
     assert "response.output_text.done" in types
 
     completed = events[-1]
-    assert completed.response.usage is not None
-    assert completed.response.usage.input_tokens == 2
-    assert completed.response.usage.output_tokens == 2
-    assert completed.response.instructions == "System note"
+    completed_response = completed.response  # type: ignore[union-attr]
+    assert completed_response.usage is not None
+    assert completed_response.usage.input_tokens == 2
+    assert completed_response.usage.output_tokens == 2
+    assert completed_response.instructions == "System note"
 
     created = events[0]
-    assert created.response.text["verbosity"] == "low"
+    created_response = created.response  # type: ignore[union-attr]
+    text_config = getattr(created_response, "text", {})
+    assert isinstance(text_config, dict) and text_config.get("verbosity") == "low"
 
 
 @pytest.mark.asyncio
@@ -545,9 +554,9 @@ async def test_chat_stream_tool_calls_emit_responses_events() -> None:
             ],
         }
 
-    events: list[openai_models.BaseStreamEvent] = []
+    events: list[openai_models.StreamEventType] = []
     async for event in convert__openai_chat_to_openai_responses__stream(source()):
-        events.append(event)
+        events.append(event)  # type: ignore[arg-type]
 
     types = [getattr(evt, "type", None) for evt in events]
     assert types == [
@@ -563,7 +572,7 @@ async def test_chat_stream_tool_calls_emit_responses_events() -> None:
     ]
 
     deltas = [
-        evt.delta
+        getattr(evt, "delta", "")
         for evt in events
         if getattr(evt, "type", "") == "response.function_call_arguments.delta"
     ]
@@ -573,28 +582,30 @@ async def test_chat_stream_tool_calls_emit_responses_events() -> None:
         evt
         for evt in events
         if getattr(evt, "type", "") == "response.output_item.added"
-        and getattr(evt.item, "type", "") == "function_call"
+        and getattr(getattr(evt, "item", None), "type", "") == "function_call"
     )
-    assert fn_added.item.id == "call_abc"
-    assert fn_added.item.name == "get_weather"
-    assert fn_added.item.call_id == "call_abc"
+    fn_added_item = fn_added.item  # type: ignore[union-attr]
+    assert fn_added_item.id == "call_abc"
+    assert fn_added_item.name == "get_weather"
+    assert fn_added_item.call_id == "call_abc"
 
     args_done = next(
         evt
         for evt in events
         if getattr(evt, "type", "") == "response.function_call_arguments.done"
     )
-    assert args_done.arguments == '{"city": "New York"}'
+    assert getattr(args_done, "arguments", "") == '{"city": "New York"}'
 
     completed = events[-1]
-    assert completed.type == "response.completed"
-    assert completed.response.parallel_tool_calls is True
-    assert len(completed.response.output) == 1
-    fn_output = completed.response.output[0]
-    assert fn_output.id == "call_abc"
-    assert fn_output.name == "get_weather"
-    assert fn_output.arguments == '{"city": "New York"}'
-    tool_calls = getattr(completed.response, "tool_calls", []) or []
+    assert getattr(completed, "type", "") == "response.completed"
+    completed_response = completed.response  # type: ignore[union-attr]
+    assert completed_response.parallel_tool_calls is True
+    assert len(completed_response.output) == 1
+    fn_output = completed_response.output[0]
+    assert getattr(fn_output, "id", "") == "call_abc"
+    assert getattr(fn_output, "name", "") == "get_weather"
+    assert getattr(fn_output, "arguments", "") == '{"city": "New York"}'
+    tool_calls = getattr(completed_response, "tool_calls", []) or []
     assert tool_calls
     assert tool_calls[0]["function"]["arguments"] == '{"city": "New York"}'
 
@@ -646,7 +657,9 @@ async def test_responses_stream_includes_thinking_xml() -> None:
         if chunk.choices:
             delta_msg = chunk.choices[0].delta
             if delta_msg and delta_msg.content:
-                deltas.append(delta_msg.content)
+                content = delta_msg.content
+                if isinstance(content, str):
+                    deltas.append(content)
 
     assert deltas[0] == '<thinking signature="sig">Thoughts'
     assert deltas[1] == "</thinking>"

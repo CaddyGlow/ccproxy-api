@@ -595,8 +595,11 @@ def test_responses_accumulator_uses_completed_response_payload() -> None:
 
     completed_copy = accumulator.get_completed_response()
     assert completed_copy == completed_event.response.model_dump()
-    completed_copy["status"] = "mutated"
-    assert accumulator.get_completed_response()["status"] == "completed"
+    if completed_copy is not None:
+        completed_copy["status"] = "mutated"
+    retrieved_response = accumulator.get_completed_response()
+    assert retrieved_response is not None
+    assert retrieved_response["status"] == "completed"
 
 
 def test_responses_accumulator_falls_back_to_output_summary() -> None:

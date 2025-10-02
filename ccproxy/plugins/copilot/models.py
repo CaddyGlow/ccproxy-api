@@ -18,7 +18,7 @@ class CopilotEmbeddingRequest(BaseModel):
     model: str = Field(
         default="text-embedding-ada-002", description="Embedding model to use"
     )
-    user: str | None = Field(None, description="User identifier")
+    user: str | None = Field(default=None, description="User identifier")
 
 
 # Model listing uses standard OpenAI model format
@@ -51,17 +51,19 @@ class CopilotHealthResponse(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.now, description="Check timestamp"
     )
-    details: dict[str, Any] | None = Field(None, description="Additional details")
+    details: dict[str, Any] | None = Field(
+        default=None, description="Additional details"
+    )
 
 
 class CopilotTokenStatus(BaseModel):
     """Token status information."""
 
     valid: bool = Field(..., description="Whether token is valid")
-    expires_at: datetime | None = Field(None, description="Token expiration")
+    expires_at: datetime | None = Field(default=None, description="Token expiration")
     account_type: str = Field(..., description="Account type")
     copilot_access: bool = Field(..., description="Has Copilot access")
-    username: str | None = Field(None, description="GitHub username")
+    username: str | None = Field(default=None, description="GitHub username")
 
 
 class CopilotQuotaSnapshot(BaseModel):
@@ -84,7 +86,7 @@ class CopilotUserInternalResponse(BaseModel):
     access_type_sku: str = Field(..., description="Access type SKU")
     analytics_tracking_id: str = Field(..., description="Analytics tracking ID")
     assigned_date: datetime | None = Field(
-        None, description="Date when access was assigned"
+        default=None, description="Date when access was assigned"
     )
     can_signup_for_limited: bool = Field(
         ..., description="Can sign up for limited access"
@@ -128,9 +130,9 @@ class CopilotCacheData(BaseModel):
     """Cached detection data for GitHub CLI."""
 
     cli_available: bool = Field(..., description="Whether GitHub CLI is available")
-    cli_version: str | None = Field(None, description="CLI version")
-    auth_status: str | None = Field(None, description="Authentication status")
-    username: str | None = Field(None, description="Authenticated username")
+    cli_version: str | None = Field(default=None, description="CLI version")
+    auth_status: str | None = Field(default=None, description="Authentication status")
+    username: str | None = Field(default=None, description="Authenticated username")
     last_check: datetime = Field(
         default_factory=datetime.now, description="Last check timestamp"
     )
@@ -140,7 +142,7 @@ class CopilotCliInfo(BaseModel):
     """GitHub CLI health information."""
 
     available: bool = Field(..., description="CLI is available")
-    version: str | None = Field(None, description="CLI version")
+    version: str | None = Field(default=None, description="CLI version")
     authenticated: bool = Field(default=False, description="User is authenticated")
-    username: str | None = Field(None, description="Authenticated username")
-    error: str | None = Field(None, description="Error message if any")
+    username: str | None = Field(default=None, description="Authenticated username")
+    error: str | None = Field(default=None, description="Error message if any")

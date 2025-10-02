@@ -191,18 +191,26 @@ def test_openai_responses_samples_validate(
     assert response.model
     assert response.output
 
-    reasoning_count = sum(1 for item in response.output if item.type == "reasoning")
+    reasoning_count = sum(
+        1 for item in response.output if getattr(item, "type", None) == "reasoning"
+    )
     assert bool(reasoning_count) is expect["expect_reasoning"]
 
-    function_calls = [item for item in response.output if item.type == "function_call"]
+    function_calls = [
+        item
+        for item in response.output
+        if getattr(item, "type", None) == "function_call"
+    ]
     assert len(function_calls) == expect["expect_function_calls"]
 
-    message_items = [item for item in response.output if item.type == "message"]
+    message_items = [
+        item for item in response.output if getattr(item, "type", None) == "message"
+    ]
     if expect.get("text_empty"):
         assert not message_items
     else:
         assert message_items
-        text = _message_text(message_items[0].content)
+        text = _message_text(getattr(message_items[0], "content", ""))
         if expect.get("text_contains"):
             assert expect["text_contains"] in text
         if expect.get("text_startswith"):
@@ -321,7 +329,9 @@ def test_anthropic_stream_samples_validate(
     sample = load_sample(sample_name)
     events = sample["response"].get("events", [])
 
-    adapter = TypeAdapter(anthropic_models.MessageStreamEvent)
+    adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
+        anthropic_models.MessageStreamEvent
+    )
     parsed: list[Any] = []
     for event in events:
         body = event.get("json")

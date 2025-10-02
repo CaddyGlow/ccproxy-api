@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
+from time import time
 from typing import Any
 
 import httpx
@@ -122,7 +123,9 @@ class CopilotTokenManager(BaseTokenManager[CopilotCredentials]):
 
         try:
             refreshed = await self._client.refresh_copilot_token(credentials)
-            await self.save_credentials(refreshed)
+            # Client already persisted credentials; refresh in-memory caches.
+            self._credentials_cache = refreshed
+            self._credentials_loaded_at = time()
             self._auth_cache.clear()
             self._profile_cache = None
             return refreshed
@@ -136,10 +139,18 @@ class CopilotTokenManager(BaseTokenManager[CopilotCredentials]):
             return None
 
     def is_expired(self, credentials: CopilotCredentials) -> bool:
-        if not credentials.copilot_token:
+        token = credentials.copilot_token
+        if not token:
             return True
-        if credentials.copilot_token.is_expired:
+
+        now = datetime.now(UTC)
+        if token.expires_at and now >= token.expires_at:
             return True
+
+        refresh_deadline = self._compute_refresh_deadline(credentials)
+        if refresh_deadline and now >= refresh_deadline:
+            return True
+
         return credentials.oauth_token.is_expired
 
     def get_account_id(self, credentials: CopilotCredentials) -> str | None:
@@ -147,11 +158,24 @@ class CopilotTokenManager(BaseTokenManager[CopilotCredentials]):
         return None
 
     def get_expiration_time(self, credentials: CopilotCredentials) -> datetime | None:
-        if credentials.copilot_token and credentials.copilot_token.expires_at:
-            return credentials.copilot_token.expires_at
+        candidates: list[datetime] = []
+
+        token = credentials.copilot_token
+        if token:
+            if token.expires_at:
+                candidates.append(token.expires_at)
+
+            refresh_deadline = self._compute_refresh_deadline(credentials)
+            if refresh_deadline:
+                candidates.append(refresh_deadline)
+
         if credentials.oauth_token.expires_in and credentials.oauth_token.created_at:
-            return credentials.oauth_token.expires_at_datetime
-        return None
+            candidates.append(credentials.oauth_token.expires_at_datetime)
+
+        if not candidates:
+            return None
+
+        return min(candidates)
 
     # ==================================================================
     # Token access helpers used by adapters/routes
@@ -168,7 +192,9 @@ class CopilotTokenManager(BaseTokenManager[CopilotCredentials]):
         if not credentials.copilot_token or credentials.copilot_token.is_expired:
             logger.info("copilot_token_refresh_needed", category="auth")
             credentials = await self._client.refresh_copilot_token(credentials)
-            await self.save_credentials(credentials)
+            self._credentials_cache = credentials
+            self._credentials_loaded_at = time()
+            self._auth_cache.clear()
             self._profile_cache = None
 
         token = credentials.copilot_token
@@ -217,6 +243,28 @@ class CopilotTokenManager(BaseTokenManager[CopilotCredentials]):
 
     async def aclose(self) -> None:
         await self._client.close()
+
+    def _compute_refresh_deadline(
+        self, credentials: CopilotCredentials
+    ) -> datetime | None:
+        token = credentials.copilot_token
+        if not token or not token.refresh_in:
+            return None
+
+        try:
+            updated_at = int(credentials.updated_at)
+        except (TypeError, ValueError):
+            return None
+
+        try:
+            refresh_in = int(token.refresh_in)
+        except (TypeError, ValueError):
+            return None
+
+        if refresh_in <= 0:
+            return datetime.now(UTC)
+
+        return datetime.fromtimestamp(updated_at + refresh_in, tz=UTC)
 
 
 __all__ = ["CopilotTokenManager"]

@@ -6,7 +6,7 @@ from ccproxy.plugins.copilot.adapter import CopilotAdapter
 
 class DummyConfig:
     base_url = "https://example"
-    api_headers = {}
+    api_headers: dict[str, str] = {}
 
 
 class DummyDetection:
@@ -19,14 +19,14 @@ class DummyHTTPPool:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_copilot_adapter_raises_auth_error_when_no_manager():
+async def test_copilot_adapter_raises_auth_error_when_no_manager() -> None:
     # Create adapter with auth_manager=None
     adapter = CopilotAdapter(
-        config=DummyConfig(),
-        auth_manager=None,  # type: ignore
-        detection_service=DummyDetection(),
-        http_pool_manager=DummyHTTPPool(),
-        oauth_provider=None,
+        config=DummyConfig(),  # type: ignore[arg-type]
+        auth_manager=None,
+        detection_service=DummyDetection(),  # type: ignore[arg-type]
+        http_pool_manager=DummyHTTPPool(),  # type: ignore[arg-type]
+        oauth_provider=None,  # type: ignore[arg-type]
     )
 
     with pytest.raises(AuthenticationError):

@@ -1,6 +1,7 @@
 """Tests for Copilot adapter response normalization."""
 
 import json
+from typing import cast
 from unittest.mock import MagicMock
 
 import httpx
@@ -18,9 +19,9 @@ async def test_process_provider_response_adds_missing_created_timestamp() -> Non
     adapter = CopilotAdapter(
         oauth_provider=MagicMock(),
         config=CopilotConfig(),
-        auth_manager=object(),
-        detection_service=object(),
-        http_pool_manager=object(),
+        auth_manager=MagicMock(),  # type: ignore[arg-type]
+        detection_service=MagicMock(),  # type: ignore[arg-type]
+        http_pool_manager=MagicMock(),  # type: ignore[arg-type]
     )
 
     provider_payload = {
@@ -45,7 +46,7 @@ async def test_process_provider_response_adds_missing_created_timestamp() -> Non
         provider_response, "/chat/completions"
     )
 
-    body = json.loads(result.body)
+    body = json.loads(cast(bytes, result.body))
 
     assert "created" in body
     assert isinstance(body["created"], int)
@@ -58,9 +59,9 @@ async def test_process_provider_response_normalizes_response_object() -> None:
     adapter = CopilotAdapter(
         oauth_provider=MagicMock(),
         config=CopilotConfig(),
-        auth_manager=object(),
-        detection_service=object(),
-        http_pool_manager=object(),
+        auth_manager=MagicMock(),  # type: ignore[arg-type]
+        detection_service=MagicMock(),  # type: ignore[arg-type]
+        http_pool_manager=MagicMock(),  # type: ignore[arg-type]
     )
 
     provider_payload = {
@@ -90,10 +91,15 @@ async def test_process_provider_response_normalizes_response_object() -> None:
 
     result = await adapter.process_provider_response(provider_response, "/responses")
 
-    body = json.loads(result.body)
+    body = json.loads(cast(bytes, result.body))
 
     # Validate against canonical model and ensure key fields are present
     normalized = ResponseObject.model_validate(body)
     assert normalized.object == "response"
     assert normalized.status == "completed"
-    assert normalized.output[0].content[0].type == "output_text"
+    # Use type narrowing to access content safely
+    first_output = normalized.output[0]
+    assert hasattr(first_output, "content")
+    first_content = first_output.content[0]  # type: ignore[union-attr]
+    assert hasattr(first_content, "type")
+    assert first_content.type == "output_text"  # type: ignore[union-attr]

@@ -1,6 +1,7 @@
 """Unit tests for CopilotOAuthProvider."""
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -33,11 +34,10 @@ class TestCopilotOAuthProvider:
             copilot_token_url="https://api.github.com/copilot_internal/v2/token",
             scopes=["read:user"],
             use_pkce=True,
-            account_type="individual",
         )
 
     @pytest.fixture
-    def mock_storage(self) -> CopilotOAuthStorage:
+    def mock_storage(self) -> Any:
         """Create mock storage."""
         storage = MagicMock(spec=CopilotOAuthStorage)
         storage.load = AsyncMock(return_value=None)
@@ -66,7 +66,7 @@ class TestCopilotOAuthProvider:
     def oauth_provider(
         self,
         mock_config: CopilotOAuthConfig,
-        mock_storage: CopilotOAuthStorage,
+        mock_storage: Any,
         mock_http_client: MagicMock,
         mock_hook_manager: MagicMock,
         mock_detection_service: MagicMock,
@@ -74,7 +74,7 @@ class TestCopilotOAuthProvider:
         """Create CopilotOAuthProvider instance."""
         return CopilotOAuthProvider(
             config=mock_config,
-            storage=mock_storage,
+            storage=mock_storage,  # type: ignore[arg-type]
             http_client=mock_http_client,
             hook_manager=mock_hook_manager,
             detection_service=mock_detection_service,
@@ -95,9 +95,7 @@ class TestCopilotOAuthProvider:
     @pytest.fixture
     def mock_copilot_token(self) -> CopilotTokenResponse:
         """Create mock Copilot token."""
-        expires_at = (datetime.now(UTC) + timedelta(hours=1)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
         return CopilotTokenResponse(
             token=SecretStr("copilot_test_token"),
             expires_at=expires_at,
@@ -181,7 +179,7 @@ class TestCopilotOAuthProvider:
         with patch.object(
             oauth_provider.client, "start_device_flow", new_callable=AsyncMock
         ) as mock_client:
-            mock_client.return_value = mock_response
+            mock_client.return_value = mock_response  # type: ignore[attr-defined]
 
             (
                 device_code,
@@ -204,7 +202,7 @@ class TestCopilotOAuthProvider:
         with patch.object(
             oauth_provider.client, "complete_authorization", new_callable=AsyncMock
         ) as mock_client:
-            mock_client.return_value = mock_credentials
+            mock_client.return_value = mock_credentials  # type: ignore[attr-defined]
 
             result = await oauth_provider.complete_device_flow(
                 "test-device-code", 5, 900
@@ -229,7 +227,7 @@ class TestCopilotOAuthProvider:
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test successful token refresh."""
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         refreshed_credentials = MagicMock(spec=CopilotCredentials)
         refreshed_credentials.copilot_token = mock_credentials.copilot_token
@@ -237,7 +235,7 @@ class TestCopilotOAuthProvider:
         with patch.object(
             oauth_provider.client, "refresh_copilot_token", new_callable=AsyncMock
         ) as mock_client:
-            mock_client.return_value = refreshed_credentials
+            mock_client.return_value = refreshed_credentials  # type: ignore[attr-defined]
 
             result = await oauth_provider.refresh_token("dummy-refresh-token")
 
@@ -250,7 +248,7 @@ class TestCopilotOAuthProvider:
         self, oauth_provider: CopilotOAuthProvider
     ) -> None:
         """Test token refresh when no credentials found."""
-        oauth_provider.storage.load_credentials.return_value = None
+        oauth_provider.storage.load_credentials.return_value = None  # type: ignore[attr-defined]
 
         with pytest.raises(ValueError, match="No credentials found for refresh"):
             await oauth_provider.refresh_token("dummy-refresh-token")
@@ -261,7 +259,7 @@ class TestCopilotOAuthProvider:
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test token refresh when Copilot token is None."""
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         refreshed_credentials = MagicMock(spec=CopilotCredentials)
         refreshed_credentials.copilot_token = None
@@ -269,7 +267,7 @@ class TestCopilotOAuthProvider:
         with patch.object(
             oauth_provider.client, "refresh_copilot_token", new_callable=AsyncMock
         ) as mock_client:
-            mock_client.return_value = refreshed_credentials
+            mock_client.return_value = refreshed_credentials  # type: ignore[attr-defined]
 
             with pytest.raises(ValueError, match="Failed to refresh Copilot token"):
                 await oauth_provider.refresh_token("dummy-refresh-token")
@@ -280,7 +278,7 @@ class TestCopilotOAuthProvider:
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test successful user profile retrieval."""
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         mock_profile = StandardProfileFields(
             account_id="12345",
@@ -292,7 +290,7 @@ class TestCopilotOAuthProvider:
         with patch.object(
             oauth_provider.client, "get_standard_profile", new_callable=AsyncMock
         ) as mock_client:
-            mock_client.return_value = mock_profile
+            mock_client.return_value = mock_profile  # type: ignore[attr-defined]
 
             result = await oauth_provider.get_user_profile()
 
@@ -319,22 +317,24 @@ class TestCopilotOAuthProvider:
         with patch.object(
             oauth_provider.client, "get_standard_profile", new_callable=AsyncMock
         ) as mock_client:
-            mock_client.return_value = mock_profile
+            mock_client.return_value = mock_profile  # type: ignore[attr-defined]
 
             result = await oauth_provider.get_user_profile("explicit-token")
 
             assert result is mock_profile
             mock_client.assert_awaited_once()
-            args, _ = mock_client.await_args
+            await_args = mock_client.await_args
+            assert await_args is not None
+            args, _ = await_args
             assert isinstance(args[0], CopilotOAuthToken)
             assert args[0].access_token.get_secret_value() == "explicit-token"
-            oauth_provider.storage.load_credentials.assert_not_awaited()
+            oauth_provider.storage.load_credentials.assert_not_awaited()  # type: ignore[attr-defined]
 
     async def test_get_user_profile_no_credentials(
         self, oauth_provider: CopilotOAuthProvider
     ) -> None:
         """Test user profile retrieval when no credentials found."""
-        oauth_provider.storage.load_credentials.return_value = None
+        oauth_provider.storage.load_credentials.return_value = None  # type: ignore[attr-defined]
 
         with pytest.raises(ValueError, match="No credentials found"):
             await oauth_provider.get_user_profile()
@@ -345,7 +345,7 @@ class TestCopilotOAuthProvider:
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test successful token info retrieval."""
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         # Mock get_user_profile to return a profile
         mock_profile = StandardProfileFields(
@@ -358,7 +358,7 @@ class TestCopilotOAuthProvider:
         with patch.object(
             oauth_provider, "get_user_profile", new_callable=AsyncMock
         ) as mock_get_profile:
-            mock_get_profile.return_value = mock_profile
+            mock_get_profile.return_value = mock_profile  # type: ignore[attr-defined]
 
             result = await oauth_provider.get_token_info()
 
@@ -372,7 +372,7 @@ class TestCopilotOAuthProvider:
         self, oauth_provider: CopilotOAuthProvider
     ) -> None:
         """Test token info retrieval when no credentials found."""
-        oauth_provider.storage.load_credentials.return_value = None
+        oauth_provider.storage.load_credentials.return_value = None  # type: ignore[attr-defined]
 
         result = await oauth_provider.get_token_info()
 
@@ -384,7 +384,7 @@ class TestCopilotOAuthProvider:
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test authentication check with valid tokens."""
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         result = await oauth_provider.is_authenticated()
 
@@ -394,7 +394,7 @@ class TestCopilotOAuthProvider:
         self, oauth_provider: CopilotOAuthProvider
     ) -> None:
         """Test authentication check when no credentials found."""
-        oauth_provider.storage.load_credentials.return_value = None
+        oauth_provider.storage.load_credentials.return_value = None  # type: ignore[attr-defined]
 
         result = await oauth_provider.is_authenticated()
 
@@ -421,7 +421,7 @@ class TestCopilotOAuthProvider:
             account_type="individual",
         )
 
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         result = await oauth_provider.is_authenticated()
 
@@ -439,7 +439,7 @@ class TestCopilotOAuthProvider:
             account_type="individual",
         )
 
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         result = await oauth_provider.is_authenticated()
 
@@ -451,7 +451,7 @@ class TestCopilotOAuthProvider:
         mock_credentials: CopilotCredentials,
     ) -> None:
         """Test successful Copilot token retrieval."""
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         result = await oauth_provider.get_copilot_token()
 
@@ -461,7 +461,7 @@ class TestCopilotOAuthProvider:
         self, oauth_provider: CopilotOAuthProvider
     ) -> None:
         """Test Copilot token retrieval when no credentials."""
-        oauth_provider.storage.load_credentials.return_value = None
+        oauth_provider.storage.load_credentials.return_value = None  # type: ignore[attr-defined]
 
         result = await oauth_provider.get_copilot_token()
 
@@ -479,153 +479,39 @@ class TestCopilotOAuthProvider:
             account_type="individual",
         )
 
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         result = await oauth_provider.get_copilot_token()
 
         assert result is None
 
-    async def test_ensure_copilot_token_success(
-        self,
-        oauth_provider: CopilotOAuthProvider,
-        mock_credentials: CopilotCredentials,
-    ) -> None:
-        """Test successful Copilot token ensure."""
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
-
-        result = await oauth_provider.ensure_copilot_token()
-
-        assert result == "copilot_test_token"
-
-    async def test_ensure_copilot_token_no_credentials(
-        self, oauth_provider: CopilotOAuthProvider
-    ) -> None:
-        """Test ensure Copilot token when no credentials."""
-        oauth_provider.storage.load_credentials.return_value = None
-
-        with pytest.raises(
-            ValueError, match="No credentials found - authorization required"
-        ):
-            await oauth_provider.ensure_copilot_token()
-
-    async def test_ensure_copilot_token_expired_oauth(
-        self,
-        oauth_provider: CopilotOAuthProvider,
-    ) -> None:
-        """Test ensure Copilot token with expired OAuth token."""
-        # Create expired OAuth token
-        past_time = int((datetime.now(UTC) - timedelta(days=1)).timestamp())
-        expired_oauth_token = CopilotOAuthToken(
-            access_token=SecretStr("gho_test_token"),
-            token_type="bearer",
-            expires_in=3600,  # 1 hour
-            created_at=past_time - 3600,  # Created and expired yesterday
-            scope="read:user",
-        )
-
-        mock_credentials = CopilotCredentials(
-            oauth_token=expired_oauth_token,
-            copilot_token=None,
-            account_type="individual",
-        )
-
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
-
-        with pytest.raises(
-            ValueError, match="OAuth token expired - re-authorization required"
-        ):
-            await oauth_provider.ensure_copilot_token()
-
-    async def test_ensure_copilot_token_refresh_needed(
-        self,
-        oauth_provider: CopilotOAuthProvider,
-        mock_oauth_token: CopilotOAuthToken,
-    ) -> None:
-        """Test ensure Copilot token when refresh is needed."""
-        mock_credentials_no_copilot = CopilotCredentials(
-            oauth_token=mock_oauth_token,
-            copilot_token=None,
-            account_type="individual",
-        )
-
-        mock_copilot_token = CopilotTokenResponse(
-            token=SecretStr("refreshed_copilot_token"),
-            expires_at=(datetime.now(UTC) + timedelta(hours=1)).isoformat() + "Z",
-        )
-
-        mock_refreshed_credentials = CopilotCredentials(
-            oauth_token=mock_oauth_token,
-            copilot_token=mock_copilot_token,
-            account_type="individual",
-        )
-
-        oauth_provider.storage.load_credentials.return_value = (
-            mock_credentials_no_copilot
-        )
-
-        with patch.object(
-            oauth_provider.client, "refresh_copilot_token", new_callable=AsyncMock
-        ) as mock_client:
-            mock_client.return_value = mock_refreshed_credentials
-
-            result = await oauth_provider.ensure_copilot_token()
-
-            assert result == "refreshed_copilot_token"
-
-    async def test_ensure_copilot_token_refresh_failed(
-        self,
-        oauth_provider: CopilotOAuthProvider,
-        mock_oauth_token: CopilotOAuthToken,
-    ) -> None:
-        """Test ensure Copilot token when refresh fails."""
-        mock_credentials_no_copilot = CopilotCredentials(
-            oauth_token=mock_oauth_token,
-            copilot_token=None,
-            account_type="individual",
-        )
-
-        mock_failed_credentials = CopilotCredentials(
-            oauth_token=mock_oauth_token,
-            copilot_token=None,  # Still no copilot token after refresh
-            account_type="individual",
-        )
-
-        oauth_provider.storage.load_credentials.return_value = (
-            mock_credentials_no_copilot
-        )
-
-        with patch.object(
-            oauth_provider.client, "refresh_copilot_token", new_callable=AsyncMock
-        ) as mock_client:
-            mock_client.return_value = mock_failed_credentials
-
-            with pytest.raises(ValueError, match="Failed to obtain Copilot token"):
-                await oauth_provider.ensure_copilot_token()
-
     async def test_logout(self, oauth_provider: CopilotOAuthProvider) -> None:
         """Test logout functionality."""
         await oauth_provider.logout()
 
-        oauth_provider.storage.clear_credentials.assert_called_once()
+        oauth_provider.storage.clear_credentials.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_cleanup_success(self, oauth_provider: CopilotOAuthProvider) -> None:
         """Test successful cleanup."""
-        oauth_provider.client.close = AsyncMock()
+        with patch.object(oauth_provider.client, "close", new_callable=AsyncMock):
+            await oauth_provider.cleanup()
 
-        await oauth_provider.cleanup()
-
-        oauth_provider.client.close.assert_called_once()
+            oauth_provider.client.close.assert_called_once()  # type: ignore[attr-defined]
 
     async def test_cleanup_with_error(
         self, oauth_provider: CopilotOAuthProvider
     ) -> None:
         """Test cleanup with error."""
-        oauth_provider.client.close = AsyncMock(side_effect=Exception("Test error"))
+        with patch.object(
+            oauth_provider.client,
+            "close",
+            new_callable=AsyncMock,
+            side_effect=Exception("Test error"),
+        ):
+            # Should not raise exception, just log the error
+            await oauth_provider.cleanup()
 
-        # Should not raise exception, just log the error
-        await oauth_provider.cleanup()
-
-        oauth_provider.client.close.assert_called_once()
+            oauth_provider.client.close.assert_called_once()  # type: ignore[attr-defined]
 
     def test_get_provider_info(self, oauth_provider: CopilotOAuthProvider) -> None:
         """Test getting provider info."""
@@ -696,10 +582,10 @@ class TestCopilotOAuthProvider:
         from ccproxy.plugins.copilot.oauth.models import CopilotTokenResponse
 
         # Create an expired Copilot token (1 hour ago)
-        expired_time = datetime.now(UTC).timestamp() - 3600
+        expired_time = datetime.now(UTC) - timedelta(hours=1)
         expired_copilot_token = CopilotTokenResponse(
-            token="expired_copilot_token",
-            expires_at=int(expired_time),
+            token=SecretStr("expired_copilot_token"),
+            expires_at=expired_time,
             refresh_in=3600,
         )
 
@@ -710,12 +596,12 @@ class TestCopilotOAuthProvider:
             account_type="individual",
         )
 
-        oauth_provider.storage.load_credentials.return_value = mock_credentials
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
 
         # Mock the refresh to return new token
         new_copilot_token = CopilotTokenResponse(
-            token="new_copilot_token",
-            expires_at=int(datetime.now(UTC).timestamp() + 3600),  # 1 hour from now
+            token=SecretStr("new_copilot_token"),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),  # 1 hour from now
             refresh_in=3600,
         )
         new_credentials = CopilotCredentials(
@@ -734,13 +620,3 @@ class TestCopilotOAuthProvider:
         # Verify is_authenticated returns False for expired token
         is_auth = await oauth_provider.is_authenticated()
         assert is_auth is False
-
-        # Verify ensure_copilot_token refreshes expired token
-        with patch.object(
-            oauth_provider.client, "refresh_copilot_token", new_callable=AsyncMock
-        ) as mock_refresh:
-            mock_refresh.return_value = new_credentials
-
-            result = await oauth_provider.ensure_copilot_token()
-            assert result == "new_copilot_token"
-            mock_refresh.assert_called_once()
