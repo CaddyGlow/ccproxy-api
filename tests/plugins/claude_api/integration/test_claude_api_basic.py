@@ -24,7 +24,7 @@ from ccproxy.plugins.claude_api.models import ClaudeCacheData
 @pytest.mark.integration
 @pytest.mark.claude_api
 async def test_models_endpoint_available_when_enabled(
-    claude_api_client,  # type: ignore[no-untyped-def]
+    claude_api_client: Any,
 ) -> None:
     """GET /api/v1/models returns a model list when enabled."""
     resp = await claude_api_client.get("/api/v1/models")
@@ -44,8 +44,8 @@ async def test_models_endpoint_available_when_enabled(
 @pytest.mark.integration
 @pytest.mark.claude_api
 async def test_anthropic_messages_passthrough(
-    claude_api_client,  # type: ignore[no-untyped-def]
-    mock_external_anthropic_api,  # type: ignore[no-untyped-def]
+    claude_api_client: Any,
+    mock_external_anthropic_api: Any,
 ) -> None:
     """POST /api/v1/messages proxies to Claude API and returns Anthropic format."""
     resp = await claude_api_client.post(
@@ -60,8 +60,8 @@ async def test_anthropic_messages_passthrough(
 @pytest.mark.integration
 @pytest.mark.claude_api
 async def test_model_alias_restored_in_anthropic_response(
-    claude_api_client,  # type: ignore[no-untyped-def]
-    mock_external_anthropic_api,  # type: ignore[no-untyped-def]
+    claude_api_client: Any,
+    mock_external_anthropic_api: Any,
 ) -> None:
     """Client model aliases are preserved for Anthropics responses."""
     request_payload = {
@@ -78,8 +78,8 @@ async def test_model_alias_restored_in_anthropic_response(
 @pytest.mark.integration
 @pytest.mark.claude_api
 async def test_openai_chat_completions_conversion(
-    integration_client_factory,  # type: ignore[no-untyped-def]
-    mock_external_anthropic_api,  # type: ignore[no-untyped-def]
+    integration_client_factory: Any,
+    mock_external_anthropic_api: Any,
 ) -> None:
     """OpenAI /v1/chat/completions converts through Claude API and returns OpenAI format."""
 
@@ -158,8 +158,8 @@ async def test_openai_chat_completions_conversion(
 @pytest.mark.integration
 @pytest.mark.claude_api
 async def test_claude_response_api_endpoint(
-    integration_client_factory,  # type: ignore[no-untyped-def]
-    mock_external_anthropic_api,  # type: ignore[no-untyped-def]
+    integration_client_factory: Any,
+    mock_external_anthropic_api: Any,
 ) -> None:
     """POST /claude/v1/responses handles OpenAI Responses format."""
 
@@ -248,8 +248,8 @@ async def test_claude_response_api_endpoint(
 @pytest.mark.integration
 @pytest.mark.claude_api
 async def test_openai_chat_completions_streaming(
-    integration_client_factory,  # type: ignore[no-untyped-def]
-    mock_external_anthropic_api_streaming,  # type: ignore[no-untyped-def]
+    integration_client_factory: Any,
+    mock_external_anthropic_api_streaming: Any,
 ) -> None:
     """Streaming OpenAI /v1/chat/completions returns SSE with valid chunks."""
 
@@ -329,8 +329,8 @@ async def test_openai_chat_completions_streaming(
 @pytest.mark.integration
 @pytest.mark.claude_api
 async def test_anthropic_messages_streaming(
-    claude_api_client,  # type: ignore[no-untyped-def]
-    mock_external_anthropic_api_streaming,  # type: ignore[no-untyped-def]
+    claude_api_client: Any,
+    mock_external_anthropic_api_streaming: Any,
 ) -> None:
     """Streaming Anthropic /v1/messages returns SSE with valid chunks."""
     request = {
@@ -364,7 +364,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
 @pytest_asyncio.fixture(scope="function", loop_scope="function")
-async def claude_api_client():  # type: ignore[no-untyped-def]
+async def claude_api_client() -> Any:  # type: ignore[misc]
     # Build app and client once to avoid factory scope conflicts
     from httpx import ASGITransport, AsyncClient
 

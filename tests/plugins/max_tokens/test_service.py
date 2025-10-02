@@ -73,7 +73,10 @@ class TestTokenLimitsService:
     ) -> None:
         """Test modification when max_tokens is invalid."""
         # Test non-integer max_tokens
-        request_data = {"model": "claude-3-5-sonnet-20241022", "max_tokens": "invalid"}
+        request_data: dict[str, object] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": "invalid",
+        }
         should_modify, reason = service.should_modify_max_tokens(
             request_data, "claude-3-5-sonnet-20241022"
         )

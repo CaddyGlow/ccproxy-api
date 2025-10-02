@@ -88,7 +88,7 @@ def get_test_settings(test_settings: Settings) -> Settings:
 
 
 @pytest_asyncio.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
+def event_loop():  # type: ignore[no-untyped-def]
     """Provide a session-scoped asyncio event loop for async fixtures."""
 
     loop = asyncio.new_event_loop()
@@ -195,8 +195,8 @@ def test_settings(isolated_environment: Path) -> Settings:
     log_dir.mkdir(exist_ok=True)
 
     return Settings(
-        server=ServerSettings(log_level="WARNING"),
-        logging=LoggingSettings(plugin_log_base_dir=str(log_dir)),
+        server=ServerSettings(),
+        logging=LoggingSettings(level="WARNING", plugin_log_base_dir=str(log_dir)),
         security=SecuritySettings(auth_token=None),  # No auth by default
         plugins={
             "duckdb_storage": {
@@ -227,8 +227,8 @@ def auth_settings(isolated_environment: Path) -> Settings:
     log_dir.mkdir(exist_ok=True)
 
     return Settings(
-        server=ServerSettings(log_level="WARNING"),
-        logging=LoggingSettings(plugin_log_base_dir=str(log_dir)),
+        server=ServerSettings(),
+        logging=LoggingSettings(level="WARNING", plugin_log_base_dir=str(log_dir)),
         security=SecuritySettings(
             auth_token=SecretStr("test-auth-token-12345")
         ),  # Auth enabled
@@ -254,16 +254,18 @@ def app(test_settings: Settings) -> FastAPI:
 
     Returns a configured FastAPI app ready for testing.
     """
-    # Create app
-    app = create_app(settings=test_settings)
+    # Create service container with settings
+    from ccproxy.api.bootstrap import create_service_container
+
+    service_container = create_service_container(test_settings)
+
+    # Create app with service container
+    app = create_app(service_container=service_container)
 
     # Override the settings dependency for testing
     from ccproxy.api.dependencies import get_cached_settings
-    from ccproxy.config.settings import get_settings as original_get_settings
 
-    app.dependency_overrides[original_get_settings] = lambda: test_settings
-
-    def mock_get_cached_settings_for_test(request: Request):
+    def mock_get_cached_settings_for_test(request: Request) -> Settings:
         return test_settings
 
     app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
@@ -285,16 +287,18 @@ def app_with_claude_sdk_environment(
     - Environment variables set up
     - Mocked Claude service to prevent actual CLI execution
     """
-    # Create app
-    app = create_app(settings=test_settings)
+    # Create service container with settings
+    from ccproxy.api.bootstrap import create_service_container
+
+    service_container = create_service_container(test_settings)
+
+    # Create app with service container
+    app = create_app(service_container=service_container)
 
     # Override the settings dependency for testing
     from ccproxy.api.dependencies import get_cached_settings
-    from ccproxy.config.settings import get_settings as original_get_settings
 
-    app.dependency_overrides[original_get_settings] = lambda: test_settings
-
-    def mock_get_cached_settings_for_claude_sdk(request: Request):
+    def mock_get_cached_settings_for_claude_sdk(request: Request) -> Settings:
         return test_settings
 
     app.dependency_overrides[get_cached_settings] = (
@@ -579,8 +583,10 @@ def pytest_collection_modifyitems(
     """Modify test collection to add markers."""
     for item in items:
         # Auto-mark async tests (only if function is actually async)
-        if "async" in item.nodeid and asyncio.iscoroutinefunction(item.function):
-            item.add_marker(pytest.mark.asyncio)
+        if "async" in item.nodeid:
+            # Check if item has a function attribute before accessing it
+            if hasattr(item, "function") and asyncio.iscoroutinefunction(item.function):
+                item.add_marker(pytest.mark.asyncio)
 
         # Add unit marker to tests not marked as real_api
         if not any(marker.name == "real_api" for marker in item.iter_markers()):

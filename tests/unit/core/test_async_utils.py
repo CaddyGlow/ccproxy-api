@@ -20,15 +20,17 @@ async def test_run_in_executor_supports_kwargs() -> None:
 
 @pytest.mark.asyncio
 async def test_safe_await_handles_timeout() -> None:
-    short = async_utils.safe_await(asyncio.sleep(0), timeout=0.1)
-    assert await short is None  # plain sleep returns None
+    # safe_await returns a coroutine that needs to be awaited
+    # For asyncio.sleep(), it returns None
+    result1: None = await async_utils.safe_await(asyncio.sleep(0), timeout=0.1)  # type: ignore[func-returns-value]
+    assert result1 is None  # plain sleep returns None
 
-    timed_out = await async_utils.safe_await(asyncio.sleep(0.05), timeout=0.001)
-    assert timed_out is None
+    result2: None = await async_utils.safe_await(asyncio.sleep(0.05), timeout=0.001)  # type: ignore[func-returns-value]
+    assert result2 is None
 
 
 @pytest.mark.asyncio
-async def test_safe_await_logs_exception(monkeypatch) -> None:
+async def test_safe_await_logs_exception(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(
         async_utils,
@@ -38,7 +40,7 @@ async def test_safe_await_logs_exception(monkeypatch) -> None:
         ),
     )
 
-    async def bad() -> None:
+    async def bad() -> str:
         raise RuntimeError("boom")
 
     result = await async_utils.safe_await(bad())
@@ -67,7 +69,7 @@ async def test_gather_with_concurrency_limits_parallelism() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_timer_reports_elapsed(monkeypatch) -> None:
+async def test_async_timer_reports_elapsed(monkeypatch: pytest.MonkeyPatch) -> None:
     times = iter([100.0, 100.5, 100.5])
 
     def fake_perf_counter() -> float:
@@ -85,14 +87,14 @@ async def test_async_timer_reports_elapsed(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_retry_async_eventually_succeeds(monkeypatch) -> None:
+async def test_retry_async_eventually_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     attempts = 0
     original_sleep = asyncio.sleep
 
     async def immediate_sleep(_: float) -> None:
         await original_sleep(0)
 
-    monkeypatch.setattr(async_utils.asyncio, "sleep", immediate_sleep)
+    monkeypatch.setattr(asyncio, "sleep", immediate_sleep)
 
     async def flaky() -> str:
         nonlocal attempts
@@ -108,7 +110,9 @@ async def test_retry_async_eventually_succeeds(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_wait_for_condition_handles_async_predicate(monkeypatch) -> None:
+async def test_wait_for_condition_handles_async_predicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     counter = 0
 
     async def condition() -> bool:
@@ -123,7 +127,9 @@ async def test_wait_for_condition_handles_async_predicate(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_cache_result_reuses_cached_value(monkeypatch) -> None:
+async def test_async_cache_result_reuses_cached_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async_utils._cache.clear()
     calls = 0
 

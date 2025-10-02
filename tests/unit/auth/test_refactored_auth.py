@@ -8,14 +8,13 @@ from ccproxy.auth.models.base import BaseProfileInfo, BaseTokenInfo
 class TestBaseModels:
     """Test base authentication models."""
 
-    def test_base_token_info_is_expired(self):
+    def test_base_token_info_is_expired(self) -> None:
         """Test that is_expired computed field works correctly."""
 
         class TestToken(BaseTokenInfo):
             test_expires_at: datetime
 
-            @property
-            def access_token_value(self) -> str:
+            def access_token_value(self) -> str:  # type: ignore[override]
                 return "test_token"
 
             @property
@@ -26,13 +25,13 @@ class TestBaseModels:
         expired_token = TestToken(
             test_expires_at=datetime.now(UTC) - timedelta(hours=1)
         )
-        assert expired_token.is_expired is True
+        assert expired_token.is_expired() is True
 
         # Test valid token
         valid_token = TestToken(test_expires_at=datetime.now(UTC) + timedelta(hours=1))
-        assert valid_token.is_expired is False
+        assert valid_token.is_expired() is False
 
-    def test_base_profile_info(self):
+    def test_base_profile_info(self) -> None:
         """Test BaseProfileInfo model."""
         profile = BaseProfileInfo(
             account_id="test_id",

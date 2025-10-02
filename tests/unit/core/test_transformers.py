@@ -25,42 +25,48 @@ class EchoResponseTransformer(ResponseTransformer):
 
 
 @pytest.mark.asyncio
-async def test_request_transformer_collects_metrics(monkeypatch):
-    called = {}
+async def test_request_transformer_collects_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, object] = {}
 
-    async def fake_collect(self, **kwargs):
-        called.update(kwargs)
+    async def fake_collect(self: object, **kwargs: object) -> None:
+        called.update(kwargs)  # type: ignore[arg-type]
 
     t = EchoRequestTransformer()
     monkeypatch.setattr(
         t,
         "_collect_transformation_metrics",
-        fake_collect.__get__(t, EchoRequestTransformer),
+        fake_collect.__get__(t, EchoRequestTransformer),  # type: ignore[arg-type]
     )
 
-    result = await t.transform({"hello": "world"}, context="ctx")
+    # Note: EchoRequestTransformer actually returns a dict, not ProxyRequest
+    result = await t.transform({"hello": "world"}, context="ctx")  # type: ignore[arg-type]
 
-    assert result["payload"] == {"hello": "world"}
+    assert result["payload"] == {"hello": "world"}  # type: ignore[index]
     assert called["transformation_type"] == "request"
 
 
 @pytest.mark.asyncio
-async def test_response_transformer_collects_metrics(monkeypatch):
-    called = {}
+async def test_response_transformer_collects_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: dict[str, object] = {}
 
-    async def fake_collect(self, **kwargs):
-        called.update(kwargs)
+    async def fake_collect(self: object, **kwargs: object) -> None:
+        called.update(kwargs)  # type: ignore[arg-type]
 
     t = EchoResponseTransformer()
     monkeypatch.setattr(
         t,
         "_collect_transformation_metrics",
-        fake_collect.__get__(t, EchoResponseTransformer),
+        fake_collect.__get__(t, EchoResponseTransformer),  # type: ignore[arg-type]
     )
 
-    result = await t.transform("payload", context=None)
+    # Note: EchoResponseTransformer actually returns a dict, not ProxyResponse
+    result = await t.transform("payload", context=None)  # type: ignore[arg-type]
 
-    assert result["payload"] == "payload"
+    assert result["payload"] == "payload"  # type: ignore[index]
     assert called["transformation_type"] == "response"
 
 

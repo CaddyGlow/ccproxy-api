@@ -13,7 +13,7 @@ from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 # Module-level task manager fixture
 @pytest_asyncio.fixture(scope="module", loop_scope="module", autouse=True)
-async def task_manager_fixture():
+async def task_manager_fixture() -> AsyncGenerator[None, None]:
     """Start and stop task manager for all tests in this module."""
     from ccproxy.api.bootstrap import create_service_container
     from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
@@ -31,7 +31,9 @@ async def task_manager_fixture():
 
 # Optimized database fixture with minimal teardown
 @pytest.fixture
-async def optimized_database(tmp_path) -> AsyncGenerator[SimpleDuckDBStorage, None]:
+async def optimized_database(  # type: ignore[no-untyped-def]
+    tmp_path,
+) -> AsyncGenerator[SimpleDuckDBStorage, None]:
     """Optimized database - reuses connection, minimal teardown."""
     db_path = tmp_path / "optimized_analytics.duckdb"
     storage = SimpleDuckDBStorage(db_path)

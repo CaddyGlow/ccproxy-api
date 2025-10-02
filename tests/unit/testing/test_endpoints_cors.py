@@ -8,7 +8,7 @@ import pytest
 from ccproxy.testing.endpoints.runner import TestEndpoint
 
 
-TestEndpoint.__test__ = False
+TestEndpoint.__test__ = False  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio

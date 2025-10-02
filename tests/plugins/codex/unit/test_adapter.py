@@ -1,6 +1,7 @@
 """Unit tests for CodexAdapter."""
 
 import json
+from typing import cast
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -16,16 +17,14 @@ class TestCodexAdapter:
     """Test the CodexAdapter HTTP adapter methods."""
 
     @pytest.fixture
-    def mock_detection_service(self) -> CodexDetectionService:
+    def mock_detection_service(self) -> Mock:
         """Create mock detection service."""
         service = Mock(spec=CodexDetectionService)
-        service.get_cached_data.return_value = None
-        service.instructions_value = "Mock detection instructions"
-        prompts = DetectedPrompts.from_body(
-            {"instructions": service.instructions_value}
-        )
-        service.get_detected_prompts.return_value = prompts
-        service.get_system_prompt.return_value = prompts.instructions_payload()
+        service.get_cached_data = Mock(return_value=None)
+        instructions_value = "Mock detection instructions"
+        prompts = DetectedPrompts.from_body({"instructions": instructions_value})
+        service.get_detected_prompts = Mock(return_value=prompts)
+        service.get_system_prompt = Mock(return_value=prompts.instructions_payload())
         headers = DetectedHeaders(
             {
                 "session_id": "session-123",
@@ -33,17 +32,18 @@ class TestCodexAdapter:
                 "authorization": "existing-auth",  # will be filtered
             }
         )
-        service.get_detected_headers.return_value = headers
-        service.get_ignored_headers.return_value = list(
-            CodexDetectionService.ignores_header
+        service.get_detected_headers = Mock(return_value=headers)
+        service.get_ignored_headers = Mock(
+            return_value=list(CodexDetectionService.ignores_header)
         )
-        service.get_redacted_headers.return_value = list(
-            CodexDetectionService.REDACTED_HEADERS
+        service.get_redacted_headers = Mock(
+            return_value=list(CodexDetectionService.REDACTED_HEADERS)
         )
+        service.instructions_value = instructions_value
         return service
 
     @pytest.fixture
-    def mock_auth_manager(self):
+    def mock_auth_manager(self) -> Mock:
         """Create mock auth manager."""
         auth_manager = Mock(spec=CodexTokenManager)
         auth_manager.get_access_token = AsyncMock(return_value="test-token")
@@ -63,12 +63,12 @@ class TestCodexAdapter:
         return auth_manager
 
     @pytest.fixture
-    def mock_http_pool_manager(self):
+    def mock_http_pool_manager(self) -> Mock:
         """Create mock HTTP pool manager."""
         return Mock()
 
     @pytest.fixture
-    def mock_config(self):
+    def mock_config(self) -> Mock:
         """Create mock config."""
         config = Mock()
         config.base_url = "https://chat.openai.com/backend-anon"
@@ -77,10 +77,10 @@ class TestCodexAdapter:
     @pytest.fixture
     def adapter(
         self,
-        mock_detection_service: CodexDetectionService,
-        mock_auth_manager,
-        mock_http_pool_manager,
-        mock_config,
+        mock_detection_service: Mock,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
+        mock_config: Mock,
     ) -> CodexAdapter:
         """Create CodexAdapter instance."""
         return CodexAdapter(
@@ -128,18 +128,18 @@ class TestCodexAdapter:
     @pytest.mark.asyncio
     async def test_prepare_provider_request_with_instructions(
         self,
-        mock_detection_service: CodexDetectionService,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_detection_service: Mock,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
     ) -> None:
         """Test request preparation with custom instructions."""
         # Setup detection service with custom instructions
         prompts = DetectedPrompts.from_body(
             {"instructions": "You are a Python expert."}
         )
-        mock_detection_service.get_detected_prompts.return_value = prompts
-        mock_detection_service.get_system_prompt.return_value = (
-            prompts.instructions_payload()
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.instructions_payload()
         )
 
         mock_config = Mock()
@@ -241,7 +241,7 @@ class TestCodexAdapter:
 
         assert result.status_code == 200
         # Adapter now returns response as-is; format conversion handled upstream
-        result_data = json.loads(result.body)
+        result_data = json.loads(cast(bytes, result.body))
         # Should return original Codex response unchanged
         assert result_data == codex_response
         assert result.headers.get("content-type") == "application/json"
@@ -249,9 +249,9 @@ class TestCodexAdapter:
     @pytest.mark.asyncio
     async def test_cli_headers_injection(
         self,
-        mock_detection_service: CodexDetectionService,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_detection_service: Mock,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
     ) -> None:
         """Test CLI headers injection."""
         # Setup detection service with CLI headers
@@ -261,13 +261,14 @@ class TestCodexAdapter:
                 "X-Session-ID": "cli-session-123",
             }
         )
-        mock_detection_service.get_detected_headers.return_value = cli_headers
-        prompts = DetectedPrompts.from_body(
-            {"instructions": mock_detection_service.instructions_value}
+        instructions_value = getattr(
+            mock_detection_service, "instructions_value", "Mock detection instructions"
         )
-        mock_detection_service.get_detected_prompts.return_value = prompts
-        mock_detection_service.get_system_prompt.return_value = (
-            prompts.instructions_payload()
+        mock_detection_service.get_detected_headers = Mock(return_value=cli_headers)
+        prompts = DetectedPrompts.from_body({"instructions": instructions_value})
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.instructions_payload()
         )
 
         mock_config = Mock()
@@ -304,15 +305,15 @@ class TestCodexAdapter:
 
     def test_get_instructions_from_detection_service(
         self,
-        mock_detection_service: CodexDetectionService,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_detection_service: Mock,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
     ) -> None:
         """Test instructions from detection service."""
         prompts = DetectedPrompts.from_body({"instructions": "Custom instructions"})
-        mock_detection_service.get_detected_prompts.return_value = prompts
-        mock_detection_service.get_system_prompt.return_value = (
-            prompts.instructions_payload()
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.instructions_payload()
         )
 
         mock_config = Mock()
@@ -330,7 +331,7 @@ class TestCodexAdapter:
 
     @pytest.mark.asyncio
     async def test_auth_data_usage(
-        self, adapter: CodexAdapter, mock_auth_manager
+        self, adapter: CodexAdapter, mock_auth_manager: Mock
     ) -> None:
         """Test that auth data is properly used."""
         body = b'{"messages": []}'

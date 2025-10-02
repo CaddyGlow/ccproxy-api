@@ -39,7 +39,7 @@ async def task_manager_fixture() -> AsyncGenerator[None, None]:
 
 
 @pytest.fixture(scope="module")
-def temp_db_path(tmp_path_factory) -> Path:
+def temp_db_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create temporary database path for testing."""
     base = tmp_path_factory.mktemp("analytics_mod")
     return base / "test_analytics.duckdb"

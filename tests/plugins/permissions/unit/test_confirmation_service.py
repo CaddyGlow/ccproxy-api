@@ -1,5 +1,6 @@
 """Unit tests for permission service models and basic functionality."""
 
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
@@ -12,7 +13,7 @@ from ccproxy.plugins.permissions.service import (
 
 
 @pytest.fixture
-def mock_create_managed_task():
+def mock_create_managed_task() -> Any:
     """Mock the create_managed_task function to avoid task manager dependency."""
     with patch("ccproxy.plugins.permissions.service.create_managed_task") as mock:
         # Return a mock task that can be cancelled
@@ -23,7 +24,7 @@ def mock_create_managed_task():
 
 
 @pytest.fixture
-def confirmation_service(mock_create_managed_task) -> PermissionService:
+def confirmation_service(mock_create_managed_task: Any) -> PermissionService:
     """Create a test confirmation service."""
     service = PermissionService(timeout_seconds=30)
     return service
@@ -88,7 +89,7 @@ class TestPermissionRequest:
         # Resolve as allowed
         request.resolve(True)
 
-        assert request.status == PermissionStatus.ALLOWED
+        assert request.status == PermissionStatus.ALLOWED  # type: ignore[comparison-overlap]
         assert request.resolved_at is not None
 
     def test_permission_request_resolve_denied(self) -> None:

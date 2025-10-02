@@ -1,6 +1,7 @@
 """Tests for response handling utilities."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
@@ -8,8 +9,8 @@ from ccproxy.testing.config import RequestScenario
 from ccproxy.testing.response_handlers import MetricsExtractor, ResponseHandler
 
 
-def make_scenario(**overrides):
-    base = {
+def make_scenario(**overrides: Any) -> RequestScenario:
+    base: dict[str, Any] = {
         "model": "m",
         "message_type": "chat",
         "streaming": False,
@@ -22,7 +23,7 @@ def make_scenario(**overrides):
     return RequestScenario(**base)
 
 
-def test_process_standard_openai_response():
+def test_process_standard_openai_response() -> None:
     handler = ResponseHandler()
     payload = {
         "usage": {"prompt_tokens": 5, "completion_tokens": 3},
@@ -36,7 +37,7 @@ def test_process_standard_openai_response():
     assert result["content_preview"] == "hello world"
 
 
-def test_process_standard_anthropic_response():
+def test_process_standard_anthropic_response() -> None:
     handler = ResponseHandler()
     payload = {
         "usage": {"input_tokens": 2, "output_tokens": 4},
@@ -49,7 +50,7 @@ def test_process_standard_anthropic_response():
     assert result["content_preview"] == "anthropic reply"
 
 
-def test_process_standard_response_json_error():
+def test_process_standard_response_json_error() -> None:
     handler = ResponseHandler()
     response = httpx.Response(200, content=b"not json")
     result = handler.process_response(response, make_scenario())
@@ -57,7 +58,7 @@ def test_process_standard_response_json_error():
     assert "Failed to parse" in result["error"]
 
 
-def test_process_streaming_openai_response():
+def test_process_streaming_openai_response() -> None:
     handler = ResponseHandler()
     content = (
         'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n'
@@ -76,7 +77,7 @@ def test_process_streaming_openai_response():
     assert result["total_content"] == "Hello World"
 
 
-def test_metrics_extractor_openai_and_anthropic():
+def test_metrics_extractor_openai_and_anthropic() -> None:
     openai_usage = {"usage": {"prompt_tokens": 1, "completion_tokens": 2}}
     anthropic_usage = {
         "usage": {

@@ -1,6 +1,7 @@
 """Tests for the AsyncTaskManager."""
 
 import asyncio
+from collections.abc import AsyncGenerator
 from unittest.mock import Mock, patch
 
 import pytest
@@ -18,7 +19,7 @@ from ccproxy.services.container import ServiceContainer
 
 
 @pytest.fixture
-async def service_container() -> ServiceContainer:
+async def service_container() -> AsyncGenerator[ServiceContainer, None]:
     """Provide a fresh service container for each test."""
     container = create_service_container()
     try:

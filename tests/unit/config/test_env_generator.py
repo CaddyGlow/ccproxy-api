@@ -222,7 +222,7 @@ def test_write_env_config_to_file(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_write_env_config_to_stdout(capsys) -> None:
+def test_write_env_config_to_stdout(capsys: pytest.CaptureFixture[str]) -> None:
     """Test writing env config to stdout."""
     write_env_config(sys.stdout, SimpleModel, commented=False)
 

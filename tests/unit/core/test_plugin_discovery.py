@@ -1,8 +1,10 @@
 import importlib
 from importlib import machinery
 from pathlib import Path
+from typing import Any
 
 import pytest
+from _pytest.logging import LogCaptureFixture
 
 from ccproxy.config.settings import Settings
 from ccproxy.core.plugins.declaration import PluginContext, PluginManifest
@@ -30,7 +32,7 @@ class DummyFactory(PluginFactory):
         return object()
 
     def create_context(
-        self, core_services
+        self, core_services: object
     ) -> PluginContext:  # pragma: no cover - not used
         return PluginContext()
 
@@ -70,7 +72,7 @@ def test_create_context_populates_default_config_when_missing() -> None:
 
 
 @pytest.mark.unit
-def test_load_all_factories_skips_disabled(monkeypatch):
+def test_load_all_factories_skips_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     discovery = PluginDiscovery([Path("/does/not/matter")])
     discovery.discovered_plugins = {
         "alpha": Path("alpha/plugin.py"),
@@ -79,7 +81,7 @@ def test_load_all_factories_skips_disabled(monkeypatch):
 
     loaded: list[str] = []
 
-    def fake_load(self, name: str):
+    def fake_load(self: object, name: str) -> DummyFactory:
         loaded.append(name)
         return DummyFactory(name)
 
@@ -94,21 +96,23 @@ def test_load_all_factories_skips_disabled(monkeypatch):
 
 
 @pytest.mark.unit
-def test_load_plugin_factory_logs_missing_dependency(monkeypatch, caplog):
+def test_load_plugin_factory_logs_missing_dependency(
+    monkeypatch: pytest.MonkeyPatch, caplog: LogCaptureFixture
+) -> None:
     discovery = PluginDiscovery([Path("/does/not/matter")])
     discovery.discovered_plugins = {"alpha": Path("alpha/plugin.py")}
 
     class DummyLoader:
-        def create_module(self, spec):
+        def create_module(self, spec: object) -> None:
             return None
 
-        def exec_module(self, module):
+        def exec_module(self, module: object) -> None:
             raise ModuleNotFoundError("sqlalchemy")
 
     monkeypatch.setattr(
         importlib.util,
         "spec_from_file_location",
-        lambda fullname, path: machinery.ModuleSpec(fullname, DummyLoader()),
+        lambda fullname, path: machinery.ModuleSpec(fullname, DummyLoader()),  # type: ignore[arg-type]
     )
 
     caplog.clear()
@@ -124,7 +128,9 @@ def test_load_plugin_factory_logs_missing_dependency(monkeypatch, caplog):
 
 
 @pytest.mark.unit
-def test_entry_point_missing_dependency_logged(monkeypatch, caplog):
+def test_entry_point_missing_dependency_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: LogCaptureFixture
+) -> None:
     class FakeEntryPoint:
         def __init__(self, name: str) -> None:
             self.name = name
@@ -135,7 +141,7 @@ def test_entry_point_missing_dependency_logged(monkeypatch, caplog):
             raise ModuleNotFoundError("claude_agent_sdk")
 
     class FakeGroups:
-        def select(self, group: str):
+        def select(self, group: str) -> list[FakeEntryPoint]:
             assert group == "ccproxy.plugins"
             return [FakeEntryPoint("analytics")]
 
@@ -159,7 +165,9 @@ def test_entry_point_missing_dependency_logged(monkeypatch, caplog):
 
 
 @pytest.mark.unit
-def test_load_entry_point_factories_skips_disabled(monkeypatch):
+def test_load_entry_point_factories_skips_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FakeEntryPoint:
         def __init__(self, name: str) -> None:
             self.name = name
@@ -170,7 +178,7 @@ def test_load_entry_point_factories_skips_disabled(monkeypatch):
             raise AssertionError("disabled plugin should not be loaded")
 
     class FakeGroups:
-        def select(self, group: str):
+        def select(self, group: str) -> list[FakeEntryPoint]:
             assert group == "ccproxy.plugins"
             return [FakeEntryPoint("gamma")]
 
@@ -188,21 +196,26 @@ def test_load_entry_point_factories_skips_disabled(monkeypatch):
 
 
 @pytest.mark.unit
-def test_discover_and_load_plugins_respects_filters(monkeypatch):
+def test_discover_and_load_plugins_respects_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     loaded: list[str] = []
 
-    def fake_discover(self):
-        self.discovered_plugins = {
+    def fake_discover(self: Any) -> dict[str, Path]:
+        discovered: dict[str, Path] = {
             "alpha": Path("alpha/plugin.py"),
             "beta": Path("beta/plugin.py"),
         }
-        return self.discovered_plugins
+        self.discovered_plugins = discovered
+        return discovered
 
-    def fake_load(self, name: str):
+    def fake_load(self: object, name: str) -> DummyFactory:
         loaded.append(name)
         return DummyFactory(name)
 
-    def fake_load_entry(self, skip_names=None, plugin_filter=None):
+    def fake_load_entry(
+        self: object, skip_names: object = None, plugin_filter: object = None
+    ) -> dict[str, object]:
         # No entry-point plugins for this test
         return {}
 
@@ -266,7 +279,7 @@ def test_filesystem_plugins_override_entry_points(monkeypatch, tmp_path):
             return object()
 
         def create_context(
-            self, core_services
+            self, core_services: object
         ) -> PluginContext:  # pragma: no cover - not used
             return PluginContext()
 
@@ -282,7 +295,7 @@ def test_filesystem_plugins_override_entry_points(monkeypatch, tmp_path):
             return entry_factory
 
     class FakeGroups:
-        def select(self, group: str):
+        def select(self, group: str) -> list[FakeEntryPoint]:
             assert group == "ccproxy.plugins"
             return [FakeEntryPoint("alpha")]
 

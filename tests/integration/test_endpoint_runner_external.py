@@ -36,7 +36,8 @@ pytestmark = [
 ]
 
 
-TestEndpoint.__test__ = False
+# Prevent pytest from collecting TestEndpoint as a test class
+TestEndpoint.__test__ = False  # type: ignore[attr-defined]
 
 CAPTURE_DIR_ENV = "CCPROXY_ENDPOINT_CAPTURE_DIR"
 DEFAULT_ENDPOINT_BASE_URL = "http://127.0.0.1:8000"
@@ -66,7 +67,11 @@ def _selected_indices() -> list[int]:
     return get_selected_endpoint_indices()
 
 
-def _endpoint_case_params() -> list[pytest.ParameterSet]:
+def _endpoint_case_params() -> list[Any]:
+    """Generate parametrize values for endpoint test cases.
+
+    Returns list of pytest.param objects, typed as Any to avoid ParameterSet import.
+    """
     indices = _selected_indices()
     if not indices:
         return [

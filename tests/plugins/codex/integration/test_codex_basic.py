@@ -22,7 +22,7 @@ from ccproxy.plugins.codex.models import CodexCacheData
 @pytest.mark.integration
 @pytest.mark.codex
 async def test_models_endpoint_available_when_enabled(
-    codex_client,  # type: ignore[no-untyped-def]
+    codex_client: Any,
 ) -> None:
     """GET /codex/v1/models returns a model list when enabled."""
     resp = await codex_client.get("/codex/v1/models")
@@ -39,8 +39,8 @@ async def test_models_endpoint_available_when_enabled(
 @pytest.mark.integration
 @pytest.mark.codex
 async def test_codex_responses_passthrough(
-    codex_client,  # type: ignore[no-untyped-def]
-    mock_external_openai_codex_api,  # type: ignore[no-untyped-def]
+    codex_client: Any,
+    mock_external_openai_codex_api: Any,
 ) -> None:
     """POST /codex/responses proxies to Codex and returns Codex format."""
     resp = await codex_client.post("/codex/responses", json=STANDARD_CODEX_REQUEST)
@@ -53,8 +53,8 @@ async def test_codex_responses_passthrough(
 @pytest.mark.integration
 @pytest.mark.codex
 async def test_openai_chat_completions_conversion(
-    codex_client,  # type: ignore[no-untyped-def]
-    mock_external_openai_codex_api,  # type: ignore[no-untyped-def]
+    codex_client: Any,
+    mock_external_openai_codex_api: Any,
 ) -> None:
     """OpenAI /v1/chat/completions converts through Codex and returns OpenAI format."""
     resp = await codex_client.post(
@@ -69,8 +69,8 @@ async def test_openai_chat_completions_conversion(
 @pytest.mark.integration
 @pytest.mark.codex
 async def test_model_alias_restored_in_response(
-    codex_client,  # type: ignore[no-untyped-def]
-    mock_external_openai_codex_api,  # type: ignore[no-untyped-def]
+    codex_client: Any,
+    mock_external_openai_codex_api: Any,
 ) -> None:
     """Client model aliases stay intact in non-streaming responses."""
     request_payload = {**STANDARD_OPENAI_REQUEST, "model": "gpt-5-nano"}
@@ -84,8 +84,8 @@ async def test_model_alias_restored_in_response(
 @pytest.mark.integration
 @pytest.mark.codex
 async def test_openai_chat_completions_streaming(
-    codex_client,  # type: ignore[no-untyped-def]
-    mock_external_openai_codex_api_streaming,  # type: ignore[no-untyped-def]
+    codex_client: Any,
+    mock_external_openai_codex_api_streaming: Any,
 ) -> None:
     """Streaming OpenAI /v1/chat/completions returns SSE with valid chunks."""
     # Enable plugin
@@ -112,7 +112,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
 @pytest_asyncio.fixture(scope="function", loop_scope="function")
-async def codex_client():  # type: ignore[no-untyped-def]
+async def codex_client() -> Any:  # type: ignore[misc]
     # Build app and client once to avoid factory scope conflicts
     from httpx import ASGITransport, AsyncClient
 

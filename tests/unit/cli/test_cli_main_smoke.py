@@ -2,6 +2,7 @@
 
 import importlib
 
+import pytest
 from typer.testing import CliRunner
 
 
@@ -34,7 +35,7 @@ def test_cli_status_help_runs_without_error() -> None:
     assert result.exit_code == 0
 
 
-def test_plugin_cli_registration_is_idempotent(monkeypatch) -> None:
+def test_plugin_cli_registration_is_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         cli_main, "discover_plugin_cli_extensions", lambda _settings: []
     )
@@ -46,7 +47,7 @@ def test_plugin_cli_registration_is_idempotent(monkeypatch) -> None:
     assert cli_main._plugins_registered is True
 
 
-def test_collect_relevant_env_masks_sensitive(monkeypatch) -> None:
+def test_collect_relevant_env_masks_sensitive(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PLUGINS__TOKEN", "super-secret-value")
     monkeypatch.setenv("SERVER__PORT", "8080")
     monkeypatch.setenv("UNRELATED_VAR", "ignore-me")

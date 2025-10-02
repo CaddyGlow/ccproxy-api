@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import patch
 
 import httpx
@@ -7,7 +8,7 @@ import pytest
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_codex_missing_auth_manager_returns_401(
-    integration_client_factory,  # type: ignore[no-untyped-def]
+    integration_client_factory: Any,
 ) -> None:
     plugin_configs = {
         "codex": {
@@ -22,7 +23,9 @@ async def test_codex_missing_auth_manager_returns_401(
     blocked_hosts = {"chatgpt.com", "api.openai.com"}
     original_send = httpx.AsyncClient.send
 
-    async def guard_send(self, request: httpx.Request, *args, **kwargs):
+    async def guard_send(
+        self: Any, request: httpx.Request, *args: Any, **kwargs: Any
+    ) -> Any:
         if request.url.host in blocked_hosts:
             raise AssertionError(f"Unexpected upstream call to {request.url!s}")
         return await original_send(self, request, *args, **kwargs)

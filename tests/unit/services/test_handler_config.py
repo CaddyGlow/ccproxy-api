@@ -105,4 +105,4 @@ def test_handler_config_is_immutable() -> None:
         config.supports_streaming = False  # type: ignore[misc]
 
     with pytest.raises(FrozenInstanceError):
-        config.request_adapter = DictFormatAdapter()  # type: ignore[assignment]
+        config.request_adapter = DictFormatAdapter()  # type: ignore[assignment,misc]

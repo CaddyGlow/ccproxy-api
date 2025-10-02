@@ -29,10 +29,12 @@ def test_model_mapper_honors_rule_order_and_types() -> None:
 
 
 def test_restore_model_aliases_updates_nested_payloads() -> None:
+    from typing import Any
+
     metadata: dict[str, object] = {}
     add_model_alias(metadata, original="gpt-4o-mini", mapped="claude-haiku")
 
-    payload = {
+    payload: dict[str, Any] = {
         "model": "claude-haiku",
         "choices": [
             {
@@ -47,5 +49,5 @@ def test_restore_model_aliases_updates_nested_payloads() -> None:
     restore_model_aliases(payload, metadata)
 
     assert payload["model"] == "gpt-4o-mini"
-    nested = payload["choices"][0]["message"]["metadata"]
+    nested: dict[str, Any] = payload["choices"][0]["message"]["metadata"]
     assert nested["model"] == "gpt-4o-mini"

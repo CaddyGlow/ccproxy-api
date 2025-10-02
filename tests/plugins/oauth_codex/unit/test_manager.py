@@ -70,7 +70,7 @@ async def test_codex_manager_refreshes_before_expiry(tmp_path: Path) -> None:
         await manager.save_credentials(refreshed_credentials)
         return refreshed_credentials
 
-    manager.refresh_token = AsyncMock(side_effect=_refresh)
+    manager.refresh_token = AsyncMock(side_effect=_refresh)  # type: ignore[method-assign]
 
     token = await manager.get_access_token_with_refresh()
 
@@ -105,7 +105,7 @@ async def test_codex_manager_raises_on_refresh_failure(tmp_path: Path) -> None:
     )
     await manager.save_credentials(credentials)
 
-    manager.refresh_token = AsyncMock(return_value=None)
+    manager.refresh_token = AsyncMock(return_value=None)  # type: ignore[method-assign]
 
     with pytest.raises(OAuthTokenRefreshError):
         await manager.get_access_token_with_refresh()

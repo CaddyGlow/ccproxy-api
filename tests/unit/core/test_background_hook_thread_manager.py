@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -34,7 +35,7 @@ async def test_background_hook_manager_no_race_on_start(
     # Immediately emit without any sleep to simulate race window
     # Use an existing HookEvent value to avoid creating a new Enum
     ctx = HookContext(
-        event=HookEvent.CUSTOM_EVENT, timestamp=None, data={}, metadata={}
+        event=HookEvent.CUSTOM_EVENT, timestamp=datetime.now(UTC), data={}, metadata={}
     )
     manager.emit_async(ctx, registry)
 
@@ -66,7 +67,7 @@ async def test_background_hook_manager_lazy_start_emit(
 
     # Do not call start() explicitly; emit triggers lazy start
     ctx = HookContext(
-        event=HookEvent.CUSTOM_EVENT, timestamp=None, data={}, metadata={}
+        event=HookEvent.CUSTOM_EVENT, timestamp=datetime.now(UTC), data={}, metadata={}
     )
     manager.emit_async(ctx, registry)
 

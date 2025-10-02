@@ -31,23 +31,28 @@ class DummyGenerator:
         (('{"messages": [{"content": "' + "x" * 1200 + '"}]}').encode(), "long"),
     ],
 )
-def test_extract_message_type(body, expected):
-    handler = MockResponseHandler(DummyGenerator())
+def test_extract_message_type(body: bytes, expected: str) -> None:
+    handler = MockResponseHandler(DummyGenerator())  # type: ignore[arg-type]
     assert handler.extract_message_type(body) == expected
 
 
 @pytest.mark.asyncio
-async def test_generate_standard_response_success(monkeypatch):
-    handler = MockResponseHandler(DummyGenerator(), error_rate=0.0)
+async def test_generate_standard_response_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import MagicMock
+
+    handler = MockResponseHandler(DummyGenerator(), error_rate=0.0)  # type: ignore[arg-type]
     monkeypatch.setattr(handler, "should_simulate_error", lambda: False)
     monkeypatch.setattr("random.uniform", lambda *args, **kwargs: 0)
 
-    async def fast_sleep(_):
+    async def fast_sleep(_: float) -> None:
         return None
 
     monkeypatch.setattr(asyncio, "sleep", fast_sleep)
 
-    ctx = RequestContext(request_id="req", start_time=0, logger=None)
+    mock_logger = MagicMock()
+    ctx = RequestContext(request_id="req", start_time=0, logger=mock_logger)  # type: ignore[arg-type]
     status, headers, body = await handler.generate_standard_response(
         model="m1", is_openai_format=False, ctx=ctx, message_type="short"
     )
@@ -59,17 +64,23 @@ async def test_generate_standard_response_success(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_generate_standard_response_error(monkeypatch):
-    handler = MockResponseHandler(DummyGenerator(), error_rate=1.0)
+async def test_generate_standard_response_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import MagicMock
+
+    handler = MockResponseHandler(DummyGenerator(), error_rate=1.0)  # type: ignore[arg-type]
     monkeypatch.setattr(handler, "should_simulate_error", lambda: True)
 
-    async def fast_sleep(_):
+    async def fast_sleep(_: float) -> None:
         return None
 
     monkeypatch.setattr(asyncio, "sleep", fast_sleep)
 
+    mock_logger = MagicMock()
+    mock_ctx = RequestContext(request_id="req", start_time=0, logger=mock_logger)  # type: ignore[arg-type]
     status, headers, body = await handler.generate_standard_response(
-        model="m1", is_openai_format=True, ctx=None, message_type="short"
+        model="m1", is_openai_format=True, ctx=mock_ctx, message_type="short"
     )
 
     assert status == 429
@@ -77,9 +88,12 @@ async def test_generate_standard_response_error(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_generate_streaming_response(monkeypatch):
-    handler = MockResponseHandler(DummyGenerator(), error_rate=0.0)
-    ctx = RequestContext(request_id="req", start_time=0, logger=None)
+async def test_generate_streaming_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock
+
+    handler = MockResponseHandler(DummyGenerator(), error_rate=0.0)  # type: ignore[arg-type]
+    mock_logger = MagicMock()
+    ctx = RequestContext(request_id="req", start_time=0, logger=mock_logger)  # type: ignore[arg-type]
 
     stream = await handler.generate_streaming_response(
         model="m1", is_openai_format=True, ctx=ctx

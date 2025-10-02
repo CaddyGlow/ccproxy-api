@@ -1,6 +1,7 @@
 """Integration tests for permission service functionality."""
 
 import asyncio
+from typing import Any
 
 import pytest
 
@@ -16,7 +17,7 @@ from ccproxy.plugins.permissions.service import (
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_request_creates_request(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test that requesting permission creates a new request."""
     # Create a fresh service for this test
@@ -46,7 +47,7 @@ async def test_permission_service_request_creates_request(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_validates_input(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test input validation for permission requests."""
     service = PermissionService(timeout_seconds=30)
@@ -72,7 +73,7 @@ async def test_permission_service_validates_input(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_get_status(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test getting status of permission requests."""
     service = PermissionService(timeout_seconds=30)
@@ -96,7 +97,7 @@ async def test_permission_service_get_status(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_resolve_allowed(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test resolving a permission request as allowed."""
     service = PermissionService(timeout_seconds=30)
@@ -120,7 +121,7 @@ async def test_permission_service_resolve_allowed(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_resolve_denied(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test resolving a permission request as denied."""
     service = PermissionService(timeout_seconds=30)
@@ -144,7 +145,7 @@ async def test_permission_service_resolve_denied(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_resolve_validation(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test input validation for resolve method."""
     service = PermissionService(timeout_seconds=30)
@@ -166,7 +167,7 @@ async def test_permission_service_resolve_validation(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_resolve_already_resolved(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test resolving an already resolved request returns False."""
     service = PermissionService(timeout_seconds=30)
@@ -190,7 +191,7 @@ async def test_permission_service_resolve_already_resolved(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_concurrent_resolutions(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test handling concurrent resolution attempts."""
     service = PermissionService(timeout_seconds=30)
@@ -217,7 +218,7 @@ async def test_permission_service_concurrent_resolutions(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_event_subscription(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test event subscription and emission."""
     service = PermissionService(timeout_seconds=30)
@@ -255,7 +256,7 @@ async def test_permission_service_event_subscription(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_multiple_subscribers(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test multiple event subscribers receive events."""
     service = PermissionService(timeout_seconds=30)
@@ -287,7 +288,7 @@ async def test_permission_service_multiple_subscribers(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_wait_for_permission_timeout(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test waiting for a permission that times out."""
     service = PermissionService(timeout_seconds=30)
@@ -298,7 +299,9 @@ async def test_permission_service_wait_for_permission_timeout(
 
         # Don't resolve - let it timeout
         with pytest.raises(asyncio.TimeoutError):
-            await service.wait_for_permission(request_id, timeout_seconds=0.2)
+            await service.wait_for_permission(
+                request_id, timeout_seconds=1
+            )  # Use int instead of float
     finally:
         await service.stop()
 
@@ -307,7 +310,7 @@ async def test_permission_service_wait_for_permission_timeout(
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_wait_for_non_existent_request(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test waiting for a non-existent request."""
     service = PermissionService(timeout_seconds=30)
@@ -323,7 +326,7 @@ async def test_permission_service_wait_for_non_existent_request(
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 @pytest.mark.auth
-async def test_get_permission_service_singleton(disabled_plugins_client) -> None:
+async def test_get_permission_service_singleton(disabled_plugins_client: Any) -> None:
     """Test that get_permission_service returns singleton."""
     service1 = get_permission_service()
     service2 = get_permission_service()
@@ -334,7 +337,7 @@ async def test_get_permission_service_singleton(disabled_plugins_client) -> None
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_get_pending_requests(
-    disabled_plugins_client,
+    disabled_plugins_client: Any,
 ) -> None:
     """Test get_pending_requests returns only pending requests."""
     service = PermissionService(timeout_seconds=30)

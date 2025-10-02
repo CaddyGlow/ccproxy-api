@@ -9,7 +9,7 @@ class FakeManifest:
     def __init__(self, name: str, with_cli: bool = True):
         self.name = name
         self.cli_commands = [object()] if with_cli else []
-        self.cli_arguments = []
+        self.cli_arguments: list[object] = []
 
 
 def test_discover_plugin_cli_extensions_filters_disabled(monkeypatch):

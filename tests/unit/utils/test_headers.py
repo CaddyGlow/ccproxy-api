@@ -1,5 +1,7 @@
 """Tests for header utility helpers."""
 
+from typing import Any
+
 from ccproxy.utils.headers import collect_cli_forward_headers
 
 
@@ -10,7 +12,7 @@ class DummyHeaders:
         self._values = values
         self._fail_filter = fail_filter
 
-    def filtered(self, *, ignores=None, redacted=None) -> dict[str, str]:  # type: ignore[override]
+    def filtered(self, *, ignores: Any = None, redacted: Any = None) -> dict[str, str]:
         if self._fail_filter:
             raise RuntimeError("filter failed")
         ignores = {*(ignores or [])}
@@ -63,7 +65,7 @@ def test_collect_cli_headers_filters_ignored_and_redacted() -> None:
             "editor-version": "vscode",
         }
     )
-    service = DummyDetectionService(
+    service: Any = DummyDetectionService(
         headers,
         ignores=["authorization"],
         redacted=["session_id"],
@@ -82,7 +84,7 @@ def test_collect_cli_headers_falls_back_when_filtered_raises() -> None:
         },
         fail_filter=True,
     )
-    service = DummyDetectionService(headers)
+    service: Any = DummyDetectionService(headers)
 
     result = collect_cli_forward_headers(service)
 

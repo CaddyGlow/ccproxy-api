@@ -47,8 +47,12 @@ async def test_endpoint_configurations_structure() -> None:
 
         # Verify field types and values
         assert isinstance(config["stream"], bool)
-        assert config["endpoint"].startswith("/")
-        assert normalize_format(config["format"]) in {
+        endpoint = config["endpoint"]
+        assert isinstance(endpoint, str)
+        assert endpoint.startswith("/")
+        format_value = config["format"]
+        assert isinstance(format_value, str)
+        assert normalize_format(format_value) in {
             "openai",
             "anthropic",
             "response_api",
@@ -153,15 +157,23 @@ async def test_conversion_completeness() -> None:
     endpoint_names = [config["name"] for config in E2E_ENDPOINT_CONFIGURATIONS]
 
     # Should have Copilot endpoints
-    copilot_endpoints = [name for name in endpoint_names if "copilot" in name]
+    copilot_endpoints = [
+        name for name in endpoint_names if isinstance(name, str) and "copilot" in name
+    ]
     assert len(copilot_endpoints) >= 2  # streaming and non-streaming
 
     # Should have Claude API endpoints
-    claude_endpoints = [name for name in endpoint_names if "anthropic_api" in name]
+    claude_endpoints = [
+        name
+        for name in endpoint_names
+        if isinstance(name, str) and "anthropic_api" in name
+    ]
     assert len(claude_endpoints) >= 2
 
     # Should have Codex endpoints
-    codex_endpoints = [name for name in endpoint_names if "codex" in name]
+    codex_endpoints = [
+        name for name in endpoint_names if isinstance(name, str) and "codex" in name
+    ]
     assert len(codex_endpoints) >= 2
 
     # Should have both streaming and non-streaming variants
@@ -177,7 +189,8 @@ async def test_conversion_completeness() -> None:
 
     # Should support all expected formats
     formats = {
-        normalize_format(config["format"]) for config in E2E_ENDPOINT_CONFIGURATIONS
+        normalize_format(str(config["format"]))
+        for config in E2E_ENDPOINT_CONFIGURATIONS
     }
     assert "openai" in formats
     assert "anthropic" in formats or "response_api" in formats

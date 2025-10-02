@@ -12,7 +12,7 @@ from ccproxy.core.plugins.hooks.implementations.http_tracer import HTTPTracerHoo
 
 class StubJSONFormatter:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict]] = []
+        self.calls: list[tuple[str, dict[str, object]]] = []
 
     async def log_request(
         self,
@@ -20,11 +20,11 @@ class StubJSONFormatter:
         request_id: str,
         method: str,
         url: str,
-        headers,
-        body,
+        headers: object,
+        body: object,
         request_type: str,
-        context=None,
-        hook_type=None,
+        context: object = None,
+        hook_type: object = None,
     ) -> None:
         self.calls.append(
             (
@@ -45,11 +45,11 @@ class StubJSONFormatter:
         *,
         request_id: str,
         status: int,
-        headers,
+        headers: object,
         body: bytes,
         response_type: str,
-        context=None,
-        hook_type=None,
+        context: object = None,
+        hook_type: object = None,
     ) -> None:
         self.calls.append(
             (
@@ -64,16 +64,18 @@ class StubJSONFormatter:
             )
         )
 
-    async def log_error(self, *, request_id: str, error, **_kwargs) -> None:
+    async def log_error(
+        self, *, request_id: str, error: object, **_kwargs: object
+    ) -> None:
         self.calls.append(("error", {"request_id": request_id, "message": str(error)}))
 
 
 class StubRawFormatter:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, dict]] = []
+        self.calls: list[tuple[str, dict[str, object]]] = []
 
     async def log_provider_request(
-        self, *, request_id: str, raw_data: bytes, hook_type=None
+        self, *, request_id: str, raw_data: bytes, hook_type: object = None
     ) -> None:
         self.calls.append(
             (
@@ -83,14 +85,14 @@ class StubRawFormatter:
         )
 
     async def log_client_request(
-        self, *, request_id: str, raw_data: bytes, hook_type=None
+        self, *, request_id: str, raw_data: bytes, hook_type: object = None
     ) -> None:
         self.calls.append(
             ("client_request", {"id": request_id, "hook": hook_type, "data": raw_data})
         )
 
     async def log_provider_response(
-        self, *, request_id: str, raw_data: bytes, hook_type=None
+        self, *, request_id: str, raw_data: bytes, hook_type: object = None
     ) -> None:
         self.calls.append(
             (
@@ -100,7 +102,7 @@ class StubRawFormatter:
         )
 
     async def log_client_response(
-        self, *, request_id: str, raw_data: bytes, hook_type=None
+        self, *, request_id: str, raw_data: bytes, hook_type: object = None
     ) -> None:
         self.calls.append(
             ("client_response", {"id": request_id, "hook": hook_type, "data": raw_data})
@@ -108,7 +110,9 @@ class StubRawFormatter:
 
 
 @pytest.mark.asyncio
-async def test_http_tracer_logs_provider_request_and_response(monkeypatch) -> None:
+async def test_http_tracer_logs_provider_request_and_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     json_formatter = StubJSONFormatter()
     raw_formatter = StubRawFormatter()
 
@@ -164,7 +168,7 @@ async def test_http_tracer_logs_provider_request_and_response(monkeypatch) -> No
 
 
 @pytest.mark.asyncio
-async def test_http_tracer_logs_client_error(monkeypatch) -> None:
+async def test_http_tracer_logs_client_error(monkeypatch: pytest.MonkeyPatch) -> None:
     json_formatter = StubJSONFormatter()
     raw_formatter = StubRawFormatter()
 
@@ -196,5 +200,6 @@ async def test_http_tracer_logs_client_error(monkeypatch) -> None:
     await hook(error_context)
 
     assert json_formatter.calls[0][0] == "error"
-    assert "boom" in json_formatter.calls[0][1]["message"]
+    error_message = json_formatter.calls[0][1]["message"]
+    assert isinstance(error_message, str) and "boom" in error_message
     assert raw_formatter.calls[0][0] == "client_response"

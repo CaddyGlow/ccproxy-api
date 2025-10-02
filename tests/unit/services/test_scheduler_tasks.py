@@ -664,7 +664,7 @@ class TestVersionUpdateCheckTask:
             mock_compare.assert_called_once_with("2.0.0", "1.2.0")
             mock_save.assert_awaited_once()
 
-            saved_state = mock_save.await_args.args[1]
+            saved_state = mock_save.await_args.args[1]  # type: ignore[union-attr]
             assert isinstance(saved_state, VersionCheckState)
             assert saved_state.running_version == "2.0.0"
 
@@ -723,7 +723,7 @@ class TestVersionUpdateCheckTask:
             mock_save.assert_awaited_once()
             mock_logger.warning.assert_not_called()
 
-            saved_state = mock_save.await_args.args[1]
+            saved_state = mock_save.await_args.args[1]  # type: ignore[union-attr]
 
             from ccproxy.utils.version_checker import VersionCheckState
 

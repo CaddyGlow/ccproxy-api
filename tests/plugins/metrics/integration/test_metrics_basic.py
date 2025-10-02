@@ -31,7 +31,7 @@ class _StubRegistry:
     def get_runtime(self, name: str) -> _StubRuntime | None:
         return self._runtime if name == self._plugin else None
 
-    def get_factory(self, name: str):  # pragma: no cover - unused by tests
+    def get_factory(self, name: str) -> None:  # pragma: no cover - unused by tests
         return None
 
 

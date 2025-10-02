@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
@@ -19,7 +20,7 @@ from ccproxy.core.plugins.middleware import MiddlewareManager
 
 
 @contextmanager
-def _status_client() -> TestClient:
+def _status_client() -> Iterator[TestClient]:
     """Yield a client with plugins enabled and metrics surfaced."""
 
     registry = PluginRegistry()
@@ -53,8 +54,8 @@ def _status_client() -> TestClient:
             return self._manifest
 
     registry.factories = {
-        "metrics": _StubFactory(metrics_manifest, "system"),
-        "codex": _StubFactory(provider_manifest, "provider"),
+        "metrics": _StubFactory(metrics_manifest, "system"),  # type: ignore[dict-item]
+        "codex": _StubFactory(provider_manifest, "provider"),  # type: ignore[dict-item]
     }
     registry.runtimes = {
         "metrics": SimpleNamespace(initialized=True),
@@ -110,11 +111,13 @@ def _status_client() -> TestClient:
 def _fetch_status_payload() -> dict[str, Any]:
     """Return the JSON payload for /plugins/status."""
 
+    client: TestClient
     with _status_client() as client:
         response = client.get("/plugins/status")
 
     assert response.status_code == 200
-    return response.json()
+    payload: dict[str, Any] = response.json()
+    return payload
 
 
 @pytest.fixture(scope="module")

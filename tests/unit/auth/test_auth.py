@@ -164,7 +164,6 @@ class TestTokenRefreshFlow:
             accessToken=SecretStr("sk-test-token-123"),
             refreshToken=SecretStr("refresh-token-456"),
             expiresAt=None,
-            tokenType="Bearer",
             subscriptionType=None,
         )
 

@@ -344,7 +344,7 @@ disable_error_code = ["unused-ignore"]
 
 [[tool.mypy.overrides]]
 module = "tests.*"
-ignore_errors = true
+ignore_errors = false
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 warn_unused_ignores = false

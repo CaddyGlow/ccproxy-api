@@ -186,7 +186,7 @@ class TestGitHubVersionFetching:
         async def __aenter__(self) -> "TestGitHubVersionFetching._StubAsyncClient":
             return self
 
-        async def __aexit__(self, exc_type, exc, tb) -> bool:
+        async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
             return False
 
         async def get(self, *args: Any, **kwargs: Any) -> Any:
@@ -292,7 +292,7 @@ class TestBranchResolution:
         async def __aenter__(self) -> "TestBranchResolution._StubAsyncClient":
             return self
 
-        async def __aexit__(self, exc_type, exc, tb) -> bool:
+        async def __aexit__(self, exc_type: object, exc: object, tb: object) -> bool:
             return False
 
         async def get(self, *args: Any, **kwargs: Any) -> Any:

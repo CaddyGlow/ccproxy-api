@@ -1,3 +1,4 @@
+from typing import Any
 from unittest.mock import patch
 
 import httpx
@@ -7,7 +8,7 @@ import pytest
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_claude_api_missing_auth_manager_returns_401_integration(
-    integration_client_factory,  # type: ignore[no-untyped-def]
+    integration_client_factory: Any,
 ) -> None:
     plugin_configs = {
         "claude_api": {
@@ -22,7 +23,9 @@ async def test_claude_api_missing_auth_manager_returns_401_integration(
     blocked_hosts = {"api.anthropic.com"}
     original_send = httpx.AsyncClient.send
 
-    async def guard_send(self, request: httpx.Request, *args, **kwargs):
+    async def guard_send(
+        self: httpx.AsyncClient, request: httpx.Request, *args: Any, **kwargs: Any
+    ) -> httpx.Response:
         if request.url.host in blocked_hosts:
             raise AssertionError(f"Unexpected upstream call to {request.url!s}")
         return await original_send(self, request, *args, **kwargs)

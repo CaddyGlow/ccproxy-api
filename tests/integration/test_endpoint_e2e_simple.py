@@ -168,7 +168,7 @@ async def test_e2e_configuration_data() -> None:
 async def test_mock_response_structure() -> None:
     """Test mock response structures for different formats."""
     # Mock OpenAI response
-    openai_response = {
+    openai_response: dict[str, Any] = {
         "id": "test-id",
         "object": "chat.completion",
         "created": 1234567890,
@@ -185,13 +185,19 @@ async def test_mock_response_structure() -> None:
 
     # Validate structure
     assert "choices" in openai_response
-    assert len(openai_response["choices"]) > 0
-    assert "message" in openai_response["choices"][0]
-    assert "role" in openai_response["choices"][0]["message"]
-    assert "content" in openai_response["choices"][0]["message"]
+    choices = openai_response["choices"]
+    assert isinstance(choices, list)
+    assert len(choices) > 0
+    first_choice = choices[0]
+    assert isinstance(first_choice, dict)
+    assert "message" in first_choice
+    message = first_choice["message"]
+    assert isinstance(message, dict)
+    assert "role" in message
+    assert "content" in message
 
     # Mock streaming chunk
-    streaming_chunk = {
+    streaming_chunk: dict[str, Any] = {
         "id": "test-stream-id",
         "object": "chat.completion.chunk",
         "created": 1234567890,
@@ -207,8 +213,14 @@ async def test_mock_response_structure() -> None:
 
     # Validate streaming structure
     assert "choices" in streaming_chunk
-    assert "delta" in streaming_chunk["choices"][0]
-    assert "content" in streaming_chunk["choices"][0]["delta"]
+    stream_choices = streaming_chunk["choices"]
+    assert isinstance(stream_choices, list)
+    stream_first_choice = stream_choices[0]
+    assert isinstance(stream_first_choice, dict)
+    assert "delta" in stream_first_choice
+    delta = stream_first_choice["delta"]
+    assert isinstance(delta, dict)
+    assert "content" in delta
 
 
 # Test that the conversion completed successfully
@@ -237,8 +249,12 @@ async def test_conversion_completed_successfully() -> None:
             key in config
             for key in ["name", "endpoint", "stream", "model", "format", "description"]
         )
-        assert config["endpoint"].startswith("/")
-        assert normalize_format(config["format"]) in [
+        endpoint = config["endpoint"]
+        assert isinstance(endpoint, str)
+        assert endpoint.startswith("/")
+        format_value = config["format"]
+        assert isinstance(format_value, str)
+        assert normalize_format(format_value) in [
             "openai",
             "anthropic",
             "response_api",

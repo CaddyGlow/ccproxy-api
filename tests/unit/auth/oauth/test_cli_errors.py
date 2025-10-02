@@ -84,4 +84,5 @@ class TestAuthErrorHierarchy:
             raise PortBindError("Port 8080 unavailable") from original_os_error
         except PortBindError as e:
             assert e.__cause__ is original_os_error
+            assert isinstance(e.__cause__, OSError)
             assert e.__cause__.errno == errno.EADDRINUSE

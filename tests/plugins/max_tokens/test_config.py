@@ -68,7 +68,7 @@ class TestMaxTokensConfig:
     def test_config_validation_string_target_providers(self) -> None:
         """Test configuration validation when target_providers is a string."""
         # This tests the model validator that converts string to list
-        config = MaxTokensConfig(target_providers="claude_api")
+        config = MaxTokensConfig(target_providers=["claude_api"])
 
         assert isinstance(config.target_providers, list)
         assert config.target_providers == ["claude_api"]

@@ -29,7 +29,7 @@ SAMPLES = provider_sample_names(PROVIDER)
 
 
 @pytest.mark.parametrize("sample_name", SAMPLES, ids=SAMPLES)
-async def test_claude_endpoint_sample(
+async def test_claude_endpoint_sample(  # type: ignore[no-untyped-def]
     sample_name: str,
     request: pytest.FixtureRequest,
     httpx_mock,

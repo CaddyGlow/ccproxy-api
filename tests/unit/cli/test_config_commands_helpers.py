@@ -13,7 +13,7 @@ class SampleConfig(BaseModel):
     server_host: str = "127.0.0.1"
     security_token: str = "api_token_value"
     cors_origins: list[str] = []
-    nested: NestedConfig = NestedConfig()
+    nested: NestedConfig = Field(default_factory=lambda: NestedConfig(value=1))
 
 
 def test_format_value_handles_various_types() -> None:

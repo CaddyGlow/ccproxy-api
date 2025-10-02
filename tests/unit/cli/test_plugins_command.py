@@ -52,6 +52,8 @@ def test_describe_config_model_includes_values() -> None:
 def test_gather_plugin_metadata_includes_status_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from typing import Any, cast
+
     settings = SimpleNamespace(
         enable_plugins=True,
         plugin_discovery=SimpleNamespace(directories=[]),
@@ -76,7 +78,7 @@ def test_gather_plugin_metadata_includes_status_reason(
         lambda _settings: (factories, filter_config, {"beta"}),
     )
 
-    metadata = plugins_cmd.gather_plugin_metadata(settings)
+    metadata = plugins_cmd.gather_plugin_metadata(cast(Any, settings))
 
     alpha = next(item for item in metadata if item.name == "alpha")
     beta = next(item for item in metadata if item.name == "beta")

@@ -15,6 +15,7 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from claude_agent_sdk.types import TextBlock as SDKTextBlock
 
 from ccproxy.core.errors import ClaudeProxyError
 from ccproxy.llms.models.anthropic import MessageResponse, TextBlock, Usage
@@ -200,43 +201,31 @@ def mock_claude_sdk_client_streaming() -> AsyncMock:
         *args: Any, **kwargs: Any
     ) -> AsyncGenerator[Any, None]:
         yield AssistantMessage(
-            content=[TextBlock(text="Hello")],
-            session_id="test_session",
-            stop_reason=None,
-            stop_sequences=None,
+            content=[SDKTextBlock(text="Hello")],
             model="claude-3-5-sonnet-20241022",
-            message_id="msg_123",
         )
         yield AssistantMessage(
-            content=[TextBlock(text=" world!")],
-            session_id="test_session",
-            stop_reason=None,
-            stop_sequences=None,
+            content=[SDKTextBlock(text=" world!")],
             model="claude-3-5-sonnet-20241022",
-            message_id="msg_123",
         )
         yield AssistantMessage(
             content=[
                 ToolUseBlock(id="tool_123", name="test_tool", input={"arg": "value"})
             ],
-            session_id="test_session",
-            stop_reason=None,
-            stop_sequences=None,
             model="claude-3-5-sonnet-20241022",
-            message_id="msg_123",
         )
         # Yield a tool result block
         yield AssistantMessage(
             content=[ToolResultBlock(tool_use_id="tool_123", content="tool output")],
-            session_id="test_session",
-            stop_reason=None,
-            stop_sequences=None,
             model="claude-3-5-sonnet-20241022",
-            message_id="msg_123",
         )
         yield ResultMessage(
             session_id="test_session",
-            stop_reason="end_turn",
+            subtype="",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
             total_cost_usd=0.001,
             usage={
                 "input_tokens": 10,

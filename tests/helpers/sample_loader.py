@@ -17,7 +17,8 @@ def load_sample(name: str) -> dict[str, Any]:
     if not path.is_file():
         raise FileNotFoundError(f"Sample '{name}' not found at {path}")
     with path.open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+        data: dict[str, Any] = json.load(handle)
+        return data
 
 
 def load_sample_registry() -> dict[str, dict[str, Any]]:

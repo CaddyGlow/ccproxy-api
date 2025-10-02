@@ -25,7 +25,8 @@ AVAILABLE_CASES = {case.name: case for case in ENDPOINT_TESTS}
 SAMPLE_NAMES = [name for name in sorted(SAMPLE_REGISTRY) if name in AVAILABLE_CASES]
 CASE_INDEX_LOOKUP = {case.name: index for index, case in enumerate(ENDPOINT_TESTS)}
 
-TestEndpoint.__test__ = False
+# Prevent pytest from collecting TestEndpoint as a test class
+TestEndpoint.__test__ = False  # type: ignore[attr-defined]
 
 
 def _resolve_sample_names() -> list[str]:

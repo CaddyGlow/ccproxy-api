@@ -2,6 +2,7 @@
 
 import importlib
 from types import SimpleNamespace
+from typing import Any
 
 from typer.testing import CliRunner
 
@@ -11,11 +12,11 @@ serve_module = importlib.import_module("ccproxy.cli.commands.serve")
 status_module = importlib.import_module("ccproxy.cli.commands.status")
 
 
-def test_cli_serve_invokes_local_server(monkeypatch) -> None:
+def test_cli_serve_invokes_local_server(monkeypatch: Any) -> None:
     runner = CliRunner()
-    captured: dict[str, object] = {}
+    captured: dict[str, Any] = {}
 
-    stub_settings = SimpleNamespace(
+    stub_settings: Any = SimpleNamespace(
         server=SimpleNamespace(host="127.0.0.1", port=9000, reload=False, workers=1),
         security=SimpleNamespace(auth_token=None),
         logging=SimpleNamespace(format="text", level="INFO", file=None),
@@ -27,7 +28,9 @@ def test_cli_serve_invokes_local_server(monkeypatch) -> None:
         plugins_disable_local_discovery=False,
     )
 
-    def fake_from_config(cls, *, config_path=None, cli_context=None):  # type: ignore[override]
+    def fake_from_config(
+        cls: Any, *, config_path: Any = None, cli_context: Any = None
+    ) -> Any:
         captured["cli_context"] = cli_context
         return stub_settings
 
@@ -47,9 +50,9 @@ def test_cli_serve_invokes_local_server(monkeypatch) -> None:
         ),
     )
 
-    ran = {}
+    ran: dict[str, Any] = {}
 
-    def fake_run_local(settings):
+    def fake_run_local(settings: Any) -> None:
         ran["settings"] = settings
 
     monkeypatch.setattr(serve_module, "_run_local_server", fake_run_local)
@@ -60,11 +63,13 @@ def test_cli_serve_invokes_local_server(monkeypatch) -> None:
 
     assert result.exit_code == 0
     assert ran.get("settings") is stub_settings
-    assert captured["cli_context"]["host"] == "0.0.0.0"
-    assert captured["cli_context"]["port"] == 4321
+    cli_context = captured.get("cli_context")
+    assert cli_context is not None
+    assert cli_context["host"] == "0.0.0.0"
+    assert cli_context["port"] == 4321
 
 
-def test_status_command_runs_with_stubbed_snapshots(monkeypatch) -> None:
+def test_status_command_runs_with_stubbed_snapshots(monkeypatch: Any) -> None:
     runner = CliRunner()
 
     stub_settings = object()

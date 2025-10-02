@@ -398,7 +398,7 @@ class TestCLICallbackServer:
         # Simulate receiving callback by directly calling the wait method with a future that resolves immediately
         async def mock_wait(*args, **kwargs):
             callback_data = {"code": "test_code", "state": "test_state"}
-            future = asyncio.Future()
+            future: asyncio.Future[dict[str, str]] = asyncio.Future()
             future.set_result(callback_data)
             server.callback_future = future
             return await future

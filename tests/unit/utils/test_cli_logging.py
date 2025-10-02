@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from ccproxy.utils import cli_logging
 
 
@@ -19,8 +21,8 @@ def _make_cli_info(**overrides):
     return info
 
 
-def test_log_cli_info_emits_debug_and_warning(monkeypatch) -> None:
-    messages: list[tuple[str, dict]] = []
+def test_log_cli_info_emits_debug_and_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+    messages: list[tuple[str, dict[str, object]]] = []
 
     monkeypatch.setattr(
         cli_logging,
@@ -46,17 +48,20 @@ def test_log_cli_info_emits_debug_and_warning(monkeypatch) -> None:
     assert messages[1][1]["expected_version"] == "2.0"
 
 
-def test_log_plugin_summary_logs_and_delegates(monkeypatch) -> None:
-    called = {}
+def test_log_plugin_summary_logs_and_delegates(monkeypatch: pytest.MonkeyPatch) -> None:
+    from typing import Any
+
+    called: dict[str, Any] = {}
+
+    def debug_handler(*args: object, **kwargs: object) -> None:
+        if "debug" not in called:
+            called["debug"] = []
+        called["debug"].append((args, kwargs))
 
     monkeypatch.setattr(
         cli_logging,
         "logger",
-        SimpleNamespace(
-            debug=lambda *args, **kwargs: called.setdefault("debug", []).append(
-                (args, kwargs)
-            )
-        ),
+        SimpleNamespace(debug=debug_handler),
     )
     monkeypatch.setattr(
         cli_logging,

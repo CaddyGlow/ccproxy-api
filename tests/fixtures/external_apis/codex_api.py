@@ -41,8 +41,8 @@ def _resolve_codex_sample(payload: dict[str, Any]) -> str:
 def mock_external_codex_api(httpx_mock: HTTPXMock) -> HTTPXMock:
     """Intercept Codex upstream calls and respond with recorded samples."""
 
-    # Configure the mock to allow reusing callbacks
-    httpx_mock.can_send_already_matched_responses = True
+    # Note: HTTPXMock automatically allows reusing callbacks via is_reusable=True
+    # No need to set can_send_already_matched_responses
 
     def _callback(request: httpx.Request) -> httpx.Response:
         print(

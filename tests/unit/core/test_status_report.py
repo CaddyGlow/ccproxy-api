@@ -49,7 +49,7 @@ def build_settings(**overrides: object) -> Settings:
     }
     logging_overrides = overrides.pop("logging", None)
     if logging_overrides is not None:
-        data["logging"].update(logging_overrides)  # type: ignore[arg-type]
+        data["logging"].update(logging_overrides)  # type: ignore[arg-type,attr-defined]
 
     data.update(overrides)
     return Settings.model_validate(data)

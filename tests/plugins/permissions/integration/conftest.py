@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import AsyncGenerator
 
 import pytest
 
@@ -13,7 +14,7 @@ from ccproxy.services.container import ServiceContainer
 
 
 @pytest.fixture(autouse=True)
-async def permissions_task_manager() -> ServiceContainer:
+async def permissions_task_manager() -> AsyncGenerator[ServiceContainer, None]:
     """Ensure the async task manager is available for permission tests."""
     container = ServiceContainer.get_current(strict=False)
     if container is None:

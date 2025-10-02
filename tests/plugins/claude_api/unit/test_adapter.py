@@ -32,7 +32,7 @@ class TestClaudeAPIAdapter:
         return service
 
     @pytest.fixture
-    def mock_auth_manager(self):
+    def mock_auth_manager(self) -> Mock:
         """Create mock auth manager."""
         auth_manager = Mock(spec=ClaudeApiTokenManager)
         auth_manager.get_access_token = AsyncMock(return_value="test-token")
@@ -50,7 +50,7 @@ class TestClaudeAPIAdapter:
         return auth_manager
 
     @pytest.fixture
-    def mock_http_pool_manager(self):
+    def mock_http_pool_manager(self) -> Mock:
         """Create mock HTTP pool manager."""
         return Mock()
 
@@ -58,8 +58,8 @@ class TestClaudeAPIAdapter:
     def adapter(
         self,
         mock_detection_service: ClaudeAPIDetectionService,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
     ) -> ClaudeAPIAdapter:
         """Create ClaudeAPIAdapter instance."""
         from ccproxy.plugins.claude_api.config import ClaudeAPISettings
@@ -112,16 +112,18 @@ class TestClaudeAPIAdapter:
     async def test_prepare_provider_request_with_system_prompt(
         self,
         mock_detection_service: ClaudeAPIDetectionService,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
     ) -> None:
         """Test request preparation with system prompt injection."""
         # Setup detection service with system prompt
         prompts = DetectedPrompts.from_body(
             {"system": [{"type": "text", "text": "You are a helpful assistant."}]}
         )
-        mock_detection_service.get_detected_prompts.return_value = prompts
-        mock_detection_service.get_system_prompt.return_value = prompts.system_payload()
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)  # type: ignore[method-assign]
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.system_payload()
+        )  # type: ignore[method-assign]
 
         adapter = ClaudeAPIAdapter(
             detection_service=mock_detection_service,
@@ -200,7 +202,13 @@ class TestClaudeAPIAdapter:
 
         assert result.status_code == 200
         # Response should be unchanged for native Anthropic endpoint
-        result_data = json.loads(result.body)
+        if isinstance(result.body, bytes):
+            body_str = result.body.decode()
+        elif isinstance(result.body, memoryview):
+            body_str = bytes(result.body).decode()
+        else:
+            body_str = str(result.body)
+        result_data = json.loads(body_str)
         assert result_data == response_data
         assert "Content-Type" in result.headers
         assert result.headers["Content-Type"] == "application/json"
@@ -227,7 +235,13 @@ class TestClaudeAPIAdapter:
 
         assert result.status_code == 200
         # Should convert to OpenAI format
-        result_data = json.loads(result.body)
+        if isinstance(result.body, bytes):
+            body_str = result.body.decode()
+        elif isinstance(result.body, memoryview):
+            body_str = bytes(result.body).decode()
+        else:
+            body_str = str(result.body)
+        result_data = json.loads(body_str)
         # The exact conversion depends on the OpenAI adapter implementation
         # Just verify the structure changed
         assert "choices" in result_data or result_data != response_data
@@ -236,16 +250,18 @@ class TestClaudeAPIAdapter:
     async def test_system_prompt_injection_with_existing_system(
         self,
         mock_detection_service: ClaudeAPIDetectionService,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
     ) -> None:
         """Test system prompt injection when request already has system prompt."""
         # Setup detection service with system prompt
         prompts = DetectedPrompts.from_body(
             {"system": [{"type": "text", "text": "You are a helpful assistant."}]}
         )
-        mock_detection_service.get_detected_prompts.return_value = prompts
-        mock_detection_service.get_system_prompt.return_value = prompts.system_payload()
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)  # type: ignore[method-assign]
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.system_payload()
+        )  # type: ignore[method-assign]
 
         adapter = ClaudeAPIAdapter(
             detection_service=mock_detection_service,
@@ -281,16 +297,18 @@ class TestClaudeAPIAdapter:
     async def test_prepare_provider_request_removes_metadata(
         self,
         mock_detection_service: ClaudeAPIDetectionService,
-        mock_auth_manager,
-        mock_http_pool_manager,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
     ) -> None:
         """Test metadata fields are removed when preparing the provider request."""
         # Setup detection service with system prompt
         prompts = DetectedPrompts.from_body(
             {"system": [{"type": "text", "text": "You are a helpful assistant."}]}
         )
-        mock_detection_service.get_detected_prompts.return_value = prompts
-        mock_detection_service.get_system_prompt.return_value = prompts.system_payload()
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)  # type: ignore[method-assign]
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.system_payload()
+        )  # type: ignore[method-assign]
 
         adapter = ClaudeAPIAdapter(
             detection_service=mock_detection_service,
@@ -395,7 +413,7 @@ class TestClaudeAPIAdapter:
         assert "_ccproxy_injected" not in clean_data["tools"][0]
 
         # Original data should be untouched (deep copy in the method)
-        assert "_ccproxy_injected" in data["system"][0]
+        assert "_ccproxy_injected" in data["system"][0]  # type: ignore[index]
 
     def test_needs_openai_conversion(self, adapter: ClaudeAPIAdapter) -> None:
         """Test OpenAI conversion detection."""

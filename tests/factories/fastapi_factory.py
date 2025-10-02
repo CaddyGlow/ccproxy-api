@@ -88,7 +88,10 @@ class FastAPIAppFactory:
             )
 
         # Create the base app
-        app = create_app(settings=effective_settings)
+        from ccproxy.api.bootstrap import create_service_container
+
+        container = create_service_container(effective_settings)
+        app = create_app(container)
 
         # IMPORTANT: Set up app.state BEFORE dependency overrides
         # This mimics what happens in the real app's lifespan function
@@ -153,11 +156,11 @@ class FastAPIAppFactory:
         from fastapi import Request
 
         from ccproxy.api.dependencies import get_cached_settings
-        from ccproxy.config.settings import get_settings as original_get_settings
 
-        overrides[original_get_settings] = lambda: settings
+        # Note: get_settings doesn't exist in ccproxy.config anymore
+        # We override the dependency directly
 
-        def mock_get_cached_settings_for_factory(request: Request):
+        def mock_get_cached_settings_for_factory(request: Request) -> Settings:
             return settings
 
         overrides[get_cached_settings] = mock_get_cached_settings_for_factory

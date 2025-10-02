@@ -15,6 +15,7 @@ from httpx import ASGITransport, AsyncClient
 
 from ccproxy.api.app import create_app, initialize_plugins_startup
 from ccproxy.api.bootstrap import create_service_container
+from ccproxy.config.core import LoggingSettings, ServerSettings
 from ccproxy.config.settings import Settings
 from ccproxy.services.container import ServiceContainer
 
@@ -74,11 +75,11 @@ def _build_isolated_plugin_settings(
         enabled_plugins=enabled_plugins,
         disabled_plugins=disabled_plugins,
         plugins=plugin_configs,
-        logging={
-            "level": "ERROR",
-            "verbose_api": False,
+        logging=LoggingSettings(
+            level="ERROR",
+            verbose_api=False,
             **(logging_overrides or {}),
-        },
+        ),
     )
 
 
@@ -89,15 +90,15 @@ def base_integration_settings() -> Settings:
         enable_plugins=False,  # Disable all plugins by default
         plugins={},  # Empty plugin configuration
         # Disable expensive features for faster tests
-        logging={
-            "level": "ERROR",  # Minimal logging for speed
-            "verbose_api": False,
-        },
+        logging=LoggingSettings(
+            level="ERROR",  # Minimal logging for speed
+            verbose_api=False,
+        ),
         # Minimal server config
-        server={
-            "host": "127.0.0.1",
-            "port": 8000,  # Use standard port for tests
-        },
+        server=ServerSettings(
+            host="127.0.0.1",
+            port=8000,  # Use standard port for tests
+        ),
     )
 
 
@@ -142,7 +143,7 @@ def integration_app_factory():
 def integration_client_factory(integration_app_factory):
     """Factory for creating HTTP clients with plugin configurations."""
 
-    async def _create_client(plugin_configs: dict[str, dict[str, Any]]):
+    async def _create_client(plugin_configs: dict[str, dict[str, Any]]) -> AsyncClient:
         """Create HTTP client with specific plugin configuration."""
         app = await integration_app_factory(plugin_configs)
 
@@ -277,7 +278,7 @@ def mock_external_apis():
 def plugin_integration_markers():
     """Helper for consistent test marking across plugins."""
 
-    def mark_test(plugin_name: str):
+    def mark_test(plugin_name: str) -> pytest.MarkDecorator:
         """Apply consistent markers to plugin integration tests."""
         return pytest.mark.parametrize("", [()], ids=[f"{plugin_name}_integration"])
 

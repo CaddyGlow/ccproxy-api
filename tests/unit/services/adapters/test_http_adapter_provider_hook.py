@@ -53,6 +53,10 @@ class _DummyStreamingHandler:
         }
         return StreamingResponse(iter([b"chunk"]))
 
+    async def cleanup_streaming_response(self, response: StreamingResponse) -> None:
+        """Cleanup method to satisfy StreamingHandler protocol."""
+        pass
+
 
 class _TestHTTPAdapter(BaseHTTPAdapter):
     """Concrete adapter for exercising hook behaviour in tests."""
@@ -63,6 +67,10 @@ class _TestHTTPAdapter(BaseHTTPAdapter):
         hook_manager: HookManager | None,
         streaming_handler: _DummyStreamingHandler | None = None,
     ) -> None:
+        from typing import cast
+
+        from ccproxy.streaming.handler import StreamingHandler
+
         config = ProviderConfig(
             name="test-provider", base_url="https://api.example.com"
         )
@@ -70,7 +78,7 @@ class _TestHTTPAdapter(BaseHTTPAdapter):
             config=config,
             auth_manager=None,
             http_pool_manager=_DummyPool(hook_manager),
-            streaming_handler=streaming_handler,
+            streaming_handler=cast(StreamingHandler, streaming_handler),
         )
         self.captured_request: tuple[str, str, dict[str, str], bytes] | None = None
 

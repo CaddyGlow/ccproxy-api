@@ -39,14 +39,17 @@ async def test_claude_stream_to_openai_responses_sample() -> None:
     instructions = request_model.system
     if isinstance(instructions, list):
         instructions_text = "\n".join(
-            part.get("text", "") for part in instructions if isinstance(part, dict)
+            part.text if isinstance(part, anthropic_models.TextBlock) else ""
+            for part in instructions
         )
     else:
         instructions_text = instructions or ""
 
     register_request(request_model, instructions_text)
 
-    adapter = TypeAdapter(anthropic_models.MessageStreamEvent)
+    adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
+        anthropic_models.MessageStreamEvent
+    )
     events: list[Any] = []
     for raw_event in sample["response"].get("events", []):
         payload = raw_event.get("json")
@@ -76,9 +79,14 @@ async def test_claude_stream_to_openai_responses_sample() -> None:
         assert response.instructions == instructions_text
 
     message_output = response.output[0]
+    # Type narrow to MessageOutput which has the content attribute
+    assert isinstance(message_output, openai_models.MessageOutput), (
+        "expected MessageOutput"
+    )
+
     tool_blocks = [
         block
-        for block in message_output.content  # type: ignore[assignment]
+        for block in message_output.content
         if isinstance(block, dict) and block.get("type") == "tool_use"
     ]
     assert tool_blocks, "expected tool_use block in final response"
@@ -117,6 +125,10 @@ async def test_openai_chat_stream_to_anthropic_sample() -> None:
         for evt in streamed
         if isinstance(evt, anthropic_models.ContentBlockStartEvent)
         and getattr(evt.content_block, "type", None) == "tool_use"
+    )
+    # Type narrow to ToolUseBlock which has the input attribute
+    assert isinstance(tool_event.content_block, anthropic_models.ToolUseBlock), (
+        "expected ToolUseBlock"
     )
     assert tool_event.content_block.input, "tool input should be populated"
 

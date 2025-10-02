@@ -132,7 +132,7 @@ def _entry_point_plugins() -> set[str]:
     if hasattr(groups, "select"):
         items = groups.select(group="ccproxy.plugins")
     else:  # pragma: no cover - legacy importlib.metadata behaviour
-        items = groups.get("ccproxy.plugins", [])
+        items = groups.get("ccproxy.plugins", [])  # type: ignore[arg-type]
     return {ep.name for ep in items}
 
 
@@ -219,7 +219,7 @@ async def _get_plugin_status(settings: Settings) -> dict[str, Any]:
 def _find_plugin_entry(payload: dict[str, Any], name: str) -> dict[str, Any] | None:
     for entry in payload.get("plugins", []):
         if entry.get("name") == name:
-            return entry
+            return entry  # type: ignore[no-any-return]
     return None
 
 

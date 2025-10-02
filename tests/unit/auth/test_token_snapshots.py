@@ -1,6 +1,7 @@
 """Tests for token snapshot helpers and utilities."""
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from pydantic import SecretStr
@@ -15,7 +16,7 @@ from ccproxy.plugins.oauth_claude.models import ClaudeCredentials, ClaudeOAuthTo
 from ccproxy.plugins.oauth_codex.models import OpenAICredentials, OpenAITokens
 
 
-def test_snapshot_from_claude_credentials(tmp_path) -> None:
+def test_snapshot_from_claude_credentials(tmp_path: Path) -> None:
     """Ensure Claude credentials produce a populated snapshot."""
     oauth = ClaudeOAuthToken(
         accessToken=SecretStr("claude_access"),

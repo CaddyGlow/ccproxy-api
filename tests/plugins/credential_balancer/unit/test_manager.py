@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -48,11 +49,12 @@ class MockAuthManager:
     async def __aenter__(self) -> MockAuthManager:
         return self
 
-    async def __aexit__(self, *args) -> None:
+    async def __aexit__(self, *args: Any) -> None:
         pass
 
 
 def _pop_request_id(manager: CredentialBalancerTokenManager) -> str:
+    """Pop the next request ID from the manager's request states."""
     assert manager._request_states, "expected pending request state"
     return next(iter(manager._request_states.keys()))
 

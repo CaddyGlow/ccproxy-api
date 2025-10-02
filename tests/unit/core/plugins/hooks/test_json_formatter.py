@@ -1,6 +1,7 @@
 """Tests for the JSONFormatter tracing helper."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -8,7 +9,7 @@ from ccproxy.core.plugins.hooks.implementations.formatters.json import JSONForma
 
 
 @pytest.mark.asyncio
-async def test_log_request_writes_json(tmp_path) -> None:
+async def test_log_request_writes_json(tmp_path: Path) -> None:
     formatter = JSONFormatter(log_dir=str(tmp_path))
 
     await formatter.log_request(
@@ -28,7 +29,7 @@ async def test_log_request_writes_json(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_log_response_writes_plain_body(tmp_path) -> None:
+async def test_log_response_writes_plain_body(tmp_path: Path) -> None:
     formatter = JSONFormatter(log_dir=str(tmp_path))
 
     await formatter.log_response(

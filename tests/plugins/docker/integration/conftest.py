@@ -9,7 +9,9 @@ tests run without a real Docker daemon. Follows TESTING.md guidelines:
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -46,7 +48,7 @@ def docker_adapter_success(monkeypatch: pytest.MonkeyPatch) -> DockerAdapter:
     monkeypatch.setattr(adapter_mod, "run_command", _ok_run_command)
 
     # Ensure any direct subprocess execs in adapter code paths look successful
-    async def _ok_proc_factory(*args: object, **kwargs: object):  # noqa: ANN001
+    async def _ok_proc_factory(*args: object, **kwargs: object) -> Any:
         proc = Mock()
         proc.returncode = 0
 
@@ -74,7 +76,7 @@ def docker_adapter_success(monkeypatch: pytest.MonkeyPatch) -> DockerAdapter:
         proc.stderr = stderr
         return proc
 
-    monkeypatch.setattr(adapter_mod.asyncio, "create_subprocess_exec", _ok_proc_factory)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", _ok_proc_factory)
 
     # Make image_exists trivially fast and deterministic
     monkeypatch.setattr(adapter, "image_exists", AsyncMock(return_value=True))
