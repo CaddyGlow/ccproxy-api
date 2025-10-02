@@ -121,10 +121,9 @@ class TestClaudeAPIAdapter:
             {"system": [{"type": "text", "text": "You are a helpful assistant."}]}
         )
         mock_detection_service.get_detected_prompts = Mock(return_value=prompts)  # type: ignore[method-assign]
-        mock_detection_service.get_system_prompt = Mock(
+        mock_detection_service.get_system_prompt = Mock(  # type: ignore[method-assign]
             return_value=prompts.system_payload()
-        )  # type: ignore[method-assign]
-
+        )
         adapter = ClaudeAPIAdapter(
             detection_service=mock_detection_service,
             auth_manager=mock_auth_manager,
@@ -259,9 +258,9 @@ class TestClaudeAPIAdapter:
             {"system": [{"type": "text", "text": "You are a helpful assistant."}]}
         )
         mock_detection_service.get_detected_prompts = Mock(return_value=prompts)  # type: ignore[method-assign]
-        mock_detection_service.get_system_prompt = Mock(
+        mock_detection_service.get_system_prompt = Mock(  # type: ignore[method-assign]
             return_value=prompts.system_payload()
-        )  # type: ignore[method-assign]
+        )
 
         adapter = ClaudeAPIAdapter(
             detection_service=mock_detection_service,
@@ -306,9 +305,9 @@ class TestClaudeAPIAdapter:
             {"system": [{"type": "text", "text": "You are a helpful assistant."}]}
         )
         mock_detection_service.get_detected_prompts = Mock(return_value=prompts)  # type: ignore[method-assign]
-        mock_detection_service.get_system_prompt = Mock(
+        mock_detection_service.get_system_prompt = Mock(  # type: ignore[method-assign]
             return_value=prompts.system_payload()
-        )  # type: ignore[method-assign]
+        )
 
         adapter = ClaudeAPIAdapter(
             detection_service=mock_detection_service,

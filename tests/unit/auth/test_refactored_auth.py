@@ -25,11 +25,11 @@ class TestBaseModels:
         expired_token = TestToken(
             test_expires_at=datetime.now(UTC) - timedelta(hours=1)
         )
-        assert expired_token.is_expired() is True
+        assert expired_token.is_expired is True  # type: ignore[comparison-overlap]
 
         # Test valid token
         valid_token = TestToken(test_expires_at=datetime.now(UTC) + timedelta(hours=1))
-        assert valid_token.is_expired() is False
+        assert valid_token.is_expired is False  # type: ignore[comparison-overlap]
 
     def test_base_profile_info(self) -> None:
         """Test BaseProfileInfo model."""
