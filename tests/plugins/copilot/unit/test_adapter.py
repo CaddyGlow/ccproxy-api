@@ -35,8 +35,11 @@ class TestCopilotAdapter:
     def mock_auth_manager(self):
         """Create mock auth manager."""
         manager = Mock()
-        manager.ensure_copilot_token = AsyncMock(return_value="test-token")
-        manager.ensure_oauth_token = AsyncMock(return_value="oauth-token")
+        manager.load_credentials = AsyncMock(return_value=object())
+        manager.should_refresh = Mock(return_value=False)
+        manager.get_access_token = AsyncMock(return_value="test-token")
+        manager.get_access_token_with_refresh = AsyncMock(return_value="test-token")
+        manager.get_token_snapshot = AsyncMock(return_value=None)
         manager.get_profile_quick = AsyncMock(return_value=None)
         return manager
 
@@ -174,7 +177,8 @@ class TestCopilotAdapter:
 
         await adapter.prepare_provider_request(b"{}", {}, "/chat/completions")
 
-        mock_auth_manager.ensure_copilot_token.assert_called_once()
+        mock_auth_manager.load_credentials.assert_called_once()
+        mock_auth_manager.get_access_token.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_header_case_handling(self, adapter: CopilotAdapter) -> None:

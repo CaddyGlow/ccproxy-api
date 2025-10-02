@@ -133,7 +133,24 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         return normalized.startswith("/v1/chat/completions")
 
     async def _resolve_access_token(self) -> str:
-        """Resolve a usable Claude API OAuth token from the token manager."""
+        """Resolve a usable Claude API OAuth token from the token manager.
+
+        If the auth manager is not configured, raise a unified AuthenticationError
+        so middleware returns a clean 401 without stack traces.
+        """
+
+        if not getattr(self, "token_manager", None):
+            from ccproxy.core.errors import AuthenticationError
+
+            logger.warning(
+                "auth_manager_override_not_resolved",
+                plugin="claude_api",
+                auth_manager_name="oauth_claude",
+                category="auth",
+            )
+            raise AuthenticationError(
+                "Authentication manager not configured for Claude API provider"
+            )
 
         token_manager = self.token_manager
 

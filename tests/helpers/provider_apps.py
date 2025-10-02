@@ -60,7 +60,7 @@ async def copilot_app() -> AsyncIterator[FastAPI]:
         new=AsyncMock(return_value="copilot_test_service_token"),
     )
     ensure_oauth_patch = patch(
-        "ccproxy.plugins.copilot.manager.CopilotTokenManager.ensure_oauth_token",
+        "ccproxy.plugins.copilot.oauth.provider.CopilotOAuthProvider.ensure_oauth_token",
         new=AsyncMock(return_value="gh_oauth_access_token"),
     )
     profile_patch = patch(

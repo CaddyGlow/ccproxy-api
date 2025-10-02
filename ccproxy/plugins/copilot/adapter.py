@@ -1,7 +1,7 @@
 import json
 import time
 import uuid
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from starlette.requests import Request
@@ -32,7 +32,7 @@ class CopilotAdapter(BaseHTTPAdapter):
     def __init__(
         self,
         config: CopilotConfig,
-        auth_manager: CopilotTokenManager,
+        auth_manager: CopilotTokenManager | None,
         detection_service: CopilotDetectionService,
         http_pool_manager: Any,
         oauth_provider: CopilotOAuthProvider | None = None,
@@ -46,6 +46,9 @@ class CopilotAdapter(BaseHTTPAdapter):
         )
         self.oauth_provider = oauth_provider
         self.detection_service = detection_service
+        self.token_manager: CopilotTokenManager | None = cast(
+            CopilotTokenManager | None, self.auth_manager
+        )
 
         self.base_url = self.config.base_url.rstrip("/")
 
@@ -55,8 +58,7 @@ class CopilotAdapter(BaseHTTPAdapter):
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str
     ) -> tuple[bytes, dict[str, str]]:
-        # Get auth token
-        access_token = await self.auth_manager.ensure_copilot_token()
+        access_token = await self._resolve_access_token()
 
         wants_stream = False
         try:
@@ -71,9 +73,15 @@ class CopilotAdapter(BaseHTTPAdapter):
         filtered_headers = filter_request_headers(headers, preserve_auth=False)
 
         # Add Copilot headers (lowercase keys)
-        copilot_headers = {}
-        for key, value in self.config.api_headers.items():
-            copilot_headers[key.lower()] = value
+        copilot_headers = {
+            key.lower(): str(value)
+            for key, value in self.config.api_headers.items()
+            if value is not None
+        }
+
+        cli_headers = self._collect_cli_headers()
+        for key, value in cli_headers.items():
+            copilot_headers.setdefault(key, value)
 
         copilot_headers["authorization"] = f"Bearer {access_token}"
         copilot_headers["x-request-id"] = str(uuid.uuid4())
@@ -82,13 +90,107 @@ class CopilotAdapter(BaseHTTPAdapter):
             copilot_headers.setdefault("accept", "text/event-stream")
 
         # Merge headers
-        final_headers = {}
-        final_headers.update(filtered_headers)
-        final_headers.update(copilot_headers)
+        final_headers = {**filtered_headers, **copilot_headers}
 
         logger.debug("copilot_request_prepared", header_count=len(final_headers))
 
         return body, final_headers
+
+    async def _resolve_access_token(self) -> str:
+        """Resolve a usable Copilot access token via the configured manager."""
+
+        auth_manager_name = getattr(self.config, "auth_manager", None) or "oauth_copilot"
+
+        token_manager = self.token_manager
+        if token_manager is None:
+            from ccproxy.core.errors import AuthenticationError
+
+            logger.warning(
+                "auth_manager_override_not_resolved",
+                plugin="copilot",
+                auth_manager_name=auth_manager_name,
+                category="auth",
+            )
+            raise AuthenticationError(
+                "Authentication manager not configured for Copilot provider"
+            )
+
+        async def _snapshot_token() -> str | None:
+            snapshot = await token_manager.get_token_snapshot()
+            if snapshot and snapshot.access_token:
+                return str(snapshot.access_token)
+            return None
+
+        credentials = await token_manager.load_credentials()
+        if not credentials:
+            fallback = await _snapshot_token()
+            if fallback:
+                return fallback
+            raise ValueError("No Copilot credentials available")
+
+        try:
+            if token_manager.should_refresh(credentials):
+                logger.debug("copilot_token_refresh_due", category="auth")
+                refreshed = await token_manager.get_access_token_with_refresh()
+                if refreshed:
+                    return refreshed
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning(
+                "copilot_token_refresh_failed",
+                error=str(exc),
+                category="auth",
+            )
+            fallback = await _snapshot_token()
+            if fallback:
+                return fallback
+
+        try:
+            token = await token_manager.get_access_token()
+            if token:
+                return token
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.warning(
+                "copilot_token_fetch_failed",
+                error=str(exc),
+                category="auth",
+            )
+
+        fallback = await _snapshot_token()
+        if fallback:
+            return fallback
+
+        raise ValueError("No valid Copilot access token available")
+
+    def _collect_cli_headers(self) -> dict[str, str]:
+        """Collect additional headers suggested by CLI detection service."""
+
+        if not self.detection_service:
+            return {}
+
+        try:
+            recommended = self.detection_service.get_recommended_headers()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug(
+                "copilot_detection_headers_failed",
+                error=str(exc),
+                category="headers",
+            )
+            return {}
+
+        if not isinstance(recommended, dict):
+            return {}
+
+        headers: dict[str, str] = {}
+        blocked = {"authorization", "x-request-id"}
+        for key, value in recommended.items():
+            if not isinstance(key, str) or value is None:
+                continue
+            lower_key = key.lower()
+            if lower_key in blocked:
+                continue
+            headers[lower_key] = str(value)
+
+        return headers
 
     async def process_provider_response(
         self, response: httpx.Response, endpoint: str
@@ -161,10 +263,37 @@ class CopilotAdapter(BaseHTTPAdapter):
             body: Request body
             extra_headers: Additional headers
         """
-        access_token = await self.auth_manager.ensure_oauth_token()
+        auth_manager_name = getattr(self.config, "auth_manager", None) or "oauth_copilot"
+
+        if self.auth_manager is None:
+            from ccproxy.core.errors import AuthenticationError
+
+            logger.warning(
+                "auth_manager_override_not_resolved",
+                plugin="copilot",
+                auth_manager_name=auth_manager_name,
+                category="auth",
+            )
+            raise AuthenticationError(
+                "Authentication manager not configured for Copilot provider"
+            )
+        oauth_provider = self.oauth_provider
+        if oauth_provider is None:
+            from ccproxy.core.errors import AuthenticationError
+
+            logger.warning(
+                "oauth_provider_not_available",
+                plugin="copilot",
+                category="auth",
+            )
+            raise AuthenticationError(
+                "OAuth provider not configured for Copilot provider"
+            )
+
+        access_token = await oauth_provider.ensure_oauth_token()
         base_url = "https://api.github.com"
 
-        headers = {
+        base_headers = {
             "authorization": f"Bearer {access_token}",
             "accept": "application/json",
         }
@@ -173,15 +302,20 @@ class CopilotAdapter(BaseHTTPAdapter):
 
         # Step 1: Extract request data
         body = await request.body()
-        headers = extract_request_headers(request)
+        request_headers = extract_request_headers(request)
         method = request.method
         endpoint = ctx.metadata.get("endpoint", "")
         target_url = f"{base_url}{endpoint}"
 
+        outgoing_headers = filter_request_headers(
+            request_headers, preserve_auth=False
+        )
+        outgoing_headers.update(base_headers)
+
         provider_response = await self._execute_http_request(
             method,
             target_url,
-            headers,
+            outgoing_headers,
             body,
         )
 

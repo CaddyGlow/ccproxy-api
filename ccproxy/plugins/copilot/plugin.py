@@ -302,12 +302,8 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             has_format_registry=bool(format_registry),
         )
 
-        if not all(
-            [auth_manager, detection_service, http_pool_manager, oauth_provider]
-        ):
+        if not all([detection_service, http_pool_manager, oauth_provider]):
             missing = []
-            if not auth_manager:
-                missing.append("auth_manager")
             if not detection_service:
                 missing.append("detection_service")
             if not http_pool_manager:
@@ -317,6 +313,18 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
 
             raise ValueError(
                 f"Required dependencies missing for CopilotAdapter: {missing}"
+            )
+
+        if auth_manager is None:
+            configured_override = None
+            if hasattr(context, "config") and context.config is not None:
+                with contextlib.suppress(AttributeError):
+                    configured_override = getattr(context.config, "auth_manager", None)
+
+            logger.debug(
+                "copilot_adapter_missing_auth_manager",
+                reason="unresolved_override",
+                configured_override=configured_override,
             )
 
         return CopilotAdapter(

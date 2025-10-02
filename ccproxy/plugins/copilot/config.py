@@ -109,6 +109,11 @@ class CopilotProviderConfig(ProviderConfig):
         le=60.0,
     )
 
+    auth_manager: str | None = Field(
+        default=None,
+        description="Override auth manager name (e.g., 'oauth_copilot_lb' for load balancing)",
+    )
+
     api_headers: dict[str, str] = Field(
         default_factory=lambda: {
             "Content-Type": "application/json",

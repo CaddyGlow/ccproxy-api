@@ -24,11 +24,7 @@ from ccproxy.testing.endpoints.config import (
     REQUEST_DATA,
 )
 from ccproxy.testing.endpoints.runner import get_request_payload
-from tests.conftest import (
-    ENDPOINT_TEST_BASE_URL_ENV,
-    ENDPOINT_TEST_SELECTION_ENV,
-    get_selected_endpoint_indices,
-)
+from tests.conftest import get_selected_endpoint_indices
 
 
 pytestmark = [
@@ -43,6 +39,7 @@ pytestmark = [
 TestEndpoint.__test__ = False
 
 CAPTURE_DIR_ENV = "CCPROXY_ENDPOINT_CAPTURE_DIR"
+DEFAULT_ENDPOINT_BASE_URL = "http://127.0.0.1:8000"
 
 CAPTURE_TARGETS: dict[str, set[str]] = {
     "codex": {"/codex/v1/responses"},
@@ -66,8 +63,7 @@ async def task_manager_fixture():
 
 
 def _selected_indices() -> list[int]:
-    selection_env = os.getenv(ENDPOINT_TEST_SELECTION_ENV)
-    return get_selected_endpoint_indices(selection_env)
+    return get_selected_endpoint_indices()
 
 
 def _endpoint_case_params() -> list[pytest.ParameterSet]:
@@ -341,14 +337,12 @@ def test_endpoint_case_passes(
     endpoint_case_index: int,
     endpoint_case: EndpointTest,
 ) -> None:
-    base_url = os.getenv(ENDPOINT_TEST_BASE_URL_ENV, "http://127.0.0.1:8000")
+    base_url = DEFAULT_ENDPOINT_BASE_URL
 
     try:
         httpx.get(base_url, timeout=2.0)
     except (httpx.HTTPError, OSError) as exc:
-        pytest.skip(
-            f"Endpoint test server not reachable at {base_url} (set {ENDPOINT_TEST_BASE_URL_ENV}): {exc}"
-        )
+        pytest.skip(f"Endpoint test server not reachable at {base_url}: {exc}")
 
     result = _run_endpoint_case(base_url, endpoint_case_index)
 

@@ -344,7 +344,26 @@ class CodexAdapter(BaseHTTPAdapter):
         )
 
     async def _resolve_access_token(self) -> str:
-        """Resolve an access token suitable for Codex requests."""
+        """Resolve an access token suitable for Codex requests.
+
+        If the auth manager/credential balancer is not configured, raise a
+        unified AuthenticationError so middleware can return a clean 401
+        without leaking stack traces.
+        """
+
+        # Guard: token manager must be configured via plugin auth_manager
+        if not getattr(self, "token_manager", None):
+            from ccproxy.core.errors import AuthenticationError
+
+            logger.warning(
+                "auth_manager_override_not_resolved",
+                plugin="codex",
+                auth_manager_name="codex_credential_balancer",
+                category="auth",
+            )
+            raise AuthenticationError(
+                "Authentication manager not configured for Codex provider"
+            )
 
         token_manager = self.token_manager
 
