@@ -12,11 +12,15 @@ from packaging import version as pkg_version
 
 from ccproxy.utils.version_checker import (
     VersionCheckState,
+    commit_refs_match,
     compare_versions,
+    extract_commit_from_version,
+    fetch_branch_names_for_commit,
     fetch_latest_github_version,
     get_current_version,
     get_version_check_state_path,
     load_check_state,
+    resolve_branch_for_commit,
     save_check_state,
 )
 
@@ -34,6 +38,10 @@ class TestVersionCheckState:
 
         assert state.last_check_at == now
         assert state.latest_version_found == "1.2.3"
+        assert state.latest_branch_name is None
+        assert state.latest_branch_commit is None
+        assert state.running_version is None
+        assert state.running_commit is None
 
     def test_version_check_state_without_version(self) -> None:
         """Test creating VersionCheckState without latest version."""
@@ -42,6 +50,41 @@ class TestVersionCheckState:
 
         assert state.last_check_at == now
         assert state.latest_version_found is None
+        assert state.latest_branch_name is None
+        assert state.latest_branch_commit is None
+        assert state.running_version is None
+        assert state.running_commit is None
+
+
+class TestCommitExtraction:
+    """Test extracting commit details from version strings."""
+
+    def test_extract_commit_from_version_with_hash(self) -> None:
+        """Commit hash should be extracted from local dev version."""
+        version = "0.2.0.dev37+g5e8972c4d"
+        assert extract_commit_from_version(version) == "5e8972c4d"
+
+    def test_extract_commit_from_version_without_hash(self) -> None:
+        """No commit hash should return None."""
+        version = "0.2.0"
+        assert extract_commit_from_version(version) is None
+
+
+class TestCommitMatching:
+    """Test commit reference matching helper."""
+
+    def test_commit_refs_match_handles_prefix(self) -> None:
+        """Short commit hashes should match their long equivalents."""
+        assert commit_refs_match("abc1234", "abc1234deadbeef") is True
+
+    def test_commit_refs_match_detects_difference(self) -> None:
+        """Different commit references should not match."""
+        assert commit_refs_match("abc123", "def456") is False
+
+    def test_commit_refs_match_none_values(self) -> None:
+        """When values are missing they must match exactly."""
+        assert commit_refs_match(None, None) is True
+        assert commit_refs_match(None, "abc") is False
 
 
 class TestVersionComparison:
@@ -220,6 +263,135 @@ class TestGitHubVersionFetching:
         assert result is None
 
 
+class TestBranchResolution:
+    """Tests for branch resolution from commit hashes."""
+
+    class _StubResponse:
+        def __init__(
+            self, *, status_code: int = 200, data: list[dict[str, Any]] | None = None
+        ):
+            self.status_code = status_code
+            self._data = data or []
+
+        def raise_for_status(self) -> None:
+            if 400 <= self.status_code < 600:
+                raise httpx.HTTPStatusError(
+                    f"HTTP {self.status_code}",
+                    request=httpx.Request("GET", "https://example.com"),
+                    response=httpx.Response(status_code=self.status_code),
+                )
+
+        def json(self) -> list[dict[str, Any]]:
+            return self._data
+
+    class _StubAsyncClient:
+        def __init__(self, *, response: Any = None, exception: Exception | None = None):
+            self._response = response
+            self._exception = exception
+
+        async def __aenter__(self) -> "TestBranchResolution._StubAsyncClient":
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        async def get(self, *args: Any, **kwargs: Any) -> Any:
+            if self._exception:
+                raise self._exception
+            return self._response
+
+    @pytest.mark.asyncio
+    async def test_fetch_branch_names_for_commit_success(self) -> None:
+        """Branch names are returned when GitHub responds successfully."""
+        mock_response = self._StubResponse(
+            data=[
+                {"name": "feature-123"},
+                {"name": "main"},
+            ]
+        )
+        mock_client = self._StubAsyncClient(response=mock_response)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            result = await fetch_branch_names_for_commit("abcdef1")
+
+        assert result == ["feature-123", "main"]
+
+    @pytest.mark.asyncio
+    async def test_fetch_branch_names_for_commit_http_error(self) -> None:
+        """HTTP errors return an empty branch list."""
+        exception = httpx.HTTPStatusError(
+            "Not found",
+            request=httpx.Request("GET", "https://example.com"),
+            response=httpx.Response(status_code=404),
+        )
+        mock_client = self._StubAsyncClient(exception=exception)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            result = await fetch_branch_names_for_commit("abcdef1")
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_resolve_branch_for_commit_prefers_main(self) -> None:
+        """resolve_branch_for_commit should prefer mainline branches."""
+        with patch(
+            "ccproxy.utils.version_checker.fetch_branch_names_for_commit",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = ["feature", "main", "dev"]
+
+            branch = await resolve_branch_for_commit("abcdef1")
+
+        assert branch == "main"
+        mock_fetch.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_resolve_branch_for_commit_falls_back(self) -> None:
+        """resolve_branch_for_commit falls back to the first branch name."""
+        with patch(
+            "ccproxy.utils.version_checker.fetch_branch_names_for_commit",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = ["feature/foo", "feature/bar"]
+
+            branch = await resolve_branch_for_commit("abcdef1")
+
+        assert branch == "feature/foo"
+        mock_fetch.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_resolve_branch_for_commit_no_matches(self) -> None:
+        """resolve_branch_for_commit returns None when no branches are found."""
+        with patch(
+            "ccproxy.utils.version_checker.fetch_branch_names_for_commit",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            mock_fetch.return_value = []
+
+            branch = await resolve_branch_for_commit("abcdef1")
+
+        assert branch is None
+        mock_fetch.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_resolve_branch_for_commit_respects_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Environment override should short-circuit branch resolution."""
+        monkeypatch.setenv("CCPROXY_VERSION_BRANCH", "custom-branch")
+
+        # fetch_branch_names_for_commit should not be called when override set
+        with patch(
+            "ccproxy.utils.version_checker.fetch_branch_names_for_commit",
+            new_callable=AsyncMock,
+        ) as mock_fetch:
+            branch = await resolve_branch_for_commit("abcdef1")
+
+        assert branch == "custom-branch"
+        mock_fetch.assert_not_called()
+        monkeypatch.delenv("CCPROXY_VERSION_BRANCH")
+
+
 class TestStateManagement:
     """Test version check state file management."""
 
@@ -234,6 +406,8 @@ class TestStateManagement:
             original_state = VersionCheckState(
                 last_check_at=now,
                 latest_version_found="1.2.3",
+                running_version="0.2.0",
+                running_commit="abcdef1",
             )
 
             await save_check_state(state_path, original_state)
@@ -247,6 +421,8 @@ class TestStateManagement:
             assert loaded_state is not None
             assert loaded_state.last_check_at == now
             assert loaded_state.latest_version_found == "1.2.3"
+            assert loaded_state.running_version == "0.2.0"
+            assert loaded_state.running_commit == "abcdef1"
 
     @pytest.mark.asyncio
     async def test_load_check_state_nonexistent_file(self) -> None:

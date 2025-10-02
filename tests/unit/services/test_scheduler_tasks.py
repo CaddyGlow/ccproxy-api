@@ -612,6 +612,125 @@ class TestVersionUpdateCheckTask:
             assert result is False
             mock_load.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_version_check_cache_invalidated_on_version_change(self) -> None:
+        """Cache is ignored when local version differs from cached information."""
+
+        from datetime import datetime
+
+        from ccproxy.utils.version_checker import VersionCheckState
+
+        cached_time = datetime.now(UTC)
+        cached_state = VersionCheckState(
+            last_check_at=cached_time,
+            latest_version_found="1.1.0",
+            running_version="1.1.0",
+        )
+
+        with (
+            patch(
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
+            ) as mock_fetch,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
+            patch("ccproxy.scheduler.tasks.compare_versions") as mock_compare,
+            patch(
+                "ccproxy.scheduler.tasks.save_check_state", new_callable=AsyncMock
+            ) as mock_save,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
+        ):
+            mock_load.return_value = cached_state
+            mock_fetch.return_value = "1.2.0"
+            mock_current.return_value = "2.0.0"
+            mock_compare.return_value = True
+            mock_save.return_value = None
+            mock_path.return_value = "/tmp/version_check.json"
+
+            task = VersionUpdateCheckTask(
+                name="version_cache_invalidation_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                version_check_cache_ttl_hours=6.0,
+                skip_first_scheduled_run=False,
+            )
+
+            result = await task.run()
+
+            assert result is True
+            mock_fetch.assert_awaited_once()
+            mock_compare.assert_called_once_with("2.0.0", "1.2.0")
+            mock_save.assert_awaited_once()
+
+            saved_state = mock_save.await_args.args[1]
+            assert isinstance(saved_state, VersionCheckState)
+            assert saved_state.running_version == "2.0.0"
+
+    @pytest.mark.asyncio
+    async def test_version_check_dev_branch_resolution(self) -> None:
+        """Dev versions use branch commit comparison for updates."""
+
+        current_dev_version = "0.2.0.dev37+gabcdef12"
+        branch_name = "main"
+        branch_commit = "abcdef1234567890abcdef1234567890abcdef12"
+
+        with (
+            patch(
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
+            ) as mock_release_fetch,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_branch_commit",
+                new_callable=AsyncMock,
+            ) as mock_branch_fetch,
+            patch(
+                "ccproxy.scheduler.tasks.resolve_branch_for_commit",
+                new_callable=AsyncMock,
+            ) as mock_branch_resolve,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
+            patch(
+                "ccproxy.scheduler.tasks.save_check_state", new_callable=AsyncMock
+            ) as mock_save,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
+            patch("ccproxy.scheduler.tasks.logger") as mock_logger,
+        ):
+            mock_load.return_value = None
+            mock_branch_resolve.return_value = branch_name
+            mock_branch_fetch.return_value = branch_commit
+            mock_current.return_value = current_dev_version
+            mock_save.return_value = None
+            mock_path.return_value = "/tmp/version_check.json"
+
+            task = VersionUpdateCheckTask(
+                name="version_branch_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                version_check_cache_ttl_hours=1.0,
+                skip_first_scheduled_run=False,
+            )
+
+            result = await task.run()
+
+            assert result is True
+            mock_branch_resolve.assert_awaited_once_with("abcdef12")
+            mock_branch_fetch.assert_awaited_once_with(branch_name)
+            mock_release_fetch.assert_not_called()
+            mock_save.assert_awaited_once()
+            mock_logger.warning.assert_not_called()
+
+            saved_state = mock_save.await_args.args[1]
+
+            from ccproxy.utils.version_checker import VersionCheckState
+
+            assert isinstance(saved_state, VersionCheckState)
+            assert saved_state.latest_branch_name == branch_name
+            assert saved_state.latest_branch_commit == branch_commit
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

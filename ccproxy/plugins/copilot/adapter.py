@@ -99,7 +99,9 @@ class CopilotAdapter(BaseHTTPAdapter):
     async def _resolve_access_token(self) -> str:
         """Resolve a usable Copilot access token via the configured manager."""
 
-        auth_manager_name = getattr(self.config, "auth_manager", None) or "oauth_copilot"
+        auth_manager_name = (
+            getattr(self.config, "auth_manager", None) or "oauth_copilot"
+        )
 
         token_manager = self.token_manager
         if token_manager is None:
@@ -263,7 +265,9 @@ class CopilotAdapter(BaseHTTPAdapter):
             body: Request body
             extra_headers: Additional headers
         """
-        auth_manager_name = getattr(self.config, "auth_manager", None) or "oauth_copilot"
+        auth_manager_name = (
+            getattr(self.config, "auth_manager", None) or "oauth_copilot"
+        )
 
         if self.auth_manager is None:
             from ccproxy.core.errors import AuthenticationError
@@ -307,9 +311,7 @@ class CopilotAdapter(BaseHTTPAdapter):
         endpoint = ctx.metadata.get("endpoint", "")
         target_url = f"{base_url}{endpoint}"
 
-        outgoing_headers = filter_request_headers(
-            request_headers, preserve_auth=False
-        )
+        outgoing_headers = filter_request_headers(request_headers, preserve_auth=False)
         outgoing_headers.update(base_headers)
 
         provider_response = await self._execute_http_request(

@@ -8,16 +8,22 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
+from packaging import version as pkg_version
 
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.utils.version_checker import (
     VersionCheckState,
+    commit_refs_match,
     compare_versions,
+    extract_commit_from_version,
+    fetch_latest_branch_commit,
     fetch_latest_github_version,
+    get_branch_override,
     get_current_version,
     get_version_check_state_path,
     load_check_state,
+    resolve_branch_for_commit,
     save_check_state,
 )
 
@@ -552,7 +558,38 @@ class VersionUpdateCheckTask(BaseScheduledTask):
 
             # Load previous state if available
             prev_state: VersionCheckState | None = await load_check_state(state_path)
+
+            current_version = get_current_version()
+            current_commit = extract_commit_from_version(current_version)
+
+            if prev_state is not None:
+                invalidation_reason: str | None = None
+                if (
+                    prev_state.running_version is not None
+                    and prev_state.running_version != current_version
+                ):
+                    invalidation_reason = "version"
+                elif (
+                    prev_state.running_commit is not None
+                    and current_commit is not None
+                    and not commit_refs_match(prev_state.running_commit, current_commit)
+                ):
+                    invalidation_reason = "commit"
+
+                if invalidation_reason is not None:
+                    logger.debug(
+                        "version_check_cache_invalidated",
+                        task_name=self.name,
+                        reason=invalidation_reason,
+                        cached_running_version=prev_state.running_version,
+                        cached_running_commit=prev_state.running_commit,
+                        current_version=current_version,
+                        current_commit=current_commit,
+                    )
+                    prev_state = None
+
             latest_version: str | None = None
+            latest_branch_commit: str | None = None
             source: str | None = None
 
             # If we have a recent state within the freshness window, avoid network call
@@ -568,6 +605,7 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                         max_age_hours=max_age_hours,
                     )
                     latest_version = prev_state.latest_version_found
+                    latest_branch_commit = prev_state.latest_branch_commit
                     source = "cache"
                 else:
                     logger.debug(
@@ -577,26 +615,118 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                         max_age_hours=max_age_hours,
                     )
 
-            # Fetch only if we don't have a fresh cached version
-            if latest_version is None:
-                latest_version = await fetch_latest_github_version()
-                if latest_version is None:
-                    logger.warning("version_check_fetch_failed", task_name=self.name)
-                    return False
-                # Persist refreshed state
-                new_state = VersionCheckState(
-                    last_check_at=current_time,
-                    latest_version_found=latest_version,
-                )
-                await save_check_state(state_path, new_state)
-                source = "network"
-            else:
-                # Ensure state file at least exists; if it didn't, we wouldn't be here
-                pass
+            current_version_parsed = pkg_version.parse(current_version)
+            branch_name: str | None = None
 
-            # Compare versions and log result
-            current_version = get_current_version()
-            self._log_version_comparison(current_version, latest_version, source=source)
+            if current_version_parsed.is_devrelease and current_commit is not None:
+                branch_name = get_branch_override()
+                if branch_name is None and prev_state is not None:
+                    branch_name = prev_state.latest_branch_name
+                if branch_name is None:
+                    branch_name = await resolve_branch_for_commit(current_commit)
+
+            if branch_name is not None:
+                if source == "cache" and (
+                    prev_state is None
+                    or prev_state.latest_branch_name != branch_name
+                    or not prev_state.latest_branch_commit
+                ):
+                    latest_branch_commit = None
+                    source = None
+
+                if latest_branch_commit is None:
+                    latest_branch_commit = await fetch_latest_branch_commit(branch_name)
+                    if latest_branch_commit is None:
+                        logger.warning(
+                            "version_check_branch_fetch_failed",
+                            task_name=self.name,
+                            branch=branch_name,
+                        )
+                        return False
+
+                    await save_check_state(
+                        state_path,
+                        VersionCheckState(
+                            last_check_at=current_time,
+                            latest_version_found=(
+                                latest_version
+                                or (
+                                    prev_state.latest_version_found
+                                    if prev_state is not None
+                                    else None
+                                )
+                            ),
+                            latest_branch_name=branch_name,
+                            latest_branch_commit=latest_branch_commit,
+                            running_version=current_version,
+                            running_commit=current_commit,
+                        ),
+                    )
+                    source = "network"
+
+                if current_commit is None:
+                    logger.debug(
+                        "branch_revision_no_commit_to_compare",
+                        task_name=self.name,
+                        branch=branch_name,
+                        source=source,
+                    )
+                else:
+                    update_available = not commit_refs_match(
+                        current_commit, latest_branch_commit
+                    )
+                    if update_available:
+                        logger.warning(
+                            "branch_revision_update_available",
+                            task_name=self.name,
+                            branch=branch_name,
+                            current_commit=current_commit,
+                            latest_commit=latest_branch_commit,
+                            source=source,
+                            description=(
+                                "New commits available for branch "
+                                f"{branch_name}: {latest_branch_commit}"
+                            ),
+                        )
+                    else:
+                        logger.debug(
+                            "branch_revision_up_to_date",
+                            task_name=self.name,
+                            branch=branch_name,
+                            current_commit=current_commit,
+                            source=source,
+                        )
+            else:
+                if latest_version is None:
+                    latest_version = await fetch_latest_github_version()
+                    if latest_version is None:
+                        logger.warning(
+                            "version_check_fetch_failed", task_name=self.name
+                        )
+                        return False
+                    await save_check_state(
+                        state_path,
+                        VersionCheckState(
+                            last_check_at=current_time,
+                            latest_version_found=latest_version,
+                            latest_branch_name=(
+                                prev_state.latest_branch_name
+                                if prev_state is not None
+                                else None
+                            ),
+                            latest_branch_commit=(
+                                prev_state.latest_branch_commit
+                                if prev_state is not None
+                                else None
+                            ),
+                            running_version=current_version,
+                            running_commit=current_commit,
+                        ),
+                    )
+                    source = "network"
+                self._log_version_comparison(
+                    current_version, latest_version, source=source
+                )
 
             # Mark first run as complete
             if self._first_run:
