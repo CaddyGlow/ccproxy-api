@@ -50,7 +50,7 @@ class DockerRuntime(ProviderPluginRuntime):
         logger.debug(
             "plugin_initialized",
             plugin="docker",
-            version="1.0.0",
+            version="0.1.0",
             status="initialized",
             docker_image=docker_image,
         )

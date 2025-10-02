@@ -119,7 +119,7 @@ class DuckDBStorageFactory(SystemPluginFactory):
 
         manifest = PluginManifest(
             name="duckdb_storage",
-            version="1.0.0",
+            version="0.1.0",
             description="Provides DuckDB-backed request log storage",
             is_provider=False,
             provides=["log_storage"],

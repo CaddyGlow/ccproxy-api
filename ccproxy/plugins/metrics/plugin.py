@@ -233,7 +233,7 @@ class MetricsFactory(SystemPluginFactory):
         # Create manifest
         manifest = PluginManifest(
             name="metrics",
-            version="1.0.0",
+            version="0.1.0",
             description="Prometheus metrics collection and export plugin",
             is_provider=False,
             config_class=MetricsConfig,

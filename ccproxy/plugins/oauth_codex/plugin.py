@@ -65,7 +65,7 @@ class OAuthCodexFactory(AuthProviderPluginFactory):
         # Create manifest with static declarations
         manifest = PluginManifest(
             name="oauth_codex",
-            version="1.0.0",
+            version="0.1.0",
             description="Standalone OpenAI Codex OAuth authentication provider plugin",
             is_provider=True,  # It's a provider plugin but focused on OAuth
             config_class=CodexOAuthConfig,

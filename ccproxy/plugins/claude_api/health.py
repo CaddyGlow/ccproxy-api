@@ -17,6 +17,8 @@ async def claude_api_health_check(
     config: ClaudeAPISettings | None,
     detection_service: ClaudeAPIDetectionService | None = None,
     credentials_manager: ClaudeApiTokenManager | None = None,
+    *,
+    version: str,
 ) -> HealthCheckResult:
     """Perform health check for Claude API plugin.
 
@@ -34,7 +36,7 @@ async def claude_api_health_check(
                 componentId="plugin-claude-api",
                 componentType="provider_plugin",
                 output="Claude API plugin configuration not available",
-                version="1.0.0",
+                version=version,
             )
 
         # Check if plugin is enabled
@@ -44,7 +46,7 @@ async def claude_api_health_check(
                 componentId="plugin-claude-api",
                 componentType="provider_plugin",
                 output="Claude API plugin is disabled",
-                version="1.0.0",
+                version=version,
                 details={"enabled": False},
             )
 
@@ -55,7 +57,7 @@ async def claude_api_health_check(
                 componentId="plugin-claude-api",
                 componentType="provider_plugin",
                 output="Claude API base URL not configured",
-                version="1.0.0",
+                version=version,
             )
 
         # Standardized details
@@ -158,7 +160,7 @@ async def claude_api_health_check(
             componentId="plugin-claude-api",
             componentType="provider_plugin",
             output=output,
-            version="1.0.0",
+            version=version,
             details=details_model.model_dump(),
         )
 
@@ -169,5 +171,5 @@ async def claude_api_health_check(
             componentId="plugin-claude-api",
             componentType="provider_plugin",
             output=f"Claude API health check failed: {str(e)}",
-            version="1.0.0",
+            version=version,
         )

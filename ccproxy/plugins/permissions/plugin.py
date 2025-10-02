@@ -98,7 +98,7 @@ class PermissionsFactory(SystemPluginFactory):
         # Create manifest with static declarations
         manifest = PluginManifest(
             name="permissions",
-            version="1.0.0",
+            version="0.1.0",
             description="Permissions plugin providing authorization services for tool calls",
             is_provider=False,
             config_class=PermissionsConfig,

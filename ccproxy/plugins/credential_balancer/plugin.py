@@ -126,7 +126,7 @@ class CredentialBalancerFactory(SystemPluginFactory):
     def __init__(self) -> None:
         manifest = PluginManifest(
             name="credential_balancer",
-            version="1.0.0",
+            version="0.1.0",
             description="Rotate across multiple credential files for upstream providers",
             is_provider=False,
             config_class=CredentialBalancerSettings,

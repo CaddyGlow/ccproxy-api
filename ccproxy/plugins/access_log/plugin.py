@@ -160,7 +160,7 @@ class AccessLogFactory(SystemPluginFactory):
     def __init__(self) -> None:
         manifest = PluginManifest(
             name="access_log",
-            version="1.0.0",
+            version="0.1.0",
             description="Simple access logging with Common, Combined, and Structured formats",
             is_provider=False,
             config_class=AccessLogConfig,

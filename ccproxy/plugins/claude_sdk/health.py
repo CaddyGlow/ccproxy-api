@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 async def claude_sdk_health_check(
     config: "ClaudeSDKSettings | None",
     detection_service: "ClaudeSDKDetectionService | None",
+    *,
+    version: str,
 ) -> HealthCheckResult:
     """Perform health check for Claude SDK plugin.
 
@@ -32,7 +34,7 @@ async def claude_sdk_health_check(
             status="fail",
             componentId="plugin-claude_sdk",
             output="Plugin is disabled",
-            version="1.0.0",
+            version=version,
             details={"enabled": False},
         )
 
@@ -106,6 +108,6 @@ async def claude_sdk_health_check(
         status=cast(Literal["pass", "warn", "fail"], status),
         componentId="plugin-claude_sdk",
         output="; ".join(checks),
-        version="1.0.0",
+        version=version,
         details=details,
     )

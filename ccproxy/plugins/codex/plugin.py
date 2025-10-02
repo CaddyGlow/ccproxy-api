@@ -97,7 +97,7 @@ class CodexRuntime(ProviderPluginRuntime):
         logger.debug(
             "plugin_initialized",
             plugin="codex",
-            version="1.0.0",
+            version=self.manifest.version,
             status="initialized",
             has_credentials=self.credential_manager is not None,
             has_adapter=self.adapter is not None,
@@ -134,7 +134,10 @@ class CodexRuntime(ProviderPluginRuntime):
 
             if self.config and self.detection_service:
                 health_result = await codex_health_check(
-                    self.config, self.detection_service, self.credential_manager
+                    self.config,
+                    self.detection_service,
+                    self.credential_manager,
+                    version=self.manifest.version,
                 )
                 details.update(
                     {

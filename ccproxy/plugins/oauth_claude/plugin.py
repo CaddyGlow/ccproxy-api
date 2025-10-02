@@ -65,7 +65,7 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
         # Create manifest with static declarations
         manifest = PluginManifest(
             name="oauth_claude",
-            version="1.0.0",
+            version="0.1.0",
             description="Standalone Claude OAuth authentication provider plugin",
             is_provider=True,  # It's a provider plugin but focused on OAuth
             config_class=ClaudeOAuthConfig,

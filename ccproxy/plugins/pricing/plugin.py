@@ -150,7 +150,7 @@ class PricingFactory(SystemPluginFactory):
         # Create manifest with static declarations
         manifest = PluginManifest(
             name="pricing",
-            version="1.0.0",
+            version="0.1.0",
             description="Dynamic pricing plugin for AI model cost calculation",
             is_provider=False,
             config_class=PricingConfig,

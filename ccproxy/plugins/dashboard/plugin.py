@@ -56,7 +56,7 @@ class DashboardFactory(SystemPluginFactory):
 
         manifest = PluginManifest(
             name="dashboard",
-            version="1.0.0",
+            version="0.1.0",
             description="Dashboard SPA routes and static asset mounting",
             is_provider=False,
             config_class=DashboardPluginConfig,

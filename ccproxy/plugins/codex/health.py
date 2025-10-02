@@ -16,6 +16,8 @@ async def codex_health_check(
     config: CodexSettings | None,
     detection_service: CodexDetectionService | None = None,
     auth_manager: Any | None = None,
+    *,
+    version: str,
 ) -> HealthCheckResult:
     """Perform health check for Codex plugin."""
     try:
@@ -24,7 +26,7 @@ async def codex_health_check(
                 status="fail",
                 componentId="plugin-codex",
                 output="Codex plugin configuration not available",
-                version="1.0.0",
+                version=version,
             )
 
         # Check basic configuration validity
@@ -33,7 +35,7 @@ async def codex_health_check(
                 status="fail",
                 componentId="plugin-codex",
                 output="Codex base URL not configured",
-                version="1.0.0",
+                version=version,
             )
 
         # Check OAuth configuration
@@ -42,7 +44,7 @@ async def codex_health_check(
                 status="warn",
                 componentId="plugin-codex",
                 output="Codex OAuth configuration incomplete",
-                version="1.0.0",
+                version=version,
             )
 
         # Standardized details models
@@ -128,7 +130,7 @@ async def codex_health_check(
             status=status,
             componentId="plugin-codex",
             output=output,
-            version="1.0.0",
+            version=version,
             details={
                 **ProviderHealthDetails(
                     provider="codex",
@@ -156,5 +158,5 @@ async def codex_health_check(
             status="fail",
             componentId="plugin-codex",
             output=f"Codex health check failed: {str(e)}",
-            version="1.0.0",
+            version=version,
         )

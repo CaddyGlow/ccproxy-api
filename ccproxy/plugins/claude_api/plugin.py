@@ -95,7 +95,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
         logger.debug(
             "plugin_initialized",
             plugin="claude_api",
-            version="1.0.0",
+            version=self.manifest.version,
             status="initialized",
             has_credentials=self.credentials_manager is not None,
             base_url=self.config.base_url,
@@ -114,7 +114,10 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
         if self.config and self.detection_service and self.credentials_manager:
             try:
                 health_result = await claude_api_health_check(
-                    self.config, self.detection_service, self.credentials_manager
+                    self.config,
+                    self.detection_service,
+                    self.credentials_manager,
+                    version=self.manifest.version,
                 )
                 details.update(
                     {

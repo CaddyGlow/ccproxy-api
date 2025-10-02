@@ -158,7 +158,7 @@ class RequestTracerFactory(SystemPluginFactory):
         # Create manifest with static declarations ( from original)
         manifest = PluginManifest(
             name="request_tracer",
-            version="2.0.0",  # Version bump to reflect refactoring
+            version="0.1.0",  # Standardized initial plugin version
             description=" request tracing for REQUEST_* events only",
             is_provider=False,
             config_class=RequestTracerConfig,

@@ -104,7 +104,7 @@ class AnalyticsFactory(SystemPluginFactory):
 
         manifest = PluginManifest(
             name="analytics",
-            version="1.0.0",
+            version="0.1.0",
             description="Logs query, analytics, and streaming endpoints",
             is_provider=False,
             config_class=AnalyticsPluginConfig,

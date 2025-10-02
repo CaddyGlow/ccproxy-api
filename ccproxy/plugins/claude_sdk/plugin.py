@@ -73,7 +73,7 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
                 logger.debug(
                     "plugin_initialized",
                     plugin="claude_sdk",
-                    version="1.0.0",
+                    version="0.1.0",
                     status="initialized",
                     has_credentials=True,  # SDK handles its own auth
                     cli_available=True,

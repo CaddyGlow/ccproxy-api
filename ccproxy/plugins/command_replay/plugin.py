@@ -137,7 +137,7 @@ class CommandReplayFactory(SystemPluginFactory):
         # Create manifest with static declarations
         manifest = PluginManifest(
             name="command_replay",
-            version="1.0.0",
+            version="0.1.0",
             description="Generates curl and xh commands for provider requests",
             is_provider=False,
             config_class=CommandReplayConfig,
