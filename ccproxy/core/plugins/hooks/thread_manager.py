@@ -2,7 +2,6 @@
 
 import asyncio
 import threading
-import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -36,18 +35,25 @@ class BackgroundHookThreadManager:
         self._shutdown_event: asyncio.Event | None = None
         self._running = False
         self._logger = logger.bind(component="background_hook_thread")
+        # Signals when the background loop and its resources are ready
+        self._ready_event: threading.Event | None = None
 
     def start(self) -> None:
         """Start the background thread with its own event loop."""
         if self._running:
             return
 
+        # Create readiness event so callers can safely enqueue without sleeps
+        self._ready_event = threading.Event()
+
         self._thread = threading.Thread(
             target=self._run_background_loop, name="hook-background-thread", daemon=True
         )
         self._thread.start()
 
-        time.sleep(0.01)
+        # Block briefly until the background loop has initialized its resources
+        if self._ready_event and not self._ready_event.wait(timeout=1.0):
+            self._logger.warning("background_hook_thread_startup_timeout")
         self._running = True
 
         self._logger.debug("background_hook_thread_started")
@@ -74,6 +80,7 @@ class BackgroundHookThreadManager:
         self._thread = None
         self._queue = None
         self._shutdown_event = None
+        self._ready_event = None
 
         self._logger.debug("background_hook_thread_stopped")
 
@@ -117,6 +124,10 @@ class BackgroundHookThreadManager:
             # Create queue and shutdown event
             self._queue = asyncio.Queue[tuple[HookTask, Any]](maxsize=1000)
             self._shutdown_event = asyncio.Event()
+
+            # Signal to the starter that we're ready to accept tasks
+            if self._ready_event:
+                self._ready_event.set()
 
             # Run the processing loop
             self._loop.run_until_complete(self._process_tasks())
