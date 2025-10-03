@@ -290,11 +290,12 @@ class TestCopilotOAuthClient:
 
         with (
             patch.object(client, "_get_http_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
             pytest.raises(TimeoutError, match="Device code has expired"),
         ):
             await client.poll_for_token(
-                "device-code", 1, 60
-            )  # Much faster interval for tests
+                "device-code", 1, 1
+            )  # Minimal interval and timeout for fast tests
 
     async def test_poll_for_token_denied(
         self,
@@ -318,11 +319,12 @@ class TestCopilotOAuthClient:
 
         with (
             patch.object(client, "_get_http_client", return_value=mock_client),
+            patch("asyncio.sleep", new_callable=AsyncMock),
             pytest.raises(ValueError, match="User denied authorization"),
         ):
             await client.poll_for_token(
-                "device-code", 1, 60
-            )  # Much faster interval for tests
+                "device-code", 1, 1
+            )  # Minimal interval and timeout for fast tests
 
     async def test_exchange_for_copilot_token_success(
         self,

@@ -1,6 +1,8 @@
 """End-to-end integration tests for Copilot plugin."""
 
 import json
+from collections.abc import AsyncGenerator
+from contextlib import AsyncExitStack
 from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -585,11 +587,11 @@ class TestCopilotEndToEnd:
             assert "copilot_expires_at" in data
 
 
-# Async fixtures per test to avoid cross-test event loop interactions
-pytestmark = pytest.mark.asyncio(loop_scope="function")
+# Async fixtures run at module scope; individual tests apply their own mocks
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
-@pytest_asyncio.fixture(scope="function", loop_scope="function")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def copilot_integration_app():
     """Pre-configured app for Copilot plugin integration tests - session scoped."""
     from ccproxy.api.app import create_app
@@ -625,50 +627,63 @@ async def copilot_integration_app():
     return create_app(service_container), settings
 
 
-@pytest_asyncio.fixture(loop_scope="function")
-async def copilot_integration_client(copilot_integration_app):
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def copilot_integration_client(
+    copilot_integration_app: Any,
+) -> AsyncGenerator[AsyncClient, None]:
     """HTTP client for Copilot integration tests - uses shared app."""
     from ccproxy.api.app import initialize_plugins_startup, shutdown_plugins
 
     app, settings = copilot_integration_app
 
-    detection_patch = patch(
-        "ccproxy.plugins.copilot.detection_service.CopilotDetectionService.initialize_detection",
-        new=AsyncMock(
-            return_value=CopilotCacheData(
-                cli_available=False,
-                cli_version=None,
-                auth_status=None,
-                username=None,
-            )
-        ),
-    )
-    ensure_copilot_patch = patch(
-        "ccproxy.plugins.copilot.manager.CopilotTokenManager.ensure_copilot_token",
-        new=AsyncMock(return_value="copilot_test_service_token"),
-    )
-    ensure_oauth_patch = patch(
-        "ccproxy.plugins.copilot.oauth.provider.CopilotOAuthProvider.ensure_oauth_token",
-        new=AsyncMock(return_value="gh_oauth_access_token"),
-    )
-    profile_patch = patch(
-        "ccproxy.plugins.copilot.manager.CopilotTokenManager.get_profile_quick",
-        new=AsyncMock(return_value=None),
-    )
-
     service_container = app.state.service_container
 
     await start_task_manager(container=service_container)
 
-    with detection_patch, ensure_copilot_patch, ensure_oauth_patch, profile_patch:
-        # Initialize plugins async (once per test, but app is shared)
-        await initialize_plugins_startup(app, settings)
+    try:
+        async with AsyncExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "ccproxy.plugins.copilot.detection_service.CopilotDetectionService.initialize_detection",
+                    new=AsyncMock(
+                        return_value=CopilotCacheData(
+                            cli_available=False,
+                            cli_version=None,
+                            auth_status=None,
+                            username=None,
+                        )
+                    ),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "ccproxy.plugins.copilot.manager.CopilotTokenManager.ensure_copilot_token",
+                    new=AsyncMock(return_value="copilot_test_service_token"),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "ccproxy.plugins.copilot.oauth.provider.CopilotOAuthProvider.ensure_oauth_token",
+                    new=AsyncMock(return_value="gh_oauth_access_token"),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "ccproxy.plugins.copilot.manager.CopilotTokenManager.get_profile_quick",
+                    new=AsyncMock(return_value=None),
+                )
+            )
 
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await initialize_plugins_startup(app, settings)
+
+            transport = ASGITransport(app=app)
+            client = await stack.enter_async_context(
+                AsyncClient(transport=transport, base_url="http://test")
+            )
+
             yield client
-
-    await shutdown_plugins(app)
-    await stop_task_manager(container=service_container)
-    if hasattr(app.state, "service_container"):
-        await app.state.service_container.shutdown()
+    finally:
+        await shutdown_plugins(app)
+        await stop_task_manager(container=service_container)
+        if hasattr(app.state, "service_container"):
+            await app.state.service_container.shutdown()
