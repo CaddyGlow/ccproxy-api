@@ -111,9 +111,9 @@ async def test_openai_chat_completions_streaming(
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
-@pytest_asyncio.fixture(scope="function", loop_scope="function")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def codex_client() -> Any:  # type: ignore[misc]
-    # Build app and client once to avoid factory scope conflicts
+    # Build app and client once per module to avoid factory scope conflicts
     from httpx import ASGITransport, AsyncClient
 
     from ccproxy.api.app import create_app, initialize_plugins_startup

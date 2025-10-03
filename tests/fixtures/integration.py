@@ -124,7 +124,7 @@ def integration_app_factory():
         # Set up logging manually for test environment - minimal logging for speed
         from ccproxy.core.logging import setup_logging
 
-        setup_logging(json_logs=False, log_level_name="DEBUG")
+        setup_logging(json_logs=False, log_level_name="ERROR")
 
         # Explicitly disable known default-on system plugins that can cause I/O
         # side effects in isolated test environments unless requested.

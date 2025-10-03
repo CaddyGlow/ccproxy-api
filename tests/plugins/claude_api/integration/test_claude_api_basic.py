@@ -363,7 +363,7 @@ async def test_anthropic_messages_streaming(
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
-@pytest_asyncio.fixture(scope="function", loop_scope="function")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def claude_api_client() -> Any:  # type: ignore[misc]
     # Build app and client once to avoid factory scope conflicts
     from httpx import ASGITransport, AsyncClient

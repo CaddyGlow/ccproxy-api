@@ -297,11 +297,12 @@ async def test_permission_service_wait_for_permission_timeout(
     try:
         request_id = await service.request_permission("bash", {"command": "test"})
 
-        # Don't resolve - let it timeout
+        # Don't resolve - let it timeout with minimal wait
         with pytest.raises(asyncio.TimeoutError):
             await service.wait_for_permission(
-                request_id, timeout_seconds=1
-            )  # Use int instead of float
+                request_id,
+                timeout_seconds=0,
+            )  # Minimal timeout keeps test fast
     finally:
         await service.stop()
 
