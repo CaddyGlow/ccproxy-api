@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+from typing import Any
+
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from tests.helpers.endpoint_runner import (
     AVAILABLE_CASES,
@@ -20,7 +24,7 @@ from ccproxy.testing.endpoints import TestEndpoint
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.e2e,
-    pytest.mark.asyncio(loop_scope="function"),
+    pytest.mark.asyncio(loop_scope="module"),
 ]
 
 
@@ -28,29 +32,37 @@ PROVIDER = "codex"
 SAMPLES = provider_sample_names(PROVIDER)
 
 
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def codex_endpoint_tester() -> AsyncGenerator[TestEndpoint, None]:
+    """Initialize a shared app/client pair for Codex endpoint tests."""
+
+    app_builder = PROVIDER_APP_BUILDERS[PROVIDER]
+    async with app_builder() as app:
+        transport = ASGITransport(app=app)
+        client = AsyncClient(transport=transport, base_url=BASE_URL)
+        tester = TestEndpoint(base_url=BASE_URL, client=client)
+        try:
+            yield tester
+        finally:
+            await client.aclose()
+
+
 @pytest.mark.parametrize("sample_name", SAMPLES, ids=SAMPLES)
 async def test_codex_endpoint_sample(  # type: ignore[no-untyped-def]
     sample_name: str,
     request: pytest.FixtureRequest,
-    httpx_mock,
+    httpx_mock: Any,
+    codex_endpoint_tester: TestEndpoint,
 ) -> None:
     fixture_name = PROVIDER_FIXTURES.get(PROVIDER)
     if fixture_name:
         request.getfixturevalue(fixture_name)
 
-    app_builder = PROVIDER_APP_BUILDERS[PROVIDER]
-
-    async with app_builder() as app:
-        transport = ASGITransport(app=app)
-        async with (
-            AsyncClient(transport=transport, base_url=BASE_URL) as client,
-            TestEndpoint(base_url=BASE_URL, client=client) as tester,
-        ):
-            endpoint_case = AVAILABLE_CASES[sample_name]
-            result = await tester.run_endpoint_test(
-                endpoint_case,
-                CASE_INDEX_LOOKUP[endpoint_case.name],
-            )
+    endpoint_case = AVAILABLE_CASES[sample_name]
+    result = await codex_endpoint_tester.run_endpoint_test(
+        endpoint_case,
+        CASE_INDEX_LOOKUP[endpoint_case.name],
+    )
 
     assert_initial_request(result, endpoint_case.stream, endpoint_case.request)
     assert_follow_up_requests(result)
