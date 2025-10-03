@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from textwrap import dedent
 from types import ModuleType
@@ -10,7 +11,7 @@ import pytest
 
 
 @pytest.fixture(scope="module")
-def checker_module() -> ModuleType:
+def checker_module() -> Iterator[ModuleType]:
     module_name = "_check_import_boundaries_test_module"
     script_path = (
         Path(__file__).resolve().parents[3] / "scripts" / "check_import_boundaries.py"

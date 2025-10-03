@@ -1,10 +1,15 @@
-.PHONY: help install dev-install clean test test-unit test-real-api test-watch test-fast test-file test-match test-coverage lint typecheck format check pre-commit ci build dashboard docker-build docker-run docs-install docs-build docs-serve docs-clean
+.PHONY: help install dev-install clean fix fix-hard test test-unit test-integration test-plugins test-file test-match test-coverage lint lint-fix typecheck format format-check check check-boundaries pre-commit ci build build-backend build-dashboard dashboard docker-build docker-run docker-compose-up docker-compose-down dev prod docs-install docs-build docs-serve docs-clean docs-deploy setup
 
 # Determine Docker tag from git (fallback to 'latest')
 $(eval VERSION_DOCKER := $(shell git describe --tags --always --dirty=-dev 2>/dev/null || echo latest))
 
 # Common variables
-UV_RUN := uv run
+UV ?= uv
+UV_RUN := $(UV) run
+PYTEST := $(UV_RUN) pytest --import-mode=importlib
+RUFF := $(UV_RUN) ruff
+MYPY := $(UV_RUN) mypy
+PRE_COMMIT := $(UV_RUN) pre-commit
 
 # Default target
 help:
@@ -13,8 +18,8 @@ help:
 	@echo "  dev-install  - Install development dependencies"
 	@echo "  clean        - Clean build artifacts"
 	@echo ""
-	@echo "Testing commands (all include type checking and linting as prerequisites):"
-	@echo "  test         - Run all tests with coverage (after quality checks)"
+	@echo "Testing commands:"
+	@echo "  test         - Run all tests with coverage"
 	@echo "  test-unit    - Run fast unit tests only (excluding real API and integration)"
 	@echo "  test-integration - Run integration tests across all plugins (parallel)"
 	@echo "  test-coverage - Run tests with detailed coverage report"
@@ -24,12 +29,13 @@ help:
 	@echo "  typecheck    - Run type checking"
 	@echo "  format       - Format code"
 	@echo "  check        - Run all checks (lint + typecheck)"
+	@echo "  check-boundaries - Ensure core does not import from plugins"
 	@echo "  pre-commit   - Run pre-commit hooks (comprehensive checks + auto-fixes)"
 	@echo "  ci           - Run full CI pipeline (pre-commit + test)"
 	@echo ""
 	@echo "Build and deployment:"
-	@echo "  build        - Build Python package (includes dashboard)"
-	@echo "  build-backend - Build Python package only (no dashboard)"
+	@echo "  build        - Build Python package"
+	@echo "  build-backend - Alias for backend build only"
 	@echo "  build-dashboard - Build dashboard only"
 	@echo "  docker-build - Build Docker image"
 	@echo "  docker-run   - Run Docker container"
@@ -45,137 +51,106 @@ help:
 
 # Installation targets
 install:
-	uv sync --no-dev
+	$(UV) sync --no-dev
 
 dev-install:
-	uv sync --all-extras --dev
-	uv run pre-commit install
-	@if command -v bun >/dev/null 2>&1; then \
-		bun install -g @anthropic-ai/claude-code; \
-	else \
-		echo "Warning: Bun not available, skipping Claude Code and dashboard installation"; \
-	fi
+	$(UV) sync --all-extras --all-groups --dev
+	$(PRE_COMMIT) install
 
 # Cleanup
 clean:
-	rm -rf dist/
-	rm -rf build/
-	rm -rf *.egg-info/
+	rm -rf dist build *.egg-info node_modules
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
-	rm -f .coverage
-	rm -f coverage.xml
-	rm -rf node_modules/
-	rm -f pnpm-lock.yaml
-	# $(MAKE) -C dashboard clean
-
-# Testing targets (all enforce type checking and linting)
-#
-# All test commands include quality checks (mypy + ruff) as prerequisites to ensure
-# tests only run on properly formatted and type-checked code. This prevents wasting
-# time running tests on code that would fail CI anyway.
-#
-# Test markers:
-#   - 'real_api': Tests that make actual API calls (slow, require network/auth)
-#   - 'unit': Fast unit tests (< 1s each, no external dependencies)
-#   - Tests without 'real_api' marker are considered unit tests by default
+	rm -f .coverage coverage.xml pnpm-lock.yaml
 
 # Fix code with unsafe fixes
 fix-hard:
-	uv run ruff check . --fix --unsafe-fixes || true
-	uv run uv run ruff check . --select F401 --fix --unsafe-fixes || true # Used variable import
-	uv run uv run ruff check . --select I --fix --unsafe-fixes || true  # Import order
-	uv run ruff format . || true
+	$(RUFF) check . --fix --unsafe-fixes || true
+	$(RUFF) check . --select F401 --fix --unsafe-fixes || true # Used variable import
+	$(RUFF) check . --select I --fix --unsafe-fixes || true  # Import order
+	$(RUFF) format . || true
 
 
 fix: format lint-fix
-	ruff check . --fix --unsafe-fixes
+	$(RUFF) check . --fix --unsafe-fixes
 
-# Run all tests with coverage (after ensuring code quality)
+# Run all tests with coverage
 test:
 	@echo "Running all tests with coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest -v --import-mode=importlib --cov=ccproxy --cov-report=term #--cov-report=html
+	$(PYTEST) -v --cov=ccproxy --cov-report=term
 
 # New test suite targets
 
 # Run fast unit tests only (exclude tests marked with 'real_api' and 'integration')
 test-unit:
 	@echo "Running fast unit tests (excluding real API calls and integration tests)..."
-	$(UV_RUN) pytest -v --import-mode=importlib -m "not integration" --tb=short
+	$(PYTEST) -v -m "not integration" --tb=short
 
 # Run integration tests across all plugins
 test-integration:
 	@echo "Running integration tests across all plugins..."
-	$(UV_RUN) pytest -v --import-mode=importlib -m "integration and not slow and not real_api" --tb=short -n auto tests/
+	$(PYTEST) -v -m "integration and not slow and not real_api" --tb=short -n auto tests/
 
 # Run tests with detailed coverage report (HTML + terminal)
 test-coverage: check
 	@echo "Running tests with detailed coverage report..."
-	$(UV_RUN) pytest -v --import-mode=importlib --cov=ccproxy --cov-report=term-missing --cov-report=html -m  "not slow or not real_api"
+	$(PYTEST) -v --cov=ccproxy --cov-report=term-missing --cov-report=html -m "not slow and not real_api"
 	@echo "HTML coverage report generated in htmlcov/"
 
 # Run plugin tests only
 test-plugins:
 	@echo "Running plugin tests under tests/plugins..."
-	$(UV_RUN) pytest tests/plugins -v --import-mode=importlib --tb=short --no-cov
+	$(PYTEST) -v --tb=short --no-cov tests/plugins
 
 # Run specific test file (with quality checks)
 test-file: check
 	@echo "Running specific test file: $(FILE)"
-	$(UV_RUN) pytest $(FILE) -v
+	$(PYTEST) -v $(FILE)
 
 # Run tests matching a pattern (with quality checks)
 test-match: check
 	@echo "Running tests matching pattern: $(MATCH)"
-	$(UV_RUN) pytest -k "$(MATCH)" -v
+	$(PYTEST) -v -k "$(MATCH)"
 
 # Code quality
 lint:
-	uv run ruff check .
+	$(RUFF) check .
 
-lint-fix: format
-	# fix F401 (unused import) errors
-	uv run ruff check --select F401 --fix .
-	# fix sort (import) errors
-	uv run ruff check --select I --fix .
-	# classic fix
-	uv run ruff check --fix .
-	# unsafe fix
-	uv run ruff check --unsafe-fixes --fix .
-	uv run ruff format .
+lint-fix:
+	$(RUFF) check . --fix
 
 typecheck:
-	uv run mypy .
+	$(MYPY) .
 
 format:
-	uv run ruff format .
+	$(RUFF) format .
 
 format-check:
-	uv run ruff format --check .
+	$(RUFF) format --check .
 
 # Combined checks (individual targets for granular control)
-check: lint typecheck format-check
+check: lint typecheck format-check check-boundaries
 
-# Optional: verify import boundaries (core must not import plugins.*)
-# (removed) check-boundaries: no custom script; consider enforcing with ruff import rules
+check-boundaries:
+	$(UV_RUN) python scripts/check_import_boundaries.py
+
 
 # Pre-commit hooks (comprehensive checks + auto-fixes)
 pre-commit:
-	uv run pre-commit run --all-files
+	$(PRE_COMMIT) run --all-files
 
 # Full CI pipeline (comprehensive: pre-commit does more checks + auto-fixes)
 ci:
-	uv run pre-commit run --all-files
+	$(PRE_COMMIT) run --all-files
 	$(MAKE) test
-	# $(MAKE) -C dashboard test
 
 # Build targets
 build:
-	uv build
+	$(UV) build
 
-build-backend:
-	uv build
+build-backend: build
 
 build-dashboard:
 	$(MAKE) -C dashboard build
@@ -213,25 +188,23 @@ dev:
 		HTTP__COMPRESSION_ENABLED=false \
 		SERVER__RELOAD=true \
 		SERVER__WORKERS=1 \
-		uv run ccproxy-api serve
+		$(UV_RUN) ccproxy-api serve
 
 prod:
-	uv run ccproxy serve
+	$(UV_RUN) ccproxy serve
 
 # Documentation targets
 docs-install:
-	# uv sync --group docs
-	uv sync --all-groups
+	$(UV) sync --all-groups
 
 docs-build: docs-install
-	uv run mkdocs build
+	$(UV_RUN) mkdocs build
 
 docs-serve: docs-install
-	uv run mkdocs serve
+	$(UV_RUN) mkdocs serve
 
 docs-clean:
-	rm -rf site/
-	rm -rf docs/.cache/
+	rm -rf site docs/.cache
 
 docs-deploy: docs-build
 	@echo "Documentation built and ready for deployment"

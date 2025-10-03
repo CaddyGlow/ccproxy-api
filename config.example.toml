@@ -74,7 +74,7 @@ enabled = false
 # Example: OpenAI Codex credential pool with manager-based credentials (recommended)
 [[plugins.credential_balancer.providers]]
 provider = "codex"
-strategy = "round_robin" # or "failover"
+strategy = "round_robin"          # or "failover"
 max_failures_before_disable = 2
 cooldown_seconds = 120.0
 failure_status_codes = [401, 403]
@@ -135,7 +135,6 @@ object = "model"
 created = 1696000000
 owned_by = "anthropic"
 root = "claude-3-5-sonnet-20241022"
-permission = []
 
 [[plugins.claude_api.models_endpoint]]
 id = "claude-3-5-haiku-20241022"
@@ -143,7 +142,6 @@ object = "model"
 created = 1696000000
 owned_by = "anthropic"
 root = "claude-3-5-haiku-20241022"
-permission = []
 
 # Codex provider model mappings and /models override
 [plugins.codex]
@@ -170,30 +168,18 @@ permission = []
 
 # DuckDB storage plugin configuration (replaces observability.duckdb_path/backends)
 [plugins.duckdb_storage]
-enabled = true
 # database_path = "/var/lib/ccproxy/metrics.duckdb"  # Optional override
-# register_app_state_alias = false  # Back-compat alias (disabled by default)
 
 # Analytics (logs API) plugin
 [plugins.analytics]
-enabled = true
 # route_prefix = "/logs"
 
 # Metrics plugin (serves /metrics; optional Pushgateway)
 [plugins.metrics]
-enabled = true
 # pushgateway_enabled = false
 # pushgateway_url = "http://localhost:9091"
 # pushgateway_job = "ccproxy"
 # pushgateway_push_interval = 60
-
-# Dashboard plugin (serves /dashboard and mounts /dashboard/assets)
-[plugins.dashboard]
-enabled = true
-mount_static = true
-
-## Observability
-# Provided by plugins (metrics, analytics, dashboard). Configure them under [plugins.*]
 
 # Docker settings (for running Claude in containers)
 [docker]
