@@ -72,14 +72,6 @@ class DuckDBStorageRuntime(SystemPluginRuntime):
                 "duckdb_storage_service_registered", path=db_path, category="plugin"
             )
 
-        app = self.context.get("app")
-        if app and hasattr(app, "state"):
-            app.state.log_storage = self.storage
-            if cfg.register_app_state_alias:
-                # Backward compat alias
-                app.state.duckdb_storage = self.storage
-            logger.debug("duckdb_storage_attached_to_app_state")
-
         logger.info("duckdb_storage_initialized", path=db_path, category="plugin")
 
     async def _on_shutdown(self) -> None:

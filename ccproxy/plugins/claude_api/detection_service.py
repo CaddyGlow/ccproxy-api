@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import socket
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -264,21 +265,57 @@ class ClaudeAPIDetectionService:
         config = Config(temp_app, host="127.0.0.1", port=port, log_level="error")
         server = Server(config)
 
+        server_ready = asyncio.Event()
+
+        @temp_app.on_event("startup")
+        async def signal_server_ready() -> None:
+            """Signal when the temporary detection server starts."""
+
+            server_ready.set()
+
         server_task = asyncio.create_task(server.serve())
+        ready_task = asyncio.create_task(server_ready.wait())
 
         try:
-            # Wait for server to start
-            await asyncio.sleep(0.5)
+            done, _pending = await asyncio.wait(
+                {ready_task, server_task},
+                timeout=5,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if ready_task in done:
+                await ready_task
+            elif server_task in done:
+                await server_task
+                raise RuntimeError(
+                    "Claude detection server exited before signalling readiness"
+                )
+            else:
+                raise TimeoutError(
+                    "Timed out waiting for Claude detection server startup"
+                )
 
-            # Execute Claude CLI with proxy
-            env = {**dict(os.environ), "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{port}"}
+            stdout, stderr = b"", b""
 
-            # Get claude command from CLI service
+            env: dict[str, str] = dict(os.environ)
+            env["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{port}"
+
+            home_path = os.environ.get("HOME")
+            cwd_path = Path(home_path) if home_path else Path.cwd()
+
+            logger.debug(
+                "detection_service_using",
+                home_dir=home_path,
+                cwd=cwd_path,
+                category="plugin",
+            )
+
+            if home_path is not None:
+                env["HOME"] = home_path
+
             cli_info = self._cli_service.get_cli_info("claude")
             if not cli_info["is_available"] or not cli_info["command"]:
                 raise FileNotFoundError("Claude CLI not found for header detection")
 
-            # Prepare command
             cmd = cli_info["command"] + ["test"]
 
             process = await asyncio.create_subprocess_exec(
@@ -286,53 +323,58 @@ class ClaudeAPIDetectionService:
                 env=env,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                cwd=str(cwd_path),
             )
 
-            # Wait for process with timeout
             try:
                 await asyncio.wait_for(process.wait(), timeout=30)
             except TimeoutError:
                 process.kill()
                 await process.wait()
 
-            # Stop server
+            stdout = await process.stdout.read() if process.stdout else b""
+            stderr = await process.stderr.read() if process.stderr else b""
+        finally:
+            if not ready_task.done():
+                ready_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await ready_task
+
             server.should_exit = True
             await server_task
 
-            if not captured_data:
-                raise RuntimeError("Failed to capture Claude CLI request")
-
-            # Sanitize headers/body for cache
-            headers_dict = (
-                self._sanitize_headers_for_cache(captured_data["headers"])
-                if self._redact_sensitive_cache
-                else captured_data["headers"]
+        if not captured_data:
+            logger.error(
+                "failed_to_capture_claude_cli_request",
+                stdout=stdout.decode(errors="ignore"),
+                stderr=stderr.decode(errors="ignore"),
+                category="plugin",
             )
-            body_json = (
-                self._sanitize_body_json_for_cache(captured_data.get("body_json"))
-                if self._redact_sensitive_cache
-                else captured_data.get("body_json")
-            )
+            raise RuntimeError("Failed to capture Claude CLI request")
 
-            prompts = DetectedPrompts.from_body(body_json)
+        headers_dict = (
+            self._sanitize_headers_for_cache(captured_data["headers"])
+            if self._redact_sensitive_cache
+            else captured_data["headers"]
+        )
+        body_json = (
+            self._sanitize_body_json_for_cache(captured_data.get("body_json"))
+            if self._redact_sensitive_cache
+            else captured_data.get("body_json")
+        )
 
-            return ClaudeCacheData(
-                claude_version=version,
-                headers=DetectedHeaders(headers_dict),
-                prompts=prompts,
-                body_json=body_json,
-                method=captured_data.get("method"),
-                url=captured_data.get("url"),
-                path=captured_data.get("path"),
-                query_params=captured_data.get("query_params"),
-            )
+        prompts = DetectedPrompts.from_body(body_json)
 
-        except Exception as e:
-            # Ensure server is stopped
-            server.should_exit = True
-            if not server_task.done():
-                await server_task
-            raise
+        return ClaudeCacheData(
+            claude_version=version,
+            headers=DetectedHeaders(headers_dict),
+            prompts=prompts,
+            body_json=body_json,
+            method=captured_data.get("method"),
+            url=captured_data.get("url"),
+            path=captured_data.get("path"),
+            query_params=captured_data.get("query_params"),
+        )
 
     def _load_from_cache(self, version: str) -> ClaudeCacheData | None:
         """Load cached data for specific Claude version."""

@@ -7,8 +7,9 @@ import json
 import os
 import socket
 import tempfile
+from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from fastapi import FastAPI, Request, Response
 
@@ -20,15 +21,11 @@ from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.utils.caching import async_ttl_cache
 from ccproxy.utils.headers import extract_request_headers
 
-from .models import CodexCacheData
+from .config import CodexSettings
+from .models import CodexCacheData, CodexCliInfo
 
 
 logger = get_plugin_logger()
-
-
-if TYPE_CHECKING:
-    from .config import CodexSettings
-    from .models import CodexCliInfo
 
 
 class CodexDetectionService:
@@ -316,41 +313,66 @@ class CodexDetectionService:
         config = Config(temp_app, host="127.0.0.1", port=port, log_level="error")
         server = Server(config)
 
+        server_ready = asyncio.Event()
+
+        @temp_app.on_event("startup")
+        async def signal_server_ready() -> None:
+            """Mark the in-process server as ready once startup completes."""
+
+            server_ready.set()
+
         logger.debug("start", category="plugin")
         server_task = asyncio.create_task(server.serve())
+        ready_task = asyncio.create_task(server_ready.wait())
 
         try:
-            # Wait for server to start
-            await asyncio.sleep(0.5)
+            done, _pending = await asyncio.wait(
+                {ready_task, server_task},
+                timeout=5,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if ready_task in done:
+                await ready_task
+            elif server_task in done:
+                await server_task
+                raise RuntimeError(
+                    "Codex detection server exited before signalling readiness"
+                )
+            else:
+                raise TimeoutError(
+                    "Timed out waiting for Codex detection server startup"
+                )
 
             stdout, stderr = b"", b""
 
             # Determine home directory mode based on configuration
-            home_dir = os.environ.get("HOME")
-            temp_context = None
+            home_path = os.environ.get("HOME")
+            cwd_path = Path.cwd()
+
+            temp_context: tempfile.TemporaryDirectory[str] | None = None
             if (
                 self.codex_settings
                 and self.codex_settings.detection_home_mode == "temp"
             ):
                 temp_context = tempfile.TemporaryDirectory()
-                home_dir = temp_context.__enter__()
-                logger.debug(
-                    "using_temporary_home_directory",
-                    home_dir=home_dir,
-                    category="plugin",
-                )
-            else:
-                logger.debug(
-                    "using_actual_home_directory", home_dir=home_dir, category="plugin"
-                )
+                temp_dir_path = Path(temp_context.name)
+                home_path = str(temp_dir_path)
+                cwd_path = temp_dir_path
+
+            logger.debug(
+                "detection_service_using",
+                home_dir=home_path,
+                cwd=cwd_path,
+                category="plugin",
+            )
 
             try:
                 # Execute Codex CLI with proxy
                 env: dict[str, str] = dict(os.environ)
                 env["OPENAI_BASE_URL"] = f"http://127.0.0.1:{port}/backend-api/codex"
                 env["OPENAI_API_KEY"] = "dummy-key-for-detection"
-                if home_dir is not None:
-                    env["HOME"] = home_dir
+                if home_path is not None:
+                    env["HOME"] = home_path
                 del env["OPENAI_API_KEY"]
 
                 # Get codex command from CLI service
@@ -359,7 +381,13 @@ class CodexDetectionService:
                     raise FileNotFoundError("Codex CLI not found for header detection")
 
                 # Prepare command
-                cmd = cli_info["command"] + ["exec", "--skip-git-repo-check", "test"]
+                cmd = cli_info["command"] + [
+                    "exec",
+                    "--cd",
+                    str(cwd_path),
+                    "--skip-git-repo-check",
+                    "test",
+                ]
 
                 process = await asyncio.create_subprocess_exec(
                     *cmd,
@@ -380,52 +408,50 @@ class CodexDetectionService:
             finally:
                 # Clean up temporary directory if used
                 if temp_context is not None:
-                    temp_context.__exit__(None, None, None)
+                    temp_context.cleanup()
 
-            # Stop server
+        finally:
+            if not ready_task.done():
+                ready_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await ready_task
+
             server.should_exit = True
             await server_task
 
-            if not captured_data:
-                logger.error(
-                    "failed_to_capture_codex_cli_request",
-                    stdout=stdout.decode(errors="ignore"),
-                    stderr=stderr.decode(errors="ignore"),
-                    category="plugin",
-                )
-                raise RuntimeError("Failed to capture Codex CLI request")
-
-            # Sanitize headers/body for cache
-            headers_dict = (
-                self._sanitize_headers_for_cache(captured_data.get("headers", {}))
-                if self._redact_sensitive_cache
-                else captured_data.get("headers", {})
+        if not captured_data:
+            logger.error(
+                "failed_to_capture_codex_cli_request",
+                stdout=stdout.decode(errors="ignore"),
+                stderr=stderr.decode(errors="ignore"),
+                category="plugin",
             )
-            body_json = (
-                self._sanitize_body_json_for_cache(captured_data.get("body_json"))
-                if self._redact_sensitive_cache
-                else captured_data.get("body_json")
-            )
+            raise RuntimeError("Failed to capture Codex CLI request")
 
-            prompts = DetectedPrompts.from_body(body_json)
+        # Sanitize headers/body for cache
+        headers_dict = (
+            self._sanitize_headers_for_cache(captured_data.get("headers", {}))
+            if self._redact_sensitive_cache
+            else captured_data.get("headers", {})
+        )
+        body_json = (
+            self._sanitize_body_json_for_cache(captured_data.get("body_json"))
+            if self._redact_sensitive_cache
+            else captured_data.get("body_json")
+        )
 
-            return CodexCacheData(
-                codex_version=version,
-                headers=DetectedHeaders(headers_dict),
-                prompts=prompts,
-                body_json=body_json,
-                method=captured_data.get("method"),
-                url=captured_data.get("url"),
-                path=captured_data.get("path"),
-                query_params=captured_data.get("query_params"),
-            )
+        prompts = DetectedPrompts.from_body(body_json)
 
-        except Exception as e:
-            # Ensure server is stopped
-            server.should_exit = True
-            if not server_task.done():
-                await server_task
-            raise
+        return CodexCacheData(
+            codex_version=version,
+            headers=DetectedHeaders(headers_dict),
+            prompts=prompts,
+            body_json=body_json,
+            method=captured_data.get("method"),
+            url=captured_data.get("url"),
+            path=captured_data.get("path"),
+            query_params=captured_data.get("query_params"),
+        )
 
     def _load_from_cache(self, version: str) -> CodexCacheData | None:
         """Load cached data for specific Codex version."""

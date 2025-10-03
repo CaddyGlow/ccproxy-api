@@ -26,9 +26,47 @@ stored secrets are picked up automatically by the proxy.
 CCProxy's plugin system lets you add instrumentation and storage layers
 without patching the core server. Bundled plugins currently include:
 
-- `access_log`: structured request logging with optional client-facing output
-- `analytics`: DuckDB-backed request analytics API surface
-- `metrics`: Prometheus-compatible metrics with optional Pushgateway support
+- [`access_log`](ccproxy/plugins/access_log/README.md): structured access
+  logging for client and provider traffic
+- [`analytics`](ccproxy/plugins/analytics/README.md): DuckDB-backed analytics
+  APIs for captured request logs
+- [`claude_api`](ccproxy/plugins/claude_api/README.md): Anthropic Claude HTTP
+  API adapter with health and metrics
+- [`claude_sdk`](ccproxy/plugins/claude_sdk/README.md): local Claude CLI/SDK
+  adapter with session pooling
+- [`codex`](ccproxy/plugins/codex/README.md): OpenAI Codex provider adapter
+  with OAuth support
+- [`command_replay`](ccproxy/plugins/command_replay/README.md): generates
+  `curl`/`xh` commands for captured requests
+- [`copilot`](ccproxy/plugins/copilot/README.md): GitHub Copilot provider
+  adapter with OAuth token management
+- [`credential_balancer`](ccproxy/plugins/credential_balancer/README.md):
+  rotates upstream credentials based on health
+- [`dashboard`](ccproxy/plugins/dashboard/README.md): serves the CCProxy
+  dashboard SPA and APIs
+- [`docker`](ccproxy/plugins/docker/README.md): runs providers inside Docker via
+  CLI extensions
+- [`duckdb_storage`](ccproxy/plugins/duckdb_storage/README.md): exposes
+  DuckDB-backed storage for logs and analytics
+- [`max_tokens`](ccproxy/plugins/max_tokens/README.md): normalizes
+  `max_tokens` fields to provider limits
+- [`metrics`](ccproxy/plugins/metrics/README.md): Prometheus-compatible metrics
+  with optional Pushgateway
+- [`oauth_claude`](ccproxy/plugins/oauth_claude/README.md): standalone OAuth
+  provider for Claude integrations
+- [`oauth_codex`](ccproxy/plugins/oauth_codex/README.md): standalone OAuth
+  provider for Codex integrations
+- [`permissions`](ccproxy/plugins/permissions/README.md): interactive approval
+  flow for privileged tool actions
+- [`pricing`](ccproxy/plugins/pricing/README.md): caches model pricing data for
+  cost-aware features
+- [`request_tracer`](ccproxy/plugins/request_tracer/README.md): detailed
+  request/response tracing for debugging
+
+Shared helpers such as
+[`claude_shared`](ccproxy/plugins/claude_shared/README.md) provide metadata
+consumed by the Claude plugins. Each plugin directory contains its own README
+with configuration examples.
 
 ## Quick Links
 

@@ -16,10 +16,6 @@ class DuckDBStorageConfig(BaseModel):
     database_path: str | None = Field(
         default=None, description="Optional override for DuckDB database path"
     )
-    register_app_state_alias: bool = Field(
-        default=False,
-        description="Also set app.state.duckdb_storage for backward compatibility",
-    )
     optimize_on_shutdown: bool = Field(
         default=False,
         description="Run PRAGMA optimize on shutdown (file-backed DB only)",
