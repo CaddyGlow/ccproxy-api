@@ -120,14 +120,21 @@ async def _build_image(
     image: str,
     context: Path,
     no_cache: bool,
+    raw_output: bool = False,
 ) -> int:
     repo, tag = _split_image_reference(image)
+    middleware: OutputMiddleware[Any] | None
+    if raw_output:
+        middleware = RawPassthroughMiddleware()
+    else:
+        middleware = StreamPrinter()
+
     rc, _stdout, _stderr = await adapter.build_image(
         context,
         image_name=repo,
         image_tag=tag,
         no_cache=no_cache,
-        middleware=StreamPrinter(),
+        middleware=middleware,
     )
     return rc
 
@@ -138,6 +145,7 @@ async def _ensure_image(
     context: Path,
     no_cache: bool,
     auto_build: bool,
+    raw_output: bool = False,
 ) -> None:
     repo, tag = _split_image_reference(image)
     if await adapter.image_exists(repo, tag):
@@ -146,7 +154,7 @@ async def _ensure_image(
         raise typer.BadParameter(
             f"Image '{image}' not found locally. Run 'docker_runner.py build' or remove --no-build.")
     typer.echo(f"Image '{image}' not found. Building from {context}...")
-    rc = await _build_image(adapter, image, context, no_cache)
+    rc = await _build_image(adapter, image, context, no_cache, raw_output=raw_output)
     if rc != 0:
         raise typer.Exit(rc)
 
@@ -342,6 +350,15 @@ def run(
     if apt_package:
         environment.setdefault("DEBIAN_FRONTEND", "noninteractive")
 
+    term = os.environ.get("TERM")
+    if term:
+        environment.setdefault("TERM", term)
+    colorterm = os.environ.get("COLORTERM")
+    if colorterm:
+        environment.setdefault("COLORTERM", colorterm)
+    if tty:
+        environment.setdefault("FORCE_COLOR", "1")
+
     environment.update(additional_env)
     command_list = command if command else (shlex.split(cmd) if cmd else None)
     ports = [f"{port}:{container_port}"]
@@ -393,6 +410,7 @@ def run(
             context=context,
             no_cache=no_cache,
             auto_build=not no_build,
+            raw_output=tty,
         )
         rc = await _run_container(
             adapter,
@@ -459,6 +477,11 @@ def extend(
         False,
         help="Disable Docker build cache for the derived image.",
     ),
+    tty: bool = typer.Option(
+        False,
+        "--tty/--no-tty",
+        help="Stream docker build output directly with terminal formatting.",
+    ),
 ) -> None:
     """Create a derived image that layers packages or setup steps."""
 
@@ -476,6 +499,7 @@ def extend(
             context=context,
             no_cache=no_cache,
             auto_build=not no_build,
+            raw_output=tty,
         )
 
         output_repo, output_tag = _split_image_reference(output_image)
@@ -513,12 +537,18 @@ def extend(
             dockerfile_content = "\n".join(dockerfile_lines) + "\n"
             (tmp_path / "Dockerfile").write_text(dockerfile_content, encoding="utf-8")
 
+            middleware: OutputMiddleware[Any] | None
+            if tty:
+                middleware = RawPassthroughMiddleware()
+            else:
+                middleware = StreamPrinter()
+
             rc = await adapter.build_image(
                 dockerfile_dir=tmp_path,
                 image_name=output_repo,
                 image_tag=output_tag,
                 no_cache=no_cache,
-                middleware=StreamPrinter(),
+                middleware=middleware,
             )
             if rc != 0:
                 raise typer.Exit(rc)
