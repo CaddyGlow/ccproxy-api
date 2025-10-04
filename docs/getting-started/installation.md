@@ -16,8 +16,15 @@ The easiest way to install ccproxy is using pipx, which installs it in an isolat
 python -m pip install --user pipx
 python -m pipx ensurepath
 
-# Install ccproxy
-pipx install git+https://github.com/CaddyGlow/ccproxy-api.git
+# Install the latest release (extras optional)
+pipx install "ccproxy-api[all]==0.2.0"
+```
+
+To run the CLI without installing it globally, use `uvx` to pull the same
+release on demand:
+
+```bash
+uvx --with "ccproxy-api[all]==0.2.0" ccproxy serve --reload
 ```
 
 ### From Source (Development)
@@ -104,6 +111,8 @@ This displays full credential details including storage location and automatical
 ### Option 1: Local Installation
 
 After authentication, test the installation:
+
+```bash
 ccproxy claude -- /status
 ```
 
