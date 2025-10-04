@@ -26,6 +26,8 @@ import asyncio
 import shlex
 from typing import Any, Generic, TypeAlias, TypeVar, cast
 
+from ccproxy.core.async_runtime import create_task as runtime_create_task
+
 
 T = TypeVar("T")  # Type of processed output
 
@@ -253,8 +255,8 @@ async def run_command(
     if process.stdout is None or process.stderr is None:
         raise RuntimeError("Process stdout or stderr is None")
 
-    stdout_task = asyncio.create_task(stream_output(process.stdout, "stdout"))
-    stderr_task = asyncio.create_task(stream_output(process.stderr, "stderr"))
+    stdout_task = runtime_create_task(stream_output(process.stdout, "stdout"))
+    stderr_task = runtime_create_task(stream_output(process.stderr, "stderr"))
 
     # Wait for process to complete and collect output
     return_code = await process.wait()

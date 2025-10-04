@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import time
 import uuid
+from asyncio import Queue as AsyncQueue
+from asyncio import QueueEmpty, QueueFull
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TypeVar
 
+from ccproxy.core.async_runtime import create_lock, create_queue
 from ccproxy.core.logging import get_plugin_logger
 
 
@@ -48,7 +50,7 @@ class QueueListener:
             listener_id: Optional ID for the listener, generated if not provided
         """
         self.listener_id = listener_id or str(uuid.uuid4())
-        self._queue: asyncio.Queue[QueueMessage] = asyncio.Queue()
+        self._queue: AsyncQueue[QueueMessage] = create_queue()
         self._closed = False
         self._created_at = time.time()
 
@@ -59,10 +61,10 @@ class QueueListener:
             The next queued message
 
         Raises:
-            asyncio.QueueEmpty: If queue is empty and closed
+            QueueEmpty: If queue is empty and closed
         """
         if self._closed and self._queue.empty():
-            raise asyncio.QueueEmpty("Listener is closed")
+            raise QueueEmpty("Listener is closed")
 
         return await self._queue.get()
 
@@ -79,7 +81,7 @@ class QueueListener:
         """Close the listener, preventing new messages."""
         self._closed = True
         # Put a shutdown message to unblock any waiting consumers
-        with contextlib.suppress(asyncio.QueueFull):
+        with contextlib.suppress(QueueFull):
             self._queue.put_nowait(QueueMessage(type=MessageType.SHUTDOWN))
 
     @property
@@ -108,7 +110,7 @@ class QueueListener:
                     break
                 else:
                     yield message.data
-            except asyncio.QueueEmpty:
+            except QueueEmpty:
                 break
 
 
@@ -122,7 +124,7 @@ class MessageQueue:
             max_listeners: Maximum number of concurrent listeners
         """
         self._listeners: dict[str, QueueListener] = {}
-        self._lock = asyncio.Lock()
+        self._lock = create_lock()
         self._max_listeners = max_listeners
         self._total_messages_received = 0
         self._total_messages_delivered = 0
@@ -230,7 +232,7 @@ class MessageQueue:
                     # Use put_nowait to avoid blocking
                     listener._queue.put_nowait(queue_msg)
                     delivered_count += 1
-                except asyncio.QueueFull:
+                except QueueFull:
                     logger.warning(
                         "message_queue_listener_full",
                         listener_id=listener_id,
@@ -262,7 +264,7 @@ class MessageQueue:
 
             for listener in self._listeners.values():
                 if not listener.is_closed:
-                    with contextlib.suppress(asyncio.QueueFull):
+                    with contextlib.suppress(QueueFull):
                         listener._queue.put_nowait(queue_msg)
 
             logger.trace(
@@ -278,7 +280,7 @@ class MessageQueue:
 
             for listener in self._listeners.values():
                 if not listener.is_closed:
-                    with contextlib.suppress(asyncio.QueueFull):
+                    with contextlib.suppress(QueueFull):
                         listener._queue.put_nowait(queue_msg)
 
             logger.trace(
@@ -293,7 +295,7 @@ class MessageQueue:
 
             for listener in self._listeners.values():
                 if not listener.is_closed:
-                    with contextlib.suppress(asyncio.QueueFull):
+                    with contextlib.suppress(QueueFull):
                         listener._queue.put_nowait(queue_msg)
 
             logger.trace(

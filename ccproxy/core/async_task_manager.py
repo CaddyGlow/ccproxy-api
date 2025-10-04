@@ -5,13 +5,28 @@ handles proper cancellation on shutdown, and provides exception handling for
 background tasks to prevent resource leaks and unhandled exceptions.
 """
 
-import asyncio
 import contextlib
 import time
 import uuid
-from collections.abc import Awaitable, Callable
+from asyncio import InvalidStateError
+from asyncio import Task as AsyncTask
+from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
+from ccproxy.core.async_runtime import (
+    CancelledError,
+    create_event,
+    create_lock,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+from ccproxy.core.async_runtime import (
+    gather as runtime_gather,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 
@@ -29,7 +44,7 @@ class TaskInfo:
 
     def __init__(
         self,
-        task: asyncio.Task[Any],
+        task: AsyncTask[Any],
         name: str,
         created_at: float,
         creator: str | None = None,
@@ -62,7 +77,7 @@ class TaskInfo:
         if self.task.done() and not self.task.cancelled():
             try:
                 return self.task.exception()
-            except asyncio.InvalidStateError:
+            except InvalidStateError:
                 return None
         return None
 
@@ -96,9 +111,9 @@ class AsyncTaskManager:
         self.max_tasks = max_tasks
 
         self._tasks: dict[str, TaskInfo] = {}
-        self._lock = asyncio.Lock()
-        self._shutdown_event = asyncio.Event()
-        self._cleanup_task: asyncio.Task[None] | None = None
+        self._lock = create_lock()
+        self._shutdown_event = create_event()
+        self._cleanup_task: AsyncTask[None] | None = None
         self._started = False
 
     async def start(self) -> None:
@@ -111,7 +126,7 @@ class AsyncTaskManager:
         logger.debug("task_manager_starting", cleanup_interval=self.cleanup_interval)
 
         # Start cleanup task
-        self._cleanup_task = asyncio.create_task(
+        self._cleanup_task = runtime_create_task(
             self._cleanup_loop(), name="task_manager_cleanup"
         )
 
@@ -128,7 +143,7 @@ class AsyncTaskManager:
         # Stop cleanup task first
         if self._cleanup_task and not self._cleanup_task.done():
             self._cleanup_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            with contextlib.suppress(CancelledError):
                 await self._cleanup_task
 
         # Cancel all managed tasks
@@ -143,12 +158,12 @@ class AsyncTaskManager:
 
     async def create_task(
         self,
-        coro: Awaitable[T],
+        coro: Coroutine[Any, Any, T],
         *,
         name: str | None = None,
         creator: str | None = None,
         cleanup_callback: Callable[[], None] | None = None,
-    ) -> asyncio.Task[T]:
+    ) -> AsyncTask[T]:
         """Create a managed task.
 
         Args:
@@ -184,7 +199,7 @@ class AsyncTaskManager:
             name = f"managed_task_{len(self._tasks)}"
 
         # Create the task with exception handling
-        task = asyncio.create_task(
+        task: AsyncTask[T] = runtime_create_task(
             self._wrap_with_exception_handling(coro, name),
             name=name,
         )
@@ -215,12 +230,12 @@ class AsyncTaskManager:
         return task
 
     async def _wrap_with_exception_handling(
-        self, coro: Awaitable[T], task_name: str
+        self, coro: Coroutine[Any, Any, T], task_name: str
     ) -> T:
         """Wrap coroutine with exception handling."""
         try:
             return await coro
-        except asyncio.CancelledError:
+        except CancelledError:
             logger.debug("task_cancelled", task_name=task_name)
             raise
         except Exception as e:
@@ -254,7 +269,7 @@ class AsyncTaskManager:
 
         while not self._shutdown_event.is_set():
             try:
-                await asyncio.wait_for(
+                await runtime_wait_for(
                     self._shutdown_event.wait(), timeout=self.cleanup_interval
                 )
                 break  # Shutdown event set
@@ -312,8 +327,11 @@ class AsyncTaskManager:
 
         # Wait for cancellation with timeout
         try:
-            await asyncio.wait_for(
-                asyncio.gather(*tasks_to_cancel, return_exceptions=True),
+            await runtime_wait_for(
+                runtime_gather(
+                    *tasks_to_cancel,
+                    return_exceptions=True,
+                ),
                 timeout=self.shutdown_timeout,
             )
             logger.debug("all_tasks_cancelled_gracefully")
@@ -415,14 +433,14 @@ def _resolve_task_manager(
 
 
 async def create_managed_task(
-    coro: Awaitable[T],
+    coro: Coroutine[Any, Any, T],
     *,
     name: str | None = None,
     creator: str | None = None,
     cleanup_callback: Callable[[], None] | None = None,
     container: Optional["ServiceContainer"] = None,
     task_manager: Optional["AsyncTaskManager"] = None,
-) -> asyncio.Task[T]:
+) -> AsyncTask[T]:
     """Create a managed task using the dependency-injected task manager.
 
     Args:
@@ -466,7 +484,7 @@ async def stop_task_manager(
 
 
 def create_fire_and_forget_task(
-    coro: Awaitable[T],
+    coro: Coroutine[Any, Any, T],
     *,
     name: str | None = None,
     creator: str | None = None,
@@ -490,13 +508,13 @@ def create_fire_and_forget_task(
     manager = _resolve_task_manager(container=container, task_manager=task_manager)
 
     if not manager.is_started:
-        # If task manager isn't started, fall back to regular asyncio.create_task
+        # If task manager isn't started, fall back to scheduling directly
         logger.warning(
             "task_manager_not_started_fire_and_forget",
             name=name,
             creator=creator,
         )
-        asyncio.create_task(coro, name=name)  # type: ignore[arg-type]
+        runtime_create_task(coro, name=name)
         return
 
     # Schedule the task creation as a fire-and-forget operation
@@ -513,4 +531,4 @@ def create_fire_and_forget_task(
             )
 
     # Use asyncio.create_task to schedule the managed task creation
-    asyncio.create_task(_create_managed_task(), name=f"create_{name or 'unnamed'}")
+    runtime_create_task(_create_managed_task(), name=f"create_{name or 'unnamed'}")

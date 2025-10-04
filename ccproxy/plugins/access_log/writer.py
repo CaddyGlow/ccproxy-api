@@ -1,9 +1,20 @@
-import asyncio
+import contextlib
 import time
+from asyncio import Task as AsyncTask
 from pathlib import Path
 
 import aiofiles
 
+from ccproxy.core.async_runtime import (
+    CancelledError,
+    create_lock,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+from ccproxy.core.async_runtime import (
+    sleep as runtime_sleep,
+)
 from ccproxy.core.logging import get_plugin_logger
 
 
@@ -38,8 +49,8 @@ class AccessLogWriter:
         self.flush_interval = flush_interval
 
         self._buffer: list[str] = []
-        self._lock = asyncio.Lock()
-        self._flush_task: asyncio.Task[None] | None = None
+        self._lock = create_lock()
+        self._flush_task: AsyncTask[None] | None = None
         self._last_flush = time.time()
 
         # Ensure parent directory exists
@@ -92,11 +103,11 @@ class AccessLogWriter:
         if self._flush_task and not self._flush_task.done():
             return  # Already scheduled
 
-        self._flush_task = asyncio.create_task(self._auto_flush())
+        self._flush_task = runtime_create_task(self._auto_flush())
 
     async def _auto_flush(self) -> None:
         """Automatically flush the buffer after the flush interval."""
-        await asyncio.sleep(self.flush_interval)
+        await runtime_sleep(self.flush_interval)
         async with self._lock:
             await self._flush()
 
@@ -107,3 +118,5 @@ class AccessLogWriter:
 
         if self._flush_task and not self._flush_task.done():
             self._flush_task.cancel()
+            with contextlib.suppress(CancelledError):
+                await self._flush_task
