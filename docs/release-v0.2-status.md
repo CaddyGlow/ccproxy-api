@@ -2,13 +2,13 @@
 
 ## Blocking Issues
 - Version metadata still marked as development builds (`ccproxy/core/_version.py:31`; `CHANGELOG.md:8`). Tag `v0.2.0`, regenerate `_version.py`, and update the changelog date before packaging.
-- Packaging depends on a local placeholder plugin (`pyproject.toml:22`; `uv.lock:561-575`). Remove the `dummy` dependency and refresh `uv.lock` or publish the plugin properly.
-- MkDocs navigation references missing documents (`docs/migration/0.2-plugin-first.md`, `docs/OAUTH_PLUGIN_ARCHITECTURE.md`). Restore the sources or update navigation/README links so docs build succeeds.
+- Packaging cleanup ✅ `dummy` dependency removed and `uv.lock` regenerated against public PyPI artefacts.
+- MkDocs nav ✅ `docs/migration/0.2-plugin-first.md` and `docs/OAUTH_PLUGIN_ARCHITECTURE.md` restored; `uv run --extra docs mkdocs build` now succeeds (warnings limited to existing nav omissions).
 
 ## Major Work Remaining
-- Installation docs still point to dev branches (`README.md:155-159`; `docs/getting-started/installation.md:18-24`). Update once the official 0.2.0 artefacts exist.
-- Backups and temporary files linger (.bak files under `ccproxy/`, `.ccproxy.toml.bak`, `scripts/test_endpoint.sh.20250913-110546.bak`). Remove them so they do not ship in sdists.
-- `uv.lock` pins unreleased versions (e.g., `duckdb 1.3.2` dated 2025-07-08). Re-sync dependencies against published wheels and re-run the lock.
+- Installation docs now point to the forthcoming `ccproxy-api[all]==0.2.0` wheel in both the README and installation guide. Update again once the release is cut if the exact tag changes.
+- Backups and temporary files still linger (.bak files under `ccproxy/`, `.ccproxy.toml.bak`, `scripts/test_endpoint.sh.20250913-110546.bak`). Remove them so they do not ship in sdists.
+- DuckDB pinned to `duckdb==0.9.2` / `duckdb-engine==0.9.1` and a runtime hash shim added to `SimpleDuckDBStorage` to avoid `_duckdb.typing.DuckDBPyType` errors. Run `make ci` to confirm analytics/metrics suites remain green after any further dependency adjustments.
 
 ## Outstanding TODOs – Detailed Triage
 - **ccproxy/api/app.py:546** – The startup sequence still performs format-chain validation inline. Refactor this block into `MiddlewareManager` or a dedicated validator in `ccproxy/core/middleware.py`, then invoke it from startup. Add regression coverage via a unit test that exercises `MiddlewareManager.apply_to_app` with a mocked format registry to ensure validation happens before middleware application.

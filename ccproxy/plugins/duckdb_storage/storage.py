@@ -13,6 +13,7 @@ import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 from sqlalchemy import delete, insert
@@ -23,6 +24,31 @@ from sqlmodel import Session, SQLModel, create_engine, func
 
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.logging import get_plugin_logger
+
+
+# Monkey-patch DuckDB type hashing for SQLAlchemy compatibility on versions
+# where DuckDBPyType does not implement __hash__. Without this, SQLAlchemy's
+# result processor cache stores DuckDBPyType instances in dictionaries and
+# raises "TypeError: unhashable type: '_duckdb.typing.DuckDBPyType'" during
+# engine initialization. Converting the type object to its string
+# representation provides a stable hash while preserving equality semantics.
+DuckDBPyType: Any | None = None
+duckdb_typing: ModuleType | None
+try:  # pragma: no cover - defensive compatibility shim
+    import importlib
+
+    duckdb_typing = importlib.import_module("duckdb.typing")
+except ImportError:
+    duckdb_typing = None
+else:
+    DuckDBPyType = getattr(duckdb_typing, "DuckDBPyType", None)
+
+if DuckDBPyType is not None and getattr(DuckDBPyType, "__hash__", None) is None:
+
+    def _duckdbpytype_hash(self: Any) -> int:
+        return hash(str(self))
+
+    DuckDBPyType.__hash__ = _duckdbpytype_hash
 
 
 logger = get_plugin_logger(__name__)
