@@ -3,11 +3,22 @@
 import asyncio
 import threading
 import uuid
+from asyncio import Event as AsyncEvent
+from asyncio import Queue as AsyncQueue
+from asyncio import QueueFull
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
 import structlog
+
+from ccproxy.core.async_runtime import (
+    create_event,
+    create_queue,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 
 from .base import Hook, HookContext
 
@@ -31,8 +42,8 @@ class BackgroundHookThreadManager:
         """Initialize the background thread manager."""
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
-        self._queue: asyncio.Queue[tuple[HookTask, Any]] | None = None
-        self._shutdown_event: asyncio.Event | None = None
+        self._queue: AsyncQueue[tuple[HookTask, Any]] | None = None
+        self._shutdown_event: AsyncEvent | None = None
         self._running = False
         self._logger = logger.bind(component="background_hook_thread")
         # Signals when the background loop and its resources are ready
@@ -111,7 +122,7 @@ class BackgroundHookThreadManager:
         if self._queue:
             try:
                 self._queue.put_nowait((task, registry))
-            except asyncio.QueueFull:
+            except QueueFull:
                 self._logger.warning("hook_task_queue_full_dropping_task")
 
     def _run_background_loop(self) -> None:
@@ -122,8 +133,8 @@ class BackgroundHookThreadManager:
             asyncio.set_event_loop(self._loop)
 
             # Create queue and shutdown event
-            self._queue = asyncio.Queue[tuple[HookTask, Any]](maxsize=1000)
-            self._shutdown_event = asyncio.Event()
+            self._queue = create_queue(maxsize=1000)
+            self._shutdown_event = create_event()
 
             # Signal to the starter that we're ready to accept tasks
             if self._ready_event:
@@ -146,7 +157,7 @@ class BackgroundHookThreadManager:
                 # Wait for either a task or shutdown signal
                 if not self._queue:
                     break
-                task_data = await asyncio.wait_for(self._queue.get(), timeout=0.1)
+                task_data = await runtime_wait_for(self._queue.get(), timeout=0.1)
 
                 task, registry = task_data
                 await self._execute_task(task, registry)
