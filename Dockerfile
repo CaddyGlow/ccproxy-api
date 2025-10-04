@@ -79,13 +79,24 @@ COPY --from=builder /app /app
 
 WORKDIR /app
 
-# ENV PATH="/app/.venv/bin:/app/node_modules/.bin:$PATH"
-ENV PATH="/app/.venv/bin:/app/bun_global/bin:$PATH"
+# Ensure venv binaries and CLI tools are discoverable
+ENV PATH="/app/.venv/bin:/usr/local/bin:$PATH"
 ENV PYTHONPATH=/app
+ENV HOME=/home/ccproxy
 ENV SERVER__HOST=0.0.0.0
 ENV SERVER__PORT=8000
 ENV LOGGING__LEVEL=INFO
 ENV LOGGING__FORMAT=json
+
+# Create non-root user and workspace directory
+RUN groupadd --system ccproxy \
+  && useradd --system --create-home --home-dir /home/ccproxy --gid ccproxy ccproxy \
+  && mkdir -p /workspace \
+  && chown ccproxy:ccproxy /workspace
+
+WORKDIR /workspace
+
+USER ccproxy
 
 EXPOSE ${SERVER__PORT:-8000}
 
