@@ -286,6 +286,11 @@ def run(
         "--tty/--no-tty",
         help="Attach an interactive TTY (-it) when starting the container.",
     ),
+    command: list[str] = typer.Argument(
+        [],
+        metavar="CMD...",
+        help="Command to execute inside the container (provide after --).",
+    ),
 ) -> None:
     """Run the ccproxy container with helpful mounts."""
 
@@ -327,7 +332,7 @@ def run(
         environment.setdefault("DEBIAN_FRONTEND", "noninteractive")
 
     environment.update(additional_env)
-    command_list = shlex.split(cmd) if cmd else None
+    command_list = command if command else (shlex.split(cmd) if cmd else None)
     ports = [f"{port}:{container_port}"]
 
     script_container_path: str | None = None

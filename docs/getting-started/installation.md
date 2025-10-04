@@ -196,6 +196,9 @@ uv run python scripts/docker_runner.py run \
   --env LOGGING__LEVEL=debug \
   --volume "$HOME/custom:/root/custom"
 
+# Directly execute a command inside the container
+uv run python scripts/docker_runner.py run -- claude --version
+
 # Install extra tooling or run setup scripts on launch
 uv run python scripts/docker_runner.py run \
   --apt-package build-essential \
@@ -222,8 +225,9 @@ writable on the host. Disable that behavior with `--no-user-mapping` if you need
 root-owned artifacts.
 
 Use `--apt-package` to install additional Debian packages before the proxy starts,
-`--setup-command` for ad-hoc shell snippets, and `--setup-script` to run a local
-script inside the container (mounted read-only under `/tmp/docker-runner/`).
+`--setup-command` for ad-hoc shell snippets, `--setup-script` to run a local
+script inside the container (mounted read-only under `/tmp/docker-runner/`), and
+place the command you want to run after `--` if you need to override the image CMD.
 
 If you want a reusable image containing those changes, use the `extend` command to
 build a new tag layered on top of the base ccproxy image.
