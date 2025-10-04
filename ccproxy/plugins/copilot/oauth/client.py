@@ -1,6 +1,5 @@
 """OAuth client implementation for GitHub Copilot with Device Code Flow."""
 
-import asyncio
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -8,6 +7,7 @@ import httpx
 from pydantic import SecretStr
 
 from ccproxy.auth.oauth.protocol import StandardProfileFields
+from ccproxy.core.async_runtime import sleep as runtime_sleep
 from ccproxy.core.logging import get_plugin_logger
 
 from ..config import CopilotOAuthConfig
@@ -160,7 +160,7 @@ class CopilotOAuthClient:
             if time.time() - start_time > expires_in:
                 raise TimeoutError("Device code has expired")
 
-            await asyncio.sleep(current_interval)
+            await runtime_sleep(current_interval)
 
             data = {
                 "client_id": self.config.client_id,
@@ -233,7 +233,7 @@ class CopilotOAuthClient:
                     exc_info=e,
                 )
                 # Continue polling on HTTP errors
-                await asyncio.sleep(current_interval)
+                await runtime_sleep(current_interval)
                 continue
 
     async def exchange_for_copilot_token(

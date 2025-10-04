@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import time
 from datetime import datetime
 from typing import Any
 
 from sqlmodel import Session
+
+from ccproxy.core.async_runtime import to_thread as runtime_to_thread
 
 from .models import AccessLog
 
@@ -74,7 +75,7 @@ class AnalyticsIngestService:
 
         try:
             # Execute the DB write in a thread to avoid blocking the event loop
-            return await asyncio.to_thread(self._insert_sync, row)
+            return await runtime_to_thread(self._insert_sync, row)
         except Exception:
             return False
 

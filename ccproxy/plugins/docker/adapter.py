@@ -1,6 +1,5 @@
 """Docker adapter for container operations."""
 
-import asyncio
 import os
 import shlex
 import subprocess
@@ -10,6 +9,9 @@ from typing import Any, cast
 from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
+from ccproxy.core.async_runtime import (
+    create_subprocess_exec as runtime_create_subprocess_exec,
+)
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.streaming import DeferredStreaming
@@ -49,11 +51,11 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
     async def _needs_sudo(self) -> bool:
         """Check if Docker requires sudo by testing docker info command."""
         try:
-            process = await asyncio.create_subprocess_exec(
+            process = await runtime_create_subprocess_exec(
                 "docker",
                 "info",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             _, stderr = await process.communicate()
             if process.returncode == 0:
@@ -74,10 +76,10 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
         cmd_str = " ".join(docker_cmd)
 
         try:
-            process = await asyncio.create_subprocess_exec(
+            process = await runtime_create_subprocess_exec(
                 *docker_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             stdout, stderr = await process.communicate()
 
@@ -457,10 +459,10 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
 
         try:
             # Run Docker inspect command
-            process = await asyncio.create_subprocess_exec(
+            process = await runtime_create_subprocess_exec(
                 *docker_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
             _, stderr = await process.communicate()
 
@@ -481,10 +483,10 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
                 try:
                     logger.debug("docker_image_check_permission_denied_using_sudo")
                     sudo_cmd = ["sudo"] + docker_cmd
-                    sudo_process = await asyncio.create_subprocess_exec(
+                    sudo_process = await runtime_create_subprocess_exec(
                         *sudo_cmd,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
                     )
                     await sudo_process.communicate()
                     if sudo_process.returncode == 0:

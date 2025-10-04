@@ -10,6 +10,7 @@ swapped without widespread churn.
 from __future__ import annotations
 
 import asyncio
+from asyncio import subprocess as asyncio_subprocess
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, TypeVar
 
@@ -65,6 +66,11 @@ class AsyncRuntime:
         """Return a new queue instance."""
         return asyncio.Queue(maxsize=maxsize)
 
+    def create_future(self) -> asyncio.Future[Any]:
+        """Create a future bound to the active event loop."""
+        loop = asyncio.get_running_loop()
+        return loop.create_future()
+
     async def sleep(self, delay: float) -> None:
         """Sleep for the requested delay."""
         await asyncio.sleep(delay)
@@ -85,6 +91,18 @@ class AsyncRuntime:
             func = partial(func, **kwargs)
 
         return await loop.run_in_executor(None, func, *args)
+
+    async def to_thread(
+        self, func: Callable[..., _T], /, *args: Any, **kwargs: Any
+    ) -> _T:
+        """Execute ``func`` in a worker thread via the runtime."""
+        return await asyncio.to_thread(func, *args, **kwargs)
+
+    async def create_subprocess_exec(
+        self, *cmd: Any, **kwargs: Any
+    ) -> asyncio_subprocess.Process:
+        """Spawn a subprocess using the active runtime."""
+        return await asyncio.create_subprocess_exec(*cmd, **kwargs)
 
     def get_loop_time(self) -> float:
         """Return the loop's time helper."""
@@ -138,6 +156,18 @@ async def run_in_executor(func: Callable[..., _T], *args: Any, **kwargs: Any) ->
     return await runtime.run_in_executor(func, *args, **kwargs)
 
 
+async def create_subprocess_exec(
+    *cmd: Any, **kwargs: Any
+) -> asyncio_subprocess.Process:
+    """Spawn a subprocess via the runtime abstraction."""
+    return await runtime.create_subprocess_exec(*cmd, **kwargs)
+
+
+async def to_thread(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
+    """Execute ``func`` using the runtime's thread helper."""
+    return await runtime.to_thread(func, *args, **kwargs)
+
+
 def create_lock() -> asyncio.Lock:
     """Return a runtime-managed lock."""
     return runtime.create_lock()
@@ -156,6 +186,11 @@ def create_semaphore(value: int) -> asyncio.Semaphore:
 def create_queue(maxsize: int = 0) -> asyncio.Queue[Any]:
     """Return a runtime-managed queue."""
     return runtime.create_queue(maxsize=maxsize)
+
+
+def create_future() -> asyncio.Future[Any]:
+    """Return a runtime-managed future."""
+    return runtime.create_future()
 
 
 def loop_time() -> float:
