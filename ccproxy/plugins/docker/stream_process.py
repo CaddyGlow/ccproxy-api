@@ -26,6 +26,7 @@ import asyncio
 import os
 import pty
 import shlex
+import signal
 import sys
 from typing import Any, BinaryIO, Generic, TypeAlias, TypeVar, cast
 
@@ -259,6 +260,7 @@ async def run_command(
                 stdout=slave_fd,
                 stderr=slave_fd,
                 env=os.environ,
+                start_new_session=True,
             )
         finally:
             os.close(slave_fd)
@@ -274,9 +276,40 @@ async def run_command(
                 os.close(master_fd)
 
         forward_task = asyncio.create_task(_forward())
-        return_code = await process.wait()
-        await forward_task
-        return return_code, [], []
+        loop = asyncio.get_running_loop()
+        forwarded: list[signal.Signals] = []
+        exit_requested = False
+
+        def _forward_signal(sig: signal.Signals) -> None:
+            nonlocal exit_requested
+            if process.returncode is not None:
+                return
+            try:
+                process.send_signal(sig)
+                if sig in (signal.SIGINT, signal.SIGTERM):
+                    exit_requested = True
+            except ProcessLookupError:
+                pass
+
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGTSTP):
+            try:
+                loop.add_signal_handler(sig, _forward_signal, sig)
+                forwarded.append(sig)
+            except NotImplementedError:  # pragma: no cover - platform guard
+                pass
+
+        try:
+            return_code = await process.wait()
+        finally:
+            for sig in forwarded:
+                try:
+                    loop.remove_signal_handler(sig)
+                except NotImplementedError:  # pragma: no cover - platform guard
+                    pass
+            await forward_task
+
+        exit_code = 130 if exit_requested and return_code == 0 else return_code
+        return exit_code, [], []
 
     stdout_pipe = asyncio.subprocess.PIPE
     stderr_pipe = asyncio.subprocess.PIPE
