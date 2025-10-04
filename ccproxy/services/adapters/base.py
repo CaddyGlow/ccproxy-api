@@ -1,12 +1,15 @@
 """Base adapter for provider plugins."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
-from ccproxy.streaming import DeferredStreaming
+if TYPE_CHECKING:
+    from ccproxy.streaming import DeferredStreaming
 
 
 class BaseAdapter(ABC):
@@ -25,7 +28,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def handle_request(
         self, request: Request
-    ) -> Response | StreamingResponse | DeferredStreaming:
+    ) -> Response | StreamingResponse | "DeferredStreaming":
         """Handle a provider-specific request.
 
         Args:
@@ -39,7 +42,7 @@ class BaseAdapter(ABC):
     @abstractmethod
     async def handle_streaming(
         self, request: Request, endpoint: str, **kwargs: Any
-    ) -> StreamingResponse | DeferredStreaming:
+    ) -> StreamingResponse | "DeferredStreaming":
         """Handle a streaming request.
 
         Args:

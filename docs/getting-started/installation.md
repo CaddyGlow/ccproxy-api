@@ -175,3 +175,35 @@ ccproxy-api
 ```
 
 The server will start on `http://localhost:8000` by default.
+
+### Optional: Docker Helper Script
+
+Prefer running the proxy inside Docker? The bundled helper wraps our Docker plugin
+so you can reuse local credentials and config without remembering long `docker`
+commands:
+
+```bash
+# Build the image (defaults to ccproxy:local)
+uv run python scripts/docker_runner.py build
+
+# Start the container with standard mounts (workspace, tokens, config)
+uv run python scripts/docker_runner.py run
+
+# Drop into a shell or pass extra options
+uv run python scripts/docker_runner.py run --cmd "/bin/bash"
+uv run python scripts/docker_runner.py run \
+  --port 9000 \
+  --env LOGGING__LEVEL=debug \
+  --volume "$HOME/custom:/root/custom"
+```
+
+The helper automatically mounts:
+- `~/.codex` (ChatGPT tokens)
+- `~/.claude` (Claude credentials)
+- `~/.config/gh` (GitHub CLI auth for Copilot)
+- `~/.config/ccproxy` and `~/.cache/ccproxy` (proxy config/cache)
+- Your workspace (default repo root → `/workspace`)
+
+It also forwards your UID/GID by default so files created in the container stay
+writable on the host. Disable that behavior with `--no-user-mapping` if you need
+root-owned artifacts.

@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import contextlib
 import json
 from abc import abstractmethod
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -17,7 +19,6 @@ from ccproxy.models.provider import ProviderConfig
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.adapters.chain_composer import compose_from_chain
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.streaming import DeferredStreaming
 from ccproxy.streaming.handler import StreamingHandler
 from ccproxy.utils.headers import extract_request_headers, filter_response_headers
 from ccproxy.utils.model_mapper import (
@@ -25,6 +26,9 @@ from ccproxy.utils.model_mapper import (
     add_model_alias,
     restore_model_aliases,
 )
+
+if TYPE_CHECKING:
+    from ccproxy.streaming import DeferredStreaming
 
 
 logger = get_plugin_logger()
@@ -58,7 +62,7 @@ class BaseHTTPAdapter(BaseAdapter):
 
     async def handle_request(
         self, request: Request
-    ) -> Response | StreamingResponse | DeferredStreaming:
+    ) -> Response | StreamingResponse | "DeferredStreaming":
         """Handle request with streaming detection and format chain support."""
 
         # Get context from middleware (already initialized)
