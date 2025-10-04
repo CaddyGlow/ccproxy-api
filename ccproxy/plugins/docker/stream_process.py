@@ -23,6 +23,8 @@ Example:
 """
 
 import asyncio
+import os
+import pty
 import shlex
 import sys
 from typing import Any, BinaryIO, Generic, TypeAlias, TypeVar, cast
@@ -248,18 +250,42 @@ async def run_command(
     # Start the async process with pipes for stdout and stderr
     raw_passthrough = isinstance(middleware, RawPassthroughMiddleware)
 
-    stdout_pipe = None if raw_passthrough else asyncio.subprocess.PIPE
-    stderr_pipe = None if raw_passthrough else asyncio.subprocess.PIPE
+    if raw_passthrough and os.name != "nt":
+        master_fd, slave_fd = pty.openpty()
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                env=os.environ,
+            )
+        finally:
+            os.close(slave_fd)
+
+        async def _forward() -> None:
+            try:
+                while True:
+                    data = await asyncio.to_thread(os.read, master_fd, 4096)
+                    if not data:
+                        break
+                    await middleware.process(data, "stdout")
+            finally:
+                os.close(master_fd)
+
+        forward_task = asyncio.create_task(_forward())
+        return_code = await process.wait()
+        await forward_task
+        return return_code, [], []
+
+    stdout_pipe = asyncio.subprocess.PIPE
+    stderr_pipe = asyncio.subprocess.PIPE
 
     process = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=stdout_pipe,
         stderr=stderr_pipe,
     )
-
-    if raw_passthrough:
-        return_code = await process.wait()
-        return return_code, [], []
 
     async def stream_output(stream: asyncio.StreamReader, stream_type: str) -> list[T]:
         """Process output from a stream and capture results.
