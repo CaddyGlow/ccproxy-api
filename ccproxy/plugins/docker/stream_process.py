@@ -241,7 +241,11 @@ async def run_command(
             line_bytes = await stream.readline()
             if not line_bytes:
                 break
-            line = line_bytes.decode().rstrip()
+            line = line_bytes.decode()
+            if line.endswith("\n"):
+                line = line[:-1]
+            if line.endswith("\r"):
+                line = line[:-1]
             if line:
                 processed = await middleware.process(line, stream_type)
                 if processed is not None:
