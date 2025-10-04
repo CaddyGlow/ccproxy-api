@@ -168,7 +168,6 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
         for key, value in environment.items():
             docker_cmd.extend(["-e", f"{key}={value}"])
 
-        docker_cmd.append("-it")
         # Add image
         docker_cmd.append(image)
 
