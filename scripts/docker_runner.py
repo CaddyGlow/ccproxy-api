@@ -284,26 +284,6 @@ def run(
         "--user-mapping/--no-user-mapping",
         help="Map container user to the current host UID/GID.",
     ),
-    apt_package: list[str] = typer.Option(
-        [],
-        "--apt-package",
-        help="APT package to install before starting the proxy (repeatable).",
-    ),
-    setup_script: Path | None = typer.Option(
-        None,
-        "--setup-script",
-        exists=True,
-        file_okay=True,
-        dir_okay=False,
-        readable=True,
-        resolve_path=True,
-        help="Optional host script to run inside the container before start.",
-    ),
-    setup_command: str | None = typer.Option(
-        None,
-        "--setup-command",
-        help="Inline shell commands to run before starting the proxy.",
-    ),
     tty: bool = typer.Option(
         False,
         "--tty/--no-tty",
@@ -331,13 +311,6 @@ def run(
     default_volumes = _default_mounts(workspace, workspace_mount)
     all_volumes = default_volumes + additional_volumes
 
-    if apt_package and user_mapping:
-        typer.echo(
-            "Disabling user-mapping so apt packages can be installed as root...",
-            err=True,
-        )
-        user_mapping = False
-
     environment: dict[str, str] = {
         "SERVER__HOST": "0.0.0.0",
         "SERVER__PORT": str(container_port),
@@ -352,9 +325,6 @@ def run(
         environment["PUID"] = str(os.getuid())
         environment["PGID"] = str(os.getgid())
 
-    if apt_package:
-        environment.setdefault("DEBIAN_FRONTEND", "noninteractive")
-
     term = os.environ.get("TERM")
     if term:
         environment.setdefault("TERM", term)
@@ -368,15 +338,7 @@ def run(
     command_list = command if command else (shlex.split(cmd) if cmd else None)
     ports = [f"{port}:{container_port}"]
 
-    script_container_path: str | None = None
-    if setup_script:
-        if not setup_script.is_file():
-            raise typer.BadParameter("--setup-script must point to a file")
-        script_container_path = f"/tmp/docker-runner/{setup_script.name}"
-        all_volumes.append((str(setup_script), f"{script_container_path}:ro"))
-
     final_command = command_list if command_list else ["ccproxy"]
-    setup_lines: list[str] = []
     docker_args: list[str] = []
 
     if tty:
@@ -388,25 +350,7 @@ def run(
                 err=True,
             )
 
-    if apt_package:
-        quoted = " ".join(shlex.quote(pkg) for pkg in apt_package)
-        setup_lines.append("apt-get update")
-        setup_lines.append(f"apt-get install -y {quoted}")
-
-    if script_container_path:
-        setup_lines.append(f"chmod +x {shlex.quote(script_container_path)}")
-        setup_lines.append(shlex.quote(script_container_path))
-
-    if setup_command:
-        setup_lines.append(setup_command)
-
-    if setup_lines:
-        setup_lines.insert(0, "set -euo pipefail")
-        exec_line = "exec " + " ".join(shlex.quote(arg) for arg in final_command)
-        setup_lines.append(exec_line)
-        command_list = ["bash", "-lc", "\n".join(setup_lines)]
-    else:
-        command_list = final_command
+    command_list = final_command
 
     async def _runner() -> None:
         await _ensure_image(

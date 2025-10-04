@@ -199,12 +199,6 @@ uv run python scripts/docker_runner.py run \
 # Directly execute a command inside the container
 uv run python scripts/docker_runner.py run -- claude --version
 
-# Install extra tooling or run setup scripts on launch
-uv run python scripts/docker_runner.py run \
-  --apt-package build-essential \
-  --setup-command "apt-get install -y jq" \
-  --setup-script path/to/setup.sh
-
 # Bake a derived image with extra tooling (reusable tag)
 uv run python scripts/docker_runner.py extend \
   --output-image ccproxy:with-tools \
@@ -224,12 +218,8 @@ It also forwards your UID/GID by default so files created in the container stay
 writable on the host. Disable that behavior with `--no-user-mapping` if you need
 root-owned artifacts.
 
-Use `--apt-package` to install additional Debian packages before the proxy starts,
-`--setup-command` for ad-hoc shell snippets, `--setup-script` to run a local
-script inside the container (mounted read-only under `/tmp/docker-runner/`), and
-place the command you want to run after `--` if you need to override the image CMD.
-
-If you want a reusable image containing those changes, use the `extend` command to
-build a new tag layered on top of the base ccproxy image.
+Place the command you want to run after `--` if you need to override the image CMD.
+To add extra tooling or run setup scripts, prefer the `extend` command so the
+customisations are baked into a reusable image tag.
 
 Need an interactive shell? Add `--tty` to start the container with `docker run -it`.
