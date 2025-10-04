@@ -5,7 +5,6 @@ ensuring efficient resource usage and preventing duplicate client creation.
 Implements Phase 2.3 of the refactoring plan.
 """
 
-import asyncio
 from typing import Any
 from urllib.parse import urlparse
 
@@ -14,6 +13,7 @@ import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.config.utils import HTTP_STREAMING_TIMEOUT
+from ccproxy.core.async_runtime import create_lock
 from ccproxy.http.client import HTTPClientFactory
 
 
@@ -43,7 +43,7 @@ class HTTPPoolManager:
         self.hook_manager = hook_manager
         self._pools: dict[str, httpx.AsyncClient] = {}
         self._shared_client: httpx.AsyncClient | None = None
-        self._lock = asyncio.Lock()
+        self._lock = create_lock()
 
         logger.trace("http_pool_manager_initialized", category="lifecycle")
 

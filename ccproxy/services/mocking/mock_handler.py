@@ -1,6 +1,5 @@
 """Mock response handler for bypass mode."""
 
-import asyncio
 import json
 import random
 from collections.abc import AsyncGenerator
@@ -9,6 +8,7 @@ from typing import Any
 import structlog
 from fastapi.responses import StreamingResponse
 
+from ccproxy.core.async_runtime import sleep as runtime_sleep
 from ccproxy.core.request_context import RequestContext
 from ccproxy.services.adapters.format_adapter import DictFormatAdapter
 from ccproxy.services.adapters.simple_converters import (
@@ -105,7 +105,7 @@ class MockResponseHandler:
         """
         # Simulate latency
         latency = random.uniform(*self.latency_range)
-        await asyncio.sleep(latency)
+        await runtime_sleep(latency)
 
         # Check if we should simulate an error
         if self.should_simulate_error():
@@ -211,7 +211,7 @@ class MockResponseHandler:
                 if i + chunk_size < len(words):
                     chunk_text += " "
 
-                await asyncio.sleep(0.05)  # Simulate token generation delay
+                await runtime_sleep(0.05)  # Simulate token generation delay
 
                 if is_openai_format:
                     chunk_event = {
