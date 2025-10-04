@@ -28,6 +28,8 @@ import pty
 import shlex
 import signal
 import sys
+import termios
+import tty
 from typing import Any, BinaryIO, Generic, TypeAlias, TypeVar, cast
 
 
@@ -253,7 +255,16 @@ async def run_command(
 
     if raw_passthrough and os.name != "nt":
         master_fd, slave_fd = pty.openpty()
+        stdin_fd: int | None = sys.stdin.fileno() if sys.stdin.isatty() else None
+        original_term_settings = None
         try:
+            if stdin_fd is not None:
+                try:
+                    original_term_settings = termios.tcgetattr(stdin_fd)
+                    tty.setraw(stdin_fd)
+                except termios.error:  # pragma: no cover - terminal quirks
+                    original_term_settings = None
+
             process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=slave_fd,
@@ -265,7 +276,7 @@ async def run_command(
         finally:
             os.close(slave_fd)
 
-        async def _forward() -> None:
+        async def _forward_output() -> None:
             try:
                 while True:
                     data = await asyncio.to_thread(os.read, master_fd, 4096)
@@ -275,7 +286,21 @@ async def run_command(
             finally:
                 os.close(master_fd)
 
-        forward_task = asyncio.create_task(_forward())
+        async def _forward_input() -> None:
+            if stdin_fd is None:
+                return
+            try:
+                while process.returncode is None:
+                    chunk = await asyncio.to_thread(os.read, stdin_fd, 1024)
+                    if not chunk:
+                        break
+                    os.write(master_fd, chunk)
+            except (OSError, ValueError):  # pragma: no cover - closed fd
+                pass
+
+        output_task = asyncio.create_task(_forward_output())
+        input_task = asyncio.create_task(_forward_input())
+
         loop = asyncio.get_running_loop()
         forwarded: list[signal.Signals] = []
         exit_requested = False
@@ -306,7 +331,13 @@ async def run_command(
                     loop.remove_signal_handler(sig)
                 except NotImplementedError:  # pragma: no cover - platform guard
                     pass
-            await forward_task
+            await input_task
+            await output_task
+            if stdin_fd is not None and original_term_settings is not None:
+                try:
+                    termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term_settings)
+                except termios.error:  # pragma: no cover
+                    pass
 
         exit_code = 130 if exit_requested and return_code == 0 else return_code
         return exit_code, [], []
