@@ -201,6 +201,12 @@ uv run python scripts/docker_runner.py run \
   --apt-package build-essential \
   --setup-command "apt-get install -y jq" \
   --setup-script path/to/setup.sh
+
+# Bake a derived image with extra tooling (reusable tag)
+uv run python scripts/docker_runner.py extend \
+  --output-image ccproxy:with-tools \
+  --apt-package git \
+  --setup-command "pip install httpie"
 ```
 
 The helper automatically mounts:
@@ -217,3 +223,6 @@ root-owned artifacts.
 Use `--apt-package` to install additional Debian packages before the proxy starts,
 `--setup-command` for ad-hoc shell snippets, and `--setup-script` to run a local
 script inside the container (mounted read-only under `/tmp/docker-runner/`).
+
+If you want a reusable image containing those changes, use the `extend` command to
+build a new tag layered on top of the base ccproxy image.

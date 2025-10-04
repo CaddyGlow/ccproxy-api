@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import os
 import shlex
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
@@ -368,6 +370,120 @@ def run(
         asyncio.run(_runner())
     except KeyboardInterrupt:
         typer.echo("Interrupted, stopping container...", err=True)
+        raise typer.Exit(130)
+
+
+@APP.command()
+def extend(
+    output_image: str = typer.Option(..., help="Tag for the derived image."),
+    base_image: str = typer.Option(
+        DEFAULT_IMAGE,
+        help="Base image to extend (builds automatically if missing).",
+    ),
+    context: Path = typer.Option(
+        DEFAULT_CONTEXT,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        help="Docker build context used when auto-building the base image.",
+    ),
+    apt_package: list[str] = typer.Option(
+        [],
+        "--apt-package",
+        help="APT packages to install in the derived image (repeatable).",
+    ),
+    setup_script: Path | None = typer.Option(
+        None,
+        "--setup-script",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        resolve_path=True,
+        help="Optional host script executed during build.",
+    ),
+    setup_command: str | None = typer.Option(
+        None,
+        "--setup-command",
+        help="Shell commands run during build (`bash -lc`).",
+    ),
+    no_build: bool = typer.Option(
+        False,
+        "--no-build",
+        help="Disable auto-building the base image if it is missing.",
+    ),
+    no_cache: bool = typer.Option(
+        False,
+        help="Disable Docker build cache for the derived image.",
+    ),
+) -> None:
+    """Create a derived image that layers packages or setup steps."""
+
+    if not (apt_package or setup_script or setup_command):
+        raise typer.BadParameter(
+            "Provide at least one --apt-package, --setup-script, or --setup-command"
+        )
+
+    adapter = DockerAdapter(DockerConfig(docker_image=base_image))
+
+    async def _runner() -> None:
+        await _ensure_image(
+            adapter,
+            image=base_image,
+            context=context,
+            no_cache=no_cache,
+            auto_build=not no_build,
+        )
+
+        output_repo, output_tag = _split_image_reference(output_image)
+
+        with tempfile.TemporaryDirectory(prefix="ccproxy-docker-extend-") as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            dockerfile_lines: list[str] = [f"FROM {base_image}"]
+
+            if apt_package:
+                packages = " ".join(apt_package)
+                dockerfile_lines.append("ENV DEBIAN_FRONTEND=noninteractive")
+                dockerfile_lines.append(
+                    "RUN apt-get update \\n+ && apt-get install -y "
+                    + packages
+                    + " \\\n+ && rm -rf /var/lib/apt/lists/*"
+                )
+
+            if setup_script:
+                build_target = "docker-runner-bootstrap.sh"
+                destination = tmp_path / build_target
+                shutil.copyfile(setup_script, destination)
+                dockerfile_lines.append("RUN mkdir -p /docker-runner")
+                dockerfile_lines.append(
+                    f"COPY {build_target} /docker-runner/{build_target}"
+                )
+                dockerfile_lines.append(
+                    f"RUN chmod +x /docker-runner/{build_target} \\\n+ && /docker-runner/{build_target} \\\n+ && rm /docker-runner/{build_target}"
+                )
+
+            if setup_command:
+                dockerfile_lines.append(
+                    "RUN bash -lc " + shlex.quote(setup_command)
+                )
+
+            dockerfile_content = "\n".join(dockerfile_lines) + "\n"
+            (tmp_path / "Dockerfile").write_text(dockerfile_content, encoding="utf-8")
+
+            rc = await adapter.build_image(
+                dockerfile_dir=tmp_path,
+                image_name=output_repo,
+                image_tag=output_tag,
+                no_cache=no_cache,
+                middleware=StreamPrinter(),
+            )
+            if rc != 0:
+                raise typer.Exit(rc)
+
+    try:
+        asyncio.run(_runner())
+    except KeyboardInterrupt:
         raise typer.Exit(130)
 
 
