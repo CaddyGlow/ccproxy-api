@@ -1,7 +1,6 @@
 """Core scheduler for managing periodic tasks."""
 
-from asyncio import Semaphore
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -26,6 +25,10 @@ from .tasks import BaseScheduledTask
 
 
 logger = structlog.get_logger(__name__)
+
+
+if TYPE_CHECKING:
+    from asyncio import Semaphore
 
 
 class Scheduler:

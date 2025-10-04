@@ -3,10 +3,8 @@
 import random
 import time
 from abc import ABC, abstractmethod
-from asyncio import Event as AsyncEvent
-from asyncio import Task as AsyncTask
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from packaging import version as pkg_version
@@ -40,6 +38,11 @@ from ccproxy.utils.version_checker import (
 
 
 logger = structlog.get_logger(__name__)
+
+
+if TYPE_CHECKING:
+    from asyncio import Event as AsyncEvent
+    from asyncio import Task as AsyncTask
 
 
 class BaseScheduledTask(ABC):
