@@ -29,6 +29,13 @@ DEFAULT_IMAGE = "ccproxy:local"
 DEFAULT_PORT = 8000
 DEFAULT_CONTEXT = PROJECT_ROOT
 DEFAULT_WORKSPACE_MOUNT = "/workspace"
+CONTAINER_WORKSPACE = DEFAULT_WORKSPACE_MOUNT
+CONTAINER_STATE_ROOT = f"{CONTAINER_WORKSPACE}/.docker-runner"
+CONTAINER_CONFIG = f"{CONTAINER_STATE_ROOT}/config"
+CONTAINER_CACHE = f"{CONTAINER_STATE_ROOT}/cache"
+CONTAINER_CLAUDE = f"{CONTAINER_STATE_ROOT}/claude"
+CONTAINER_CODEX = f"{CONTAINER_STATE_ROOT}/codex"
+CONTAINER_GH = f"{CONTAINER_STATE_ROOT}/gh"
 
 
 class StreamPrinter(OutputMiddleware[None]):
@@ -96,11 +103,11 @@ def _default_mounts(workspace: Path, workspace_mount: str) -> list[tuple[str, st
         mounts.append((str(_ensure_directory(host)), container))
 
     add(workspace, workspace_mount)
-    add(Path.home() / ".codex", "/root/.codex")
-    add(Path.home() / ".claude", "/root/.claude")
-    add(Path.home() / ".config/gh", "/root/.config/gh")
-    add(Path.home() / ".config/ccproxy", "/root/.config/ccproxy")
-    add(Path.home() / ".cache/ccproxy", "/root/.cache/ccproxy")
+    add(Path.home() / ".codex", CONTAINER_CODEX)
+    add(Path.home() / ".claude", CONTAINER_CLAUDE)
+    add(Path.home() / ".config/gh", CONTAINER_GH)
+    add(Path.home() / ".config/ccproxy", CONTAINER_CONFIG)
+    add(Path.home() / ".cache/ccproxy", CONTAINER_CACHE)
 
     return mounts
 
@@ -299,9 +306,9 @@ def run(
     environment: dict[str, str] = {
         "SERVER__HOST": "0.0.0.0",
         "SERVER__PORT": str(container_port),
-        "XDG_CONFIG_HOME": "/root/.config",
-        "XDG_CACHE_HOME": "/root/.cache",
-        "CLAUDE_HOME": "/root/.claude",
+        "XDG_CONFIG_HOME": CONTAINER_CONFIG,
+        "XDG_CACHE_HOME": CONTAINER_CACHE,
+        "CLAUDE_HOME": CONTAINER_CLAUDE,
         "CLAUDE_WORKSPACE": workspace_mount,
     }
 
