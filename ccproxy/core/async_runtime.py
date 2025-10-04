@@ -1,28 +1,45 @@
 """Abstraction layer for async primitives used across the project.
 
-This module centralizes creation of async primitives and task helpers.  It
-currently delegates to ``asyncio`` but provides a single choke point for
-upcoming ``anyio`` migration work.  Modules should import helpers from here
-instead of directly touching ``asyncio`` so that the underlying runtime can be
-swapped without widespread churn.
+The helpers in this module now lean on ``anyio`` for generic functionality while
+preserving compatibility with existing ``asyncio`` constructs that remain in the
+codebase (for example ``Task`` and the subprocess helpers).  The intent is that
+callers continue importing utilities from this module only, allowing us to
+evolve the underlying runtime without broad churn.
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
+import time
 from asyncio import subprocess as asyncio_subprocess
+from builtins import TimeoutError as BuiltinTimeoutError
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, TypeVar, cast
+
+import anyio
+import sniffio
 
 
 _T = TypeVar("_T")
 
 
+def _get_cancelled_error_type() -> type[BaseException]:
+    """Best-effort detection of the backend cancellation exception."""
+
+    try:
+        return anyio.get_cancelled_exc_class()
+    except (sniffio.AsyncLibraryNotFoundError, RuntimeError):
+        # No async context active yet – fall back to asyncio's cancelled error
+        # since we currently run atop the asyncio backend.
+        return asyncio.CancelledError
+
+
 class AsyncRuntime:
     """Facade around the active async backend."""
 
-    CancelledError = asyncio.CancelledError
-    TimeoutError = asyncio.TimeoutError
+    CancelledError = _get_cancelled_error_type()
+    TimeoutError = BuiltinTimeoutError
 
     def create_task(
         self,
@@ -48,7 +65,14 @@ class AsyncRuntime:
         timeout: float | None,
     ) -> _T:
         """Wait for an awaitable with an optional timeout."""
-        return await asyncio.wait_for(awaitable, timeout=timeout)
+        if timeout is None:
+            return await awaitable
+
+        try:
+            with anyio.fail_after(timeout):
+                return await awaitable
+        except BuiltinTimeoutError as exc:  # pragma: no cover - defensive
+            raise self.TimeoutError(str(exc)) from exc
 
     async def wait(
         self,
@@ -63,17 +87,17 @@ class AsyncRuntime:
         )
         return done, pending
 
-    def create_lock(self) -> asyncio.Lock:
+    def create_lock(self) -> anyio.Lock:
         """Return a new lock instance."""
-        return asyncio.Lock()
+        return anyio.Lock()
 
     def create_event(self) -> asyncio.Event:
         """Return a new event instance."""
         return asyncio.Event()
 
-    def create_semaphore(self, value: int) -> asyncio.Semaphore:
+    def create_semaphore(self, value: int) -> anyio.Semaphore:
         """Return a new semaphore instance."""
-        return asyncio.Semaphore(value)
+        return anyio.Semaphore(value)
 
     def create_queue(self, maxsize: int = 0) -> asyncio.Queue[Any]:
         """Return a new queue instance."""
@@ -86,33 +110,35 @@ class AsyncRuntime:
 
     async def sleep(self, delay: float) -> None:
         """Sleep for the requested delay."""
-        await asyncio.sleep(delay)
+        await anyio.sleep(delay)
 
     def run(self, awaitable: Awaitable[_T]) -> _T:
         """Run an awaitable to completion using the active runtime."""
         if not asyncio.iscoroutine(awaitable):
             raise TypeError("runtime.run() expects a coroutine object")
 
-        return cast(_T, asyncio.run(awaitable))
+        async def _runner() -> _T:
+            return cast(_T, await awaitable)
+
+        return anyio.run(_runner)
 
     async def run_in_executor(
         self, func: Callable[..., _T], *args: Any, **kwargs: Any
     ) -> _T:
         """Execute ``func`` in the default executor."""
-        loop = asyncio.get_running_loop()
-
         if kwargs:
-            from functools import partial
+            func = functools.partial(func, **kwargs)
 
-            func = partial(func, **kwargs)
-
-        return await loop.run_in_executor(None, func, *args)
+        return await anyio.to_thread.run_sync(func, *args)
 
     async def to_thread(
         self, func: Callable[..., _T], /, *args: Any, **kwargs: Any
     ) -> _T:
         """Execute ``func`` in a worker thread via the runtime."""
-        return await asyncio.to_thread(func, *args, **kwargs)
+        if kwargs:
+            func = functools.partial(func, **kwargs)
+
+        return await anyio.to_thread.run_sync(func, *args)
 
     async def create_subprocess_exec(
         self, *cmd: Any, **kwargs: Any
@@ -122,7 +148,10 @@ class AsyncRuntime:
 
     def get_loop_time(self) -> float:
         """Return the loop's time helper."""
-        return asyncio.get_event_loop().time()
+        try:
+            return anyio.current_time()
+        except sniffio.AsyncLibraryNotFoundError:
+            return time.perf_counter()
 
     def current_task(self) -> asyncio.Task[Any] | None:
         """Return the current task, if any."""
@@ -194,7 +223,7 @@ async def to_thread(func: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T
     return await runtime.to_thread(func, *args, **kwargs)
 
 
-def create_lock() -> asyncio.Lock:
+def create_lock() -> anyio.Lock:
     """Return a runtime-managed lock."""
     return runtime.create_lock()
 
@@ -204,7 +233,7 @@ def create_event() -> asyncio.Event:
     return runtime.create_event()
 
 
-def create_semaphore(value: int) -> asyncio.Semaphore:
+def create_semaphore(value: int) -> anyio.Semaphore:
     """Return a runtime-managed semaphore."""
     return runtime.create_semaphore(value)
 
@@ -237,10 +266,10 @@ QueueEmpty = asyncio.QueueEmpty
 QueueFull = asyncio.QueueFull
 Task = asyncio.Task
 Event = asyncio.Event
-Lock = asyncio.Lock
+Lock = anyio.Lock
 Queue = asyncio.Queue
 Future = asyncio.Future
 InvalidStateError = asyncio.InvalidStateError
-Semaphore = asyncio.Semaphore
+Semaphore = anyio.Semaphore
 PIPE = asyncio_subprocess.PIPE
 STDOUT = asyncio_subprocess.STDOUT

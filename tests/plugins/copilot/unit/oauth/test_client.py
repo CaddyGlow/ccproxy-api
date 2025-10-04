@@ -219,7 +219,10 @@ class TestCopilotOAuthClient:
 
         with (
             patch.object(client, "_get_http_client", return_value=mock_client),
-            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "ccproxy.plugins.copilot.oauth.client.runtime_sleep",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await client.poll_for_token("device-code", 1, 60)
 
@@ -259,7 +262,10 @@ class TestCopilotOAuthClient:
 
         with (
             patch.object(client, "_get_http_client", return_value=mock_client),
-            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "ccproxy.plugins.copilot.oauth.client.runtime_sleep",
+                new_callable=AsyncMock,
+            ),
         ):
             result = await client.poll_for_token(
                 "device-code", 1, 60
@@ -290,7 +296,10 @@ class TestCopilotOAuthClient:
 
         with (
             patch.object(client, "_get_http_client", return_value=mock_client),
-            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "ccproxy.plugins.copilot.oauth.client.runtime_sleep",
+                new_callable=AsyncMock,
+            ),
             pytest.raises(TimeoutError, match="Device code has expired"),
         ):
             await client.poll_for_token(
@@ -319,7 +328,10 @@ class TestCopilotOAuthClient:
 
         with (
             patch.object(client, "_get_http_client", return_value=mock_client),
-            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch(
+                "ccproxy.plugins.copilot.oauth.client.runtime_sleep",
+                new_callable=AsyncMock,
+            ),
             pytest.raises(ValueError, match="User denied authorization"),
         ):
             await client.poll_for_token(
