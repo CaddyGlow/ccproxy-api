@@ -1,14 +1,14 @@
 """Permission service for handling permission requests without UI dependencies."""
 
 import contextlib
-from asyncio import Queue as AsyncQueue
-from asyncio import QueueFull
-from asyncio import Task as AsyncTask
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from ccproxy.core.async_runtime import (
     CancelledError,
+    Queue,
+    QueueFull,
+    Task,
     create_lock,
     create_queue,
 )
@@ -48,9 +48,9 @@ class PermissionService:
     def __init__(self, timeout_seconds: int = 30):
         self._timeout_seconds = timeout_seconds
         self._requests: dict[str, PermissionRequest] = {}
-        self._expiry_task: AsyncTask[None] | None = None
+        self._expiry_task: Task[None] | None = None
         self._shutdown = False
-        self._event_queues: list[AsyncQueue[dict[str, Any]]] = []
+        self._event_queues: list[Queue[dict[str, Any]]] = []
         self._lock = create_lock()
 
     async def start(
@@ -310,18 +310,18 @@ class PermissionService:
             )
         )
 
-    async def subscribe_to_events(self) -> AsyncQueue[dict[str, Any]]:
+    async def subscribe_to_events(self) -> Queue[dict[str, Any]]:
         """Subscribe to permission events.
 
         Returns:
             An async queue that will receive events
         """
-        queue: AsyncQueue[dict[str, Any]] = create_queue()
+        queue: Queue[dict[str, Any]] = cast(Queue[dict[str, Any]], create_queue())
         async with self._lock:
             self._event_queues.append(queue)
         return queue
 
-    async def unsubscribe_from_events(self, queue: AsyncQueue[dict[str, Any]]) -> None:
+    async def unsubscribe_from_events(self, queue: Queue[dict[str, Any]]) -> None:
         """Unsubscribe from permission events.
 
         Args:

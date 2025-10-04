@@ -2,12 +2,32 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ccproxy.core.async_runtime import (
+    CancelledError as RuntimeCancelledError,
+)
+from ccproxy.core.async_runtime import (
+    Future,
+    Queue,
+    Task,
+    create_queue,
+)
+from ccproxy.core.async_runtime import (
+    InvalidStateError as RuntimeInvalidStateError,
+)
+from ccproxy.core.async_runtime import (
+    create_future as runtime_create_future,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+from ccproxy.core.async_runtime import (
+    sleep as runtime_sleep,
+)
 from ccproxy.core.logging import get_plugin_logger
 
 from .. import PermissionRequest
@@ -73,7 +93,7 @@ class PendingRequest:
     """Represents a pending confirmation request with its response future."""
 
     request: PermissionRequest
-    future: asyncio.Future[bool]
+    future: Future[bool]
     cancelled: bool = False
 
 
@@ -177,7 +197,7 @@ class ConfirmationScreen(ModalScreen[bool]):
             dialog.styles.border = ("solid", "red")
 
         # Give user time to see the result
-        await asyncio.sleep(1.5)
+        await runtime_sleep(1.5)
         self.dismiss(allowed)
 
     def action_confirm(self) -> None:
@@ -358,7 +378,7 @@ class ConfirmationApp(App[bool]):
             dialog.styles.border = ("solid", "red")
 
         # Give user time to see the result
-        await asyncio.sleep(1.5)
+        await runtime_sleep(1.5)
         self.exit(allowed)
 
     def action_confirm(self) -> None:
@@ -400,24 +420,20 @@ class TerminalPermissionHandler:
 
     def __init__(self) -> None:
         """Initialize the terminal confirmation handler."""
-        self._request_queue: (
-            asyncio.Queue[tuple[PermissionRequest, asyncio.Future[bool]]] | None
-        ) = None
+        self._request_queue: Queue[tuple[PermissionRequest, Future[bool]]] | None = None
         self._cancelled_requests: set[str] = set()
-        self._processing_task: asyncio.Task[None] | None = None
+        self._processing_task: Task[None] | None = None
         self._active_apps: dict[str, ConfirmationApp] = {}
 
     def _get_request_queue(
         self,
-    ) -> asyncio.Queue[tuple[PermissionRequest, asyncio.Future[bool]]]:
+    ) -> Queue[tuple[PermissionRequest, Future[bool]]]:
         """Lazily initialize and return the request queue."""
         if self._request_queue is None:
-            self._request_queue = asyncio.Queue()
+            self._request_queue = create_queue()
         return self._request_queue
 
-    def _safe_set_future_result(
-        self, future: asyncio.Future[bool], result: bool
-    ) -> bool:
+    def _safe_set_future_result(self, future: Future[bool], result: bool) -> bool:
         """Safely set a future result, handling already cancelled futures.
 
         Args:
@@ -432,12 +448,12 @@ class TerminalPermissionHandler:
         try:
             future.set_result(result)
             return True
-        except asyncio.InvalidStateError:
+        except RuntimeInvalidStateError:
             # Future was already resolved or cancelled
             return False
 
     def _safe_set_future_exception(
-        self, future: asyncio.Future[bool], exception: BaseException
+        self, future: Future[bool], exception: BaseException
     ) -> bool:
         """Safely set a future exception, handling already cancelled futures.
 
@@ -453,7 +469,7 @@ class TerminalPermissionHandler:
         try:
             future.set_exception(exception)
             return True
-        except asyncio.InvalidStateError:
+        except RuntimeInvalidStateError:
             # Future was already resolved or cancelled
             return False
 
@@ -470,13 +486,13 @@ class TerminalPermissionHandler:
                 # Process the request
                 await self._process_single_request(request, future)
 
-            except asyncio.CancelledError:
+            except RuntimeCancelledError:
                 break
             except Exception as e:
                 logger.error("queue_processing_error", error=str(e), exc_info=True)
 
     def _is_request_processable(
-        self, request: PermissionRequest, future: asyncio.Future[bool]
+        self, request: PermissionRequest, future: Future[bool]
     ) -> bool:
         """Check if a request can be processed."""
         # Check if cancelled before processing
@@ -493,7 +509,7 @@ class TerminalPermissionHandler:
         return True
 
     async def _process_single_request(
-        self, request: PermissionRequest, future: asyncio.Future[bool]
+        self, request: PermissionRequest, future: Future[bool]
     ) -> None:
         """Process a single permission request."""
         app = None
@@ -532,11 +548,11 @@ class TerminalPermissionHandler:
     def _ensure_processing_task_running(self) -> None:
         """Ensure the processing task is running."""
         if self._processing_task is None or self._processing_task.done():
-            self._processing_task = asyncio.create_task(self._process_queue())
+            self._processing_task = runtime_create_task(self._process_queue())
 
     async def _queue_and_wait_for_result(self, request: PermissionRequest) -> bool:
         """Queue a request and wait for its result."""
-        future: asyncio.Future[bool] = asyncio.Future()
+        future: Future[bool] = runtime_create_future()
         await self._get_request_queue().put((request, future))
         return await future
 
@@ -605,7 +621,7 @@ class TerminalPermissionHandler:
         if request_id in self._active_apps:
             app = self._active_apps[request_id]
             # Schedule the cancellation feedback asynchronously
-            asyncio.create_task(self._cancel_active_dialog(app, reason))
+            runtime_create_task(self._cancel_active_dialog(app, reason))
 
     async def _cancel_active_dialog(self, app: ConfirmationApp, reason: str) -> None:
         """Cancel an active dialog with visual feedback.
@@ -643,7 +659,7 @@ class TerminalPermissionHandler:
         """Shutdown the handler and cleanup resources."""
         if self._processing_task and not self._processing_task.done():
             self._processing_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            with contextlib.suppress(RuntimeCancelledError):
                 await self._processing_task
 
         self._processing_task = None

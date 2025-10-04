@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from asyncio import subprocess as asyncio_subprocess
 from collections.abc import Awaitable, Callable, Coroutine, Iterable
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 
 _T = TypeVar("_T")
@@ -88,9 +88,12 @@ class AsyncRuntime:
         """Sleep for the requested delay."""
         await asyncio.sleep(delay)
 
-    def run(self, awaitable: Coroutine[Any, Any, _T]) -> _T:
+    def run(self, awaitable: Awaitable[_T]) -> _T:
         """Run an awaitable to completion using the active runtime."""
-        return asyncio.run(awaitable)
+        if not asyncio.iscoroutine(awaitable):
+            raise TypeError("runtime.run() expects a coroutine object")
+
+        return cast(_T, asyncio.run(awaitable))
 
     async def run_in_executor(
         self, func: Callable[..., _T], *args: Any, **kwargs: Any
@@ -169,7 +172,7 @@ async def sleep(delay: float) -> None:
     await runtime.sleep(delay)
 
 
-def run(awaitable: Coroutine[Any, Any, _T]) -> _T:
+def run(awaitable: Awaitable[_T]) -> _T:
     """Run an awaitable to completion."""
     return runtime.run(awaitable)
 
@@ -230,3 +233,14 @@ CancelledError = AsyncRuntime.CancelledError
 TimeoutError = AsyncRuntime.TimeoutError
 ALL_COMPLETED = asyncio.ALL_COMPLETED
 FIRST_COMPLETED = asyncio.FIRST_COMPLETED
+QueueEmpty = asyncio.QueueEmpty
+QueueFull = asyncio.QueueFull
+Task = asyncio.Task
+Event = asyncio.Event
+Lock = asyncio.Lock
+Queue = asyncio.Queue
+Future = asyncio.Future
+InvalidStateError = asyncio.InvalidStateError
+Semaphore = asyncio.Semaphore
+PIPE = asyncio_subprocess.PIPE
+STDOUT = asyncio_subprocess.STDOUT

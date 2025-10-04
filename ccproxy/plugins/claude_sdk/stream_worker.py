@@ -2,12 +2,27 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 from collections.abc import AsyncIterator
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
+from ccproxy.core.async_runtime import (
+    ALL_COMPLETED,
+    Task,
+)
+from ccproxy.core.async_runtime import (
+    CancelledError as RuntimeCancelledError,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    wait as runtime_wait,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.logging import get_plugin_logger
 
@@ -67,7 +82,7 @@ class StreamWorker:
         # Worker state
         self.status = WorkerStatus.IDLE
         self._message_queue = MessageQueue()
-        self._worker_task: asyncio.Task[None] | None = None
+        self._worker_task: Task[None] | None = None
         self._started_at: float | None = None
         self._completed_at: float | None = None
 
@@ -121,11 +136,10 @@ class StreamWorker:
             self._worker_task.cancel()
 
             try:
-                # Use asyncio.wait instead of wait_for to handle cancelled tasks properly
-                done, pending = await asyncio.wait(
-                    [self._worker_task],
+                done, pending = await runtime_wait(
+                    {self._worker_task},
                     timeout=timeout,
-                    return_when=asyncio.ALL_COMPLETED,
+                    return_when=ALL_COMPLETED,
                 )
 
                 if pending:
@@ -164,11 +178,11 @@ class StreamWorker:
 
         try:
             if timeout:
-                await asyncio.wait_for(self._worker_task, timeout=timeout)
+                await runtime_wait_for(self._worker_task, timeout=timeout)
             else:
                 await self._worker_task
             return True
-        except TimeoutError:
+        except RuntimeTimeoutError:
             return False
 
     def get_message_queue(self) -> MessageQueue:
@@ -255,7 +269,7 @@ class StreamWorker:
                 duration_seconds=time.time() - (self._started_at or 0),
             )
 
-        except asyncio.CancelledError:
+        except RuntimeCancelledError:
             # Worker was cancelled
             self.status = WorkerStatus.INTERRUPTED
             logger.debug(

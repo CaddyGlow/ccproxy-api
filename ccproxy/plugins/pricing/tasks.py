@@ -1,12 +1,24 @@
 """Pricing plugin scheduled tasks."""
 
-import asyncio
 import contextlib
 import random
 import time
 from abc import ABC, abstractmethod
 from typing import Any
 
+from ccproxy.core.async_runtime import (
+    CancelledError as RuntimeCancelledError,
+)
+from ccproxy.core.async_runtime import (
+    Task,
+    create_event,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.logging import get_plugin_logger
 
@@ -49,8 +61,8 @@ class BaseScheduledTask(ABC):
         self.jitter_factor = min(1.0, max(0.0, jitter_factor))
 
         # Task state
-        self._task: asyncio.Task[None] | None = None
-        self._stop_event = asyncio.Event()
+        self._task: Task[None] | None = None
+        self._stop_event = create_event()
         self._consecutive_failures = 0
         self._last_success_time: float | None = None
         self._next_run_time: float | None = None
@@ -156,9 +168,9 @@ class BaseScheduledTask(ABC):
 
                 # Wait for next execution or stop event
                 try:
-                    await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
+                    await runtime_wait_for(self._stop_event.wait(), timeout=delay)
                     break  # Stop event was set
-                except TimeoutError:
+                except RuntimeTimeoutError:
                     continue  # Time to run again
 
         finally:
@@ -195,14 +207,14 @@ class BaseScheduledTask(ABC):
 
         # Wait for task to complete
         try:
-            await asyncio.wait_for(self._task, timeout=timeout)
-        except TimeoutError:
+            await runtime_wait_for(self._task, timeout=timeout)
+        except RuntimeTimeoutError:
             logger.warning(
                 "scheduled_task_stop_timeout", task_name=self.name, timeout=timeout
             )
             if not self._task.done():
                 self._task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
+                with contextlib.suppress(RuntimeCancelledError):
                     await self._task
 
         self._task = None

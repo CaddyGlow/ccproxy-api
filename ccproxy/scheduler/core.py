@@ -1,11 +1,15 @@
 """Core scheduler for managing periodic tasks."""
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 
 from ccproxy.core.async_runtime import (
+    Semaphore,
     create_semaphore,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
 )
 from ccproxy.core.async_runtime import (
     gather as runtime_gather,
@@ -25,10 +29,6 @@ from .tasks import BaseScheduledTask
 
 
 logger = structlog.get_logger(__name__)
-
-
-if TYPE_CHECKING:
-    from asyncio import Semaphore
 
 
 class Scheduler:
@@ -124,7 +124,7 @@ class Scheduler:
                     timeout=self.graceful_shutdown_timeout,
                 )
                 logger.debug("scheduler_stopped_gracefully")
-            except TimeoutError:
+            except RuntimeTimeoutError:
                 logger.warning(
                     "scheduler_shutdown_timeout",
                     timeout=self.graceful_shutdown_timeout,

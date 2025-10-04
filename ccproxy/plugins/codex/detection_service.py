@@ -6,7 +6,6 @@ import json
 import os
 import socket
 import tempfile
-from asyncio import subprocess as asyncio_subprocess
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, cast
@@ -17,6 +16,7 @@ from ccproxy.config.settings import Settings
 from ccproxy.config.utils import get_ccproxy_cache_dir
 from ccproxy.core.async_runtime import (
     FIRST_COMPLETED,
+    PIPE,
     CancelledError,
     create_event,
 )
@@ -409,8 +409,8 @@ class CodexDetectionService:
                 process = await runtime_create_subprocess_exec(
                     *cmd,
                     env=env,
-                    stdout=asyncio_subprocess.PIPE,
-                    stderr=asyncio_subprocess.PIPE,
+                    stdout=PIPE,
+                    stderr=PIPE,
                 )
                 # Wait for process with timeout
                 try:

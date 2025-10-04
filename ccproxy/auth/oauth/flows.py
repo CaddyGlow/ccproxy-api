@@ -5,13 +5,20 @@ import secrets
 import sys
 import webbrowser
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import typer
 from rich.console import Console
 
 from ccproxy.auth.oauth.cli_errors import AuthProviderError, PortBindError
 from ccproxy.auth.oauth.registry import OAuthProviderProtocol
+from ccproxy.core.async_runtime import (
+    Future,
+    Task,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
 from ccproxy.core.async_runtime import (
     create_future as runtime_create_future,
 )
@@ -29,9 +36,6 @@ from ccproxy.core.logging import get_logger
 
 logger = get_logger(__name__)
 console = Console()
-
-if TYPE_CHECKING:
-    from asyncio import Future, Task
 
 
 class CLICallbackServer:
@@ -125,7 +129,7 @@ class CLICallbackServer:
             if hasattr(self, "_server_task") and self._server_task is not None:
                 try:
                     await runtime_wait_for(self._server_task, timeout=2.0)
-                except TimeoutError:
+                except RuntimeTimeoutError:
                     self._server_task.cancel()
             self.server = None
             logger.debug("cli_callback_server_stopped", port=self.port)
@@ -196,7 +200,7 @@ class CLICallbackServer:
             Callback data dictionary
 
         Raises:
-            TimeoutError: If callback is not received within timeout
+            RuntimeTimeoutError: If callback is not received within timeout
             ValueError: If state validation fails
         """
         self.callback_future = runtime_create_future()
@@ -229,9 +233,11 @@ class CLICallbackServer:
 
             return callback_data
 
-        except TimeoutError:
+        except RuntimeTimeoutError:
             logger.error("cli_callback_timeout", timeout=timeout, port=self.port)
-            raise TimeoutError(f"No OAuth callback received within {timeout} seconds")
+            raise RuntimeTimeoutError(
+                f"No OAuth callback received within {timeout} seconds"
+            )
 
 
 def render_qr_code(url: str) -> None:
@@ -325,7 +331,7 @@ class BrowserFlow:
                     callback_data["code"], state, code_verifier, redirect_uri
                 )
                 return await provider.save_credentials(credentials, save_path)
-            except TimeoutError:
+            except RuntimeTimeoutError:
                 # Fallback to manual code entry if callback times out
                 console.print(
                     "[yellow]Callback timed out. You can enter the code manually.[/yellow]"

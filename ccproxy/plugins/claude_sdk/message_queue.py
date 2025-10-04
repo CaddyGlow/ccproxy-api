@@ -5,14 +5,18 @@ from __future__ import annotations
 import contextlib
 import time
 import uuid
-from asyncio import Queue as AsyncQueue
-from asyncio import QueueEmpty, QueueFull
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
-from ccproxy.core.async_runtime import create_lock, create_queue
+from ccproxy.core.async_runtime import (
+    Queue,
+    QueueEmpty,
+    QueueFull,
+    create_lock,
+    create_queue,
+)
 from ccproxy.core.logging import get_plugin_logger
 
 
@@ -50,7 +54,7 @@ class QueueListener:
             listener_id: Optional ID for the listener, generated if not provided
         """
         self.listener_id = listener_id or str(uuid.uuid4())
-        self._queue: AsyncQueue[QueueMessage] = create_queue()
+        self._queue: Queue[QueueMessage] = cast(Queue[QueueMessage], create_queue())
         self._closed = False
         self._created_at = time.time()
 
@@ -66,7 +70,8 @@ class QueueListener:
         if self._closed and self._queue.empty():
             raise QueueEmpty("Listener is closed")
 
-        return await self._queue.get()
+        message = await self._queue.get()
+        return message
 
     async def put_message(self, message: QueueMessage) -> None:
         """Put a message into this listener's queue.

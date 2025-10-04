@@ -2,22 +2,36 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from claude_agent_sdk import ClaudeAgentOptions
 
+from ccproxy.core.async_runtime import (
+    CancelledError as RuntimeCancelledError,
+)
+from ccproxy.core.async_runtime import (
+    Task,
+    create_lock,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    gather as runtime_gather,
+)
+from ccproxy.core.async_runtime import (
+    sleep as runtime_sleep,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.core.logging import get_plugin_logger
 
 from .config import SessionPoolSettings
 from .session_client import SessionClient, SessionStatus
-
-
-if TYPE_CHECKING:
-    pass
 
 
 logger = get_plugin_logger()
@@ -41,9 +55,9 @@ class SessionPool:
     def __init__(self, config: SessionPoolSettings | None = None):
         self.config = config or SessionPoolSettings()
         self.sessions: dict[str, SessionClient] = {}
-        self.cleanup_task: asyncio.Task[None] | None = None
+        self.cleanup_task: Task[None] | None = None
         self._shutdown = False
-        self._lock = asyncio.Lock()
+        self._lock = create_lock()
 
     async def start(self) -> None:
         """Start the session pool and cleanup task."""
@@ -69,7 +83,7 @@ class SessionPool:
 
         if self.cleanup_task:
             self.cleanup_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            with contextlib.suppress(RuntimeCancelledError):
                 await self.cleanup_task
 
         # Disconnect all active sessions
@@ -79,7 +93,7 @@ class SessionPool:
             ]
 
             if disconnect_tasks:
-                await asyncio.gather(*disconnect_tasks, return_exceptions=True)
+                await runtime_gather(*disconnect_tasks, return_exceptions=True)
 
             self.sessions.clear()
 
@@ -345,7 +359,7 @@ class SessionPool:
                     old_handle_id=old_handle_id,
                     note="Ongoing timeout stream was already completed",
                 )
-        except asyncio.CancelledError as e:
+        except RuntimeCancelledError as e:
             logger.warning(
                 "session_pool_interrupt_ongoing_cancelled",
                 session_id=session_id,
@@ -354,7 +368,7 @@ class SessionPool:
                 exc_info=e,
                 note="Interrupt cancelled during ongoing timeout stream cleanup",
             )
-        except TimeoutError as e:
+        except RuntimeTimeoutError as e:
             logger.warning(
                 "session_pool_interrupt_ongoing_timeout",
                 session_id=session_id,
@@ -498,9 +512,9 @@ class SessionPool:
         """Background task to cleanup expired sessions."""
         while not self._shutdown:
             try:
-                await asyncio.sleep(self.config.cleanup_interval)
+                await runtime_sleep(self.config.cleanup_interval)
                 await self._cleanup_sessions()
-            except asyncio.CancelledError:
+            except RuntimeCancelledError:
                 break
             except Exception as e:
                 logger.error("session_cleanup_error", error=str(e), exc_info=e)
@@ -537,14 +551,14 @@ class SessionPool:
                 # Try to interrupt stuck session before cleanup
                 try:
                     await session_client.interrupt()
-                except asyncio.CancelledError as e:
+                except RuntimeCancelledError as e:
                     logger.warning(
                         "session_stuck_interrupt_cancelled",
                         session_id=session_id,
                         error=str(e),
                         exc_info=e,
                     )
-                except TimeoutError as e:
+                except RuntimeTimeoutError as e:
                     logger.warning(
                         "session_stuck_interrupt_timeout",
                         session_id=session_id,
@@ -594,19 +608,19 @@ class SessionPool:
 
         try:
             # Interrupt the session with 30-second timeout (allows for longer SDK response times)
-            await asyncio.wait_for(session_client.interrupt(), timeout=30.0)
+            await runtime_wait_for(session_client.interrupt(), timeout=30.0)
             logger.debug("session_interrupted", session_id=session_id)
 
             # Remove the session to prevent reuse
             await self._remove_session(session_id)
             return True
 
-        except (TimeoutError, Exception) as e:
+        except (RuntimeTimeoutError, Exception) as e:
             logger.error(
                 "session_interrupt_failed",
                 session_id=session_id,
                 error=str(e)
-                if not isinstance(e, TimeoutError)
+                if not isinstance(e, RuntimeTimeoutError)
                 else "Timeout after 30s",
             )
             # Always remove the session on failure
@@ -635,14 +649,14 @@ class SessionPool:
             try:
                 await session_client.interrupt()
                 interrupted_count += 1
-            except asyncio.CancelledError as e:
+            except RuntimeCancelledError as e:
                 logger.warning(
                     "session_interrupt_cancelled_during_all",
                     session_id=session_id,
                     error=str(e),
                     exc_info=e,
                 )
-            except TimeoutError as e:
+            except RuntimeTimeoutError as e:
                 logger.error(
                     "session_interrupt_timeout_during_all",
                     session_id=session_id,

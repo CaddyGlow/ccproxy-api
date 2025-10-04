@@ -5,7 +5,9 @@ for various events in the system. It ensures proper error isolation and supports
 both async and sync hooks.
 """
 
-import asyncio
+from __future__ import annotations
+
+import inspect
 from datetime import datetime
 from typing import Any
 
@@ -172,7 +174,7 @@ class HookManager:
             context: The context to pass to the hook
         """
         result = hook(context)
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             await result
         # If result is None, it was a sync hook and we're done
 

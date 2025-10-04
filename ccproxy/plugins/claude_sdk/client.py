@@ -1,12 +1,21 @@
 """Claude SDK client wrapper for handling core Claude Code SDK interactions."""
 
-import asyncio
 import contextlib
 from collections.abc import AsyncIterator
 from typing import Any, TypeVar, cast
 
 from pydantic import BaseModel
 
+from ccproxy.core.async_runtime import (
+    Task,
+    create_task,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.core.logging import get_plugin_logger
@@ -541,11 +550,11 @@ class ClaudeSDKClient:
             logger.debug(
                 "waiting_for_first_chunk", timeout=timeout_seconds, category="streaming"
             )
-            first_message = await asyncio.wait_for(
+            first_message = await runtime_wait_for(
                 anext(message_iterator), timeout=timeout_seconds
             )
             return first_message, message_iterator
-        except TimeoutError:
+        except RuntimeTimeoutError:
             # Check if session pool is enabled - if so, let it handle the timeout
             has_session_pool = (
                 self._session_manager and await self._session_manager.has_session_pool()
@@ -666,7 +675,7 @@ class ClaudeSDKClient:
         session_client: Any,
         request_id: str | None = None,
         session_id: str | None = None,
-    ) -> asyncio.Task[None]:
+    ) -> Task[None]:
         """Create a background task to drain remaining messages from stream.
 
         Args:
@@ -717,7 +726,7 @@ class ClaudeSDKClient:
                     session_client.has_active_stream = False
                     session_client.active_stream_task = None
 
-        return asyncio.create_task(drain_stream())
+        return create_task(drain_stream())
 
     def _convert_message(self, message: Any, model_class: type[T]) -> T:
         """Convert SDK message to Pydantic model."""

@@ -23,9 +23,11 @@ Example:
 """
 
 import shlex
-from asyncio import subprocess as asyncio_subprocess
-from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeAlias, TypeVar, cast
 
+from ccproxy.core.async_runtime import (
+    PIPE,
+)
 from ccproxy.core.async_runtime import (
     create_subprocess_exec as runtime_create_subprocess_exec,
 )
@@ -35,7 +37,14 @@ from ccproxy.core.async_runtime import (
 
 
 if TYPE_CHECKING:
-    from asyncio import StreamReader
+
+    class _ReadableStream(Protocol):
+        async def readline(self) -> bytes:
+            """Read a single line of bytes from the stream."""
+
+    StreamReader = _ReadableStream
+else:  # pragma: no cover - runtime uses concrete implementation from backend
+    StreamReader = Any
 
 
 T = TypeVar("T")  # Type of processed output
@@ -233,8 +242,8 @@ async def run_command(
     # Start the async process with pipes for stdout and stderr
     process = await runtime_create_subprocess_exec(
         *cmd,
-        stdout=asyncio_subprocess.PIPE,
-        stderr=asyncio_subprocess.PIPE,
+        stdout=PIPE,
+        stderr=PIPE,
     )
 
     async def stream_output(stream: "StreamReader", stream_type: str) -> list[T]:

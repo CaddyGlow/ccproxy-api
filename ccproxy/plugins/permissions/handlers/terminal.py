@@ -4,14 +4,19 @@ from __future__ import annotations
 
 import contextlib
 import time
-from asyncio import InvalidStateError
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ccproxy.core.async_runtime import (
     CancelledError,
+    Future,
+    Queue,
+    Task,
     create_future,
     create_queue,
+)
+from ccproxy.core.async_runtime import (
+    InvalidStateError as RuntimeInvalidStateError,
 )
 from ccproxy.core.async_runtime import (
     sleep as runtime_sleep,
@@ -28,10 +33,6 @@ from ..models import PermissionRequest
 # During type checking, import real Textual types; at runtime, provide fallbacks if absent.
 TEXTUAL_AVAILABLE: bool
 if TYPE_CHECKING:
-    from asyncio import Future as AsyncFuture
-    from asyncio import Queue as AsyncQueue
-    from asyncio import Task as AsyncTask
-
     from textual.app import App, ComposeResult
     from textual.containers import Container, Vertical
     from textual.events import Key
@@ -89,7 +90,7 @@ class PendingRequest:
     """Represents a pending confirmation request with its response future."""
 
     request: PermissionRequest
-    future: AsyncFuture[bool]
+    future: Future[bool]
     cancelled: bool = False
 
 
@@ -416,22 +417,22 @@ class TerminalPermissionHandler:
 
     def __init__(self) -> None:
         """Initialize the terminal confirmation handler."""
-        self._request_queue: (
-            AsyncQueue[tuple[PermissionRequest, AsyncFuture[bool]]] | None
-        ) = None
+        self._request_queue: Queue[tuple[PermissionRequest, Future[bool]]] | None = None
         self._cancelled_requests: set[str] = set()
-        self._processing_task: AsyncTask[None] | None = None
+        self._processing_task: Task[None] | None = None
         self._active_apps: dict[str, ConfirmationApp] = {}
 
     def _get_request_queue(
         self,
-    ) -> AsyncQueue[tuple[PermissionRequest, AsyncFuture[bool]]]:
+    ) -> Queue[tuple[PermissionRequest, Future[bool]]]:
         """Lazily initialize and return the request queue."""
         if self._request_queue is None:
-            self._request_queue = create_queue()
+            self._request_queue = cast(
+                Queue[tuple[PermissionRequest, Future[bool]]], create_queue()
+            )
         return self._request_queue
 
-    def _safe_set_future_result(self, future: AsyncFuture[bool], result: bool) -> bool:
+    def _safe_set_future_result(self, future: Future[bool], result: bool) -> bool:
         """Safely set a future result, handling already cancelled futures.
 
         Args:
@@ -446,12 +447,12 @@ class TerminalPermissionHandler:
         try:
             future.set_result(result)
             return True
-        except InvalidStateError:
+        except RuntimeInvalidStateError:
             # Future was already resolved or cancelled
             return False
 
     def _safe_set_future_exception(
-        self, future: AsyncFuture[bool], exception: BaseException
+        self, future: Future[bool], exception: BaseException
     ) -> bool:
         """Safely set a future exception, handling already cancelled futures.
 
@@ -467,7 +468,7 @@ class TerminalPermissionHandler:
         try:
             future.set_exception(exception)
             return True
-        except InvalidStateError:
+        except RuntimeInvalidStateError:
             # Future was already resolved or cancelled
             return False
 
@@ -490,7 +491,7 @@ class TerminalPermissionHandler:
                 logger.error("queue_processing_error", error=str(e), exc_info=e)
 
     def _is_request_processable(
-        self, request: PermissionRequest, future: AsyncFuture[bool]
+        self, request: PermissionRequest, future: Future[bool]
     ) -> bool:
         """Check if a request can be processed."""
         # Check if cancelled before processing
@@ -507,7 +508,7 @@ class TerminalPermissionHandler:
         return True
 
     async def _process_single_request(
-        self, request: PermissionRequest, future: AsyncFuture[bool]
+        self, request: PermissionRequest, future: Future[bool]
     ) -> None:
         """Process a single permission request."""
         app = None
@@ -568,7 +569,7 @@ class TerminalPermissionHandler:
 
     async def _queue_and_wait_for_result(self, request: PermissionRequest) -> bool:
         """Queue a request and wait for its result."""
-        future: AsyncFuture[bool] = create_future()
+        future: Future[bool] = create_future()
         await self._get_request_queue().put((request, future))
         return await future
 

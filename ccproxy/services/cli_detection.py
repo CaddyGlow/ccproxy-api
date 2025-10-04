@@ -7,13 +7,15 @@ It eliminates duplicate CLI detection logic by consolidating common patterns.
 
 import json
 import re
-from asyncio import subprocess as asyncio_subprocess
 from typing import Any, NamedTuple
 
 import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.config.utils import get_ccproxy_cache_dir
+from ccproxy.core.async_runtime import (
+    PIPE,
+)
 from ccproxy.core.async_runtime import (
     create_subprocess_exec as runtime_create_subprocess_exec,
 )
@@ -222,8 +224,8 @@ class CLIDetectionService:
             # Run command with timeout
             process = await runtime_create_subprocess_exec(
                 *cmd,
-                stdout=asyncio_subprocess.PIPE,
-                stderr=asyncio_subprocess.PIPE,
+                stdout=PIPE,
+                stderr=PIPE,
             )
 
             stdout, stderr = await runtime_wait_for(process.communicate(), timeout=5.0)

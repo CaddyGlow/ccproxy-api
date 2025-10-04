@@ -4,13 +4,15 @@ import random
 import time
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
 from packaging import version as pkg_version
 
 from ccproxy.core.async_runtime import (
     CancelledError,
+    Event,
+    Task,
     create_event,
 )
 from ccproxy.core.async_runtime import (
@@ -38,11 +40,6 @@ from ccproxy.utils.version_checker import (
 
 
 logger = structlog.get_logger(__name__)
-
-
-if TYPE_CHECKING:
-    from asyncio import Event as AsyncEvent
-    from asyncio import Task as AsyncTask
 
 
 class BaseScheduledTask(ABC):
@@ -80,8 +77,8 @@ class BaseScheduledTask(ABC):
         self._consecutive_failures = 0
         self._last_run_time: float = 0
         self._running = False
-        self._task: AsyncTask[Any] | None = None
-        self._stop_complete: AsyncEvent | None = None
+        self._task: Task[Any] | None = None
+        self._stop_complete: Event | None = None
 
     @abstractmethod
     async def run(self) -> bool:

@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    create_lock,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.logging import get_plugin_logger
 
@@ -60,7 +68,7 @@ class StreamHandle:
 
         # Worker management
         self._worker: StreamWorker | None = None
-        self._worker_lock = asyncio.Lock()
+        self._worker_lock = create_lock()
         self._listeners: dict[str, QueueListener] = {}
         self._created_at = time.time()
         self._first_listener_at: float | None = None
@@ -291,7 +299,7 @@ class StreamHandle:
                 message="Calling SDK interrupt to gracefully stop stream",
             )
 
-            await asyncio.wait_for(
+            await runtime_wait_for(
                 self._session_client.interrupt(),
                 timeout=self._interrupt_timeout,  # Configurable timeout for stream handle initiated interrupts
             )
@@ -318,7 +326,7 @@ class StreamHandle:
                         message="Worker stop failed but continuing",
                     )
 
-        except TimeoutError:
+        except RuntimeTimeoutError:
             logger.warning(
                 "stream_handle_interrupt_timeout",
                 handle_id=self.handle_id,

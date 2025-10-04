@@ -1,11 +1,16 @@
 """GitHub CLI detection service for Copilot plugin."""
 
-import asyncio
 import shutil
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
 
 from ccproxy.config.settings import Settings
+from ccproxy.core.async_runtime import (
+    PIPE,
+)
+from ccproxy.core.async_runtime import (
+    create_subprocess_exec as runtime_create_subprocess_exec,
+)
 from ccproxy.core.logging import get_plugin_logger
 
 from .models import CopilotCacheData, CopilotCliInfo
@@ -59,11 +64,11 @@ class CopilotDetectionService:
         if cli_available and cli_path:
             try:
                 # Get CLI version
-                version_result = await asyncio.create_subprocess_exec(
+                version_result = await runtime_create_subprocess_exec(
                     *cli_path,
                     "--version",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                    stdout=PIPE,
+                    stderr=PIPE,
                 )
                 stdout, stderr = await version_result.communicate()
 
@@ -78,12 +83,12 @@ class CopilotDetectionService:
                             break
 
                 # Check authentication status
-                auth_result = await asyncio.create_subprocess_exec(
+                auth_result = await runtime_create_subprocess_exec(
                     *cli_path,
                     "auth",
                     "status",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                    stdout=PIPE,
+                    stderr=PIPE,
                 )
                 stdout, stderr = await auth_result.communicate()
 

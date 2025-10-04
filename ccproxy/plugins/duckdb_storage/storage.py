@@ -7,7 +7,6 @@ low request rates (< 10 req/s).
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import time
 from collections.abc import Mapping, Sequence
@@ -21,6 +20,26 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, func
 
+from ccproxy.core.async_runtime import (
+    CancelledError as RuntimeCancelledError,
+)
+from ccproxy.core.async_runtime import (
+    Queue,
+    QueueEmpty,
+    QueueFull,
+    Task,
+    create_event,
+    create_queue,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    to_thread as runtime_to_thread,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.logging import get_plugin_logger
 
@@ -40,9 +59,9 @@ class SimpleDuckDBStorage:
         self.database_path = Path(database_path)
         self._engine: Engine | None = None
         self._initialized: bool = False
-        self._write_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self._background_worker_task: asyncio.Task[None] | None = None
-        self._shutdown_event = asyncio.Event()
+        self._write_queue: Queue[dict[str, Any]] = create_queue()
+        self._background_worker_task: Task[None] | None = None
+        self._shutdown_event = create_event()
         # Sentinel to wake the background worker immediately on shutdown
         self._sentinel: object = object()
 
@@ -151,7 +170,7 @@ class SimpleDuckDBStorage:
             # Add to queue for background processing
             await self._write_queue.put(dict(data))
             return True
-        except asyncio.QueueFull as e:
+        except QueueFull as e:
             logger.error(
                 "queue_store_full_error",
                 error=str(e),
@@ -176,8 +195,8 @@ class SimpleDuckDBStorage:
             try:
                 # Wait for either a queue item or shutdown with timeout
                 try:
-                    data = await asyncio.wait_for(self._write_queue.get(), timeout=1.0)
-                except TimeoutError:
+                    data = await runtime_wait_for(self._write_queue.get(), timeout=1.0)
+                except RuntimeTimeoutError:
                     continue  # Check shutdown event and continue
 
                 # We successfully got an item, so we need to mark it done
@@ -211,7 +230,7 @@ class SimpleDuckDBStorage:
                 if data is not self._sentinel:
                     self._write_queue.task_done()
 
-            except asyncio.CancelledError as e:
+            except RuntimeCancelledError as e:
                 logger.info("background_worker_cancelled", exc_info=e)
                 break
             except Exception as e:
@@ -253,7 +272,7 @@ class SimpleDuckDBStorage:
                     )
                 # Note: No task_done() call needed for get_nowait() items
 
-            except asyncio.QueueEmpty:
+            except QueueEmpty:
                 # No more items to process
                 break
             except Exception as e:
@@ -488,11 +507,11 @@ class SimpleDuckDBStorage:
         # Wait for background worker to finish
         if self._background_worker_task:
             try:
-                await asyncio.wait_for(self._background_worker_task, timeout=5.0)
-            except TimeoutError:
+                await runtime_wait_for(self._background_worker_task, timeout=5.0)
+            except RuntimeTimeoutError:
                 logger.warning("background_worker_shutdown_timeout")
                 self._background_worker_task.cancel()
-            except asyncio.CancelledError:
+            except RuntimeCancelledError:
                 logger.info("background_worker_shutdown_cancelled")
             except Exception as e:
                 logger.error(
@@ -501,8 +520,8 @@ class SimpleDuckDBStorage:
 
         # Process remaining items in queue (with timeout)
         try:
-            await asyncio.wait_for(self._write_queue.join(), timeout=2.0)
-        except TimeoutError:
+            await runtime_wait_for(self._write_queue.join(), timeout=2.0)
+        except RuntimeTimeoutError:
             logger.warning(
                 "queue_drain_timeout", remaining_items=self._write_queue.qsize()
             )
@@ -538,7 +557,7 @@ class SimpleDuckDBStorage:
         try:
             if self._engine:
                 # Run the synchronous database operation in a thread pool
-                access_log_count = await asyncio.to_thread(self._health_check_sync)
+                access_log_count = await runtime_to_thread(self._health_check_sync)
 
                 return {
                     "status": "healthy",
@@ -588,7 +607,7 @@ class SimpleDuckDBStorage:
 
         try:
             # Run the reset operation in a thread pool
-            return await asyncio.to_thread(self._reset_data_sync)
+            return await runtime_to_thread(self._reset_data_sync)
         except SQLAlchemyError as e:
             logger.error("simple_duckdb_reset_db_error", error=str(e), exc_info=e)
             return False
@@ -625,9 +644,9 @@ class SimpleDuckDBStorage:
             timeout: Maximum time to wait in seconds
 
         Raises:
-            asyncio.TimeoutError: If processing doesn't complete within timeout
+            RuntimeTimeoutError: If processing doesn't complete within timeout
         """
         if not self._initialized or self._shutdown_event.is_set():
             return
 
-        await asyncio.wait_for(self._write_queue.join(), timeout=timeout)
+        await runtime_wait_for(self._write_queue.join(), timeout=timeout)

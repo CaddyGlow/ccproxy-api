@@ -7,7 +7,7 @@ import urllib.parse
 from abc import ABC, abstractmethod
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import httpx
 
@@ -18,6 +18,9 @@ from ccproxy.auth.exceptions import (
 from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.config.settings import Settings
+from ccproxy.core.async_runtime import (
+    Task,
+)
 from ccproxy.core.async_runtime import (
     create_event as runtime_create_event,
 )
@@ -31,9 +34,6 @@ from ccproxy.http.client import HTTPClientFactory
 logger = get_logger(__name__)
 
 CredentialsT = TypeVar("CredentialsT", bound=BaseCredentials)
-
-if TYPE_CHECKING:
-    from asyncio import Task
 
 
 class BaseOAuthClient(ABC, Generic[CredentialsT]):

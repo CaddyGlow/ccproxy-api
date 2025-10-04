@@ -1,26 +1,36 @@
 """Background thread manager for async hook execution."""
 
+from __future__ import annotations
+
 import asyncio
+import inspect
 import threading
 import uuid
-from asyncio import Event as AsyncEvent
-from asyncio import Queue as AsyncQueue
-from asyncio import QueueFull
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from ccproxy.core.async_runtime import (
+    Queue,
     create_event,
     create_queue,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
 )
 from ccproxy.core.async_runtime import (
     wait_for as runtime_wait_for,
 )
 
 from .base import Hook, HookContext
+
+
+if TYPE_CHECKING:
+    from asyncio import Event as AsyncEvent
+else:  # pragma: no cover - runtime types resolved by async backend
+    AsyncEvent = Any
 
 
 logger = structlog.get_logger(__name__)
@@ -42,7 +52,7 @@ class BackgroundHookThreadManager:
         """Initialize the background thread manager."""
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
-        self._queue: AsyncQueue[tuple[HookTask, Any]] | None = None
+        self._queue: Queue[tuple[HookTask, Any]] | None = None
         self._shutdown_event: AsyncEvent | None = None
         self._running = False
         self._logger = logger.bind(component="background_hook_thread")
@@ -120,10 +130,11 @@ class BackgroundHookThreadManager:
     def _add_task_to_queue(self, task: HookTask, registry: Any) -> None:
         """Add task to queue (called from background thread)."""
         if self._queue:
-            try:
-                self._queue.put_nowait((task, registry))
-            except QueueFull:
+            if self._queue.full():
                 self._logger.warning("hook_task_queue_full_dropping_task")
+                return
+
+            self._queue.put_nowait((task, registry))
 
     def _run_background_loop(self) -> None:
         """Run the background event loop for hook processing."""
@@ -162,7 +173,7 @@ class BackgroundHookThreadManager:
                 task, registry = task_data
                 await self._execute_task(task, registry)
 
-            except TimeoutError:
+            except RuntimeTimeoutError:
                 # Normal timeout, continue loop
                 continue
             except Exception as e:
@@ -209,6 +220,6 @@ class BackgroundHookThreadManager:
             context: The context to pass to the hook
         """
         result = hook(context)
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             await result
         # If result is None, it was a sync hook and we're done
