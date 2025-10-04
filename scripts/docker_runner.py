@@ -458,12 +458,12 @@ def extend(
             dockerfile_lines: list[str] = [f"FROM {base_image}"]
 
             if apt_package:
-                packages = " ".join(apt_package)
+                packages = " ".join(shlex.quote(pkg) for pkg in apt_package)
                 dockerfile_lines.append("ENV DEBIAN_FRONTEND=noninteractive")
                 dockerfile_lines.append(
-                    "RUN apt-get update \\n+ && apt-get install -y "
-                    + packages
-                    + " \\\n+ && rm -rf /var/lib/apt/lists/*"
+                    "RUN apt-get update \\
+    && apt-get install -y {} \\
+    && rm -rf /var/lib/apt/lists/*".format(packages)
                 )
 
             if setup_script:
@@ -475,7 +475,7 @@ def extend(
                     f"COPY {build_target} /docker-runner/{build_target}"
                 )
                 dockerfile_lines.append(
-                    f"RUN chmod +x /docker-runner/{build_target} \\\n+ && /docker-runner/{build_target} \\\n+ && rm /docker-runner/{build_target}"
+                    f"RUN chmod +x /docker-runner/{build_target} \\\n    && /docker-runner/{build_target} \\\n    && rm /docker-runner/{build_target}"
                 )
 
             if setup_command:
