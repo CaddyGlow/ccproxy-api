@@ -1,11 +1,12 @@
 """CLI command for handling confirmation requests via SSE stream."""
 
-import asyncio
+from __future__ import annotations
+
 import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import typer
@@ -13,12 +14,28 @@ from pydantic import ValidationError
 
 import ccproxy.core.logging
 from ccproxy.config.settings import Settings
+from ccproxy.core.async_runtime import (
+    CancelledError,
+)
+from ccproxy.core.async_runtime import (
+    run as runtime_run,
+)
+from ccproxy.core.async_runtime import (
+    sleep as runtime_sleep,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.logging import get_plugin_logger
 
 from ..models import PermissionRequest
 from .protocol import ConfirmationHandlerProtocol
 from .terminal import TerminalPermissionHandler as TextualPermissionHandler
+
+
+if TYPE_CHECKING:
+    from asyncio import Task
 
 
 logger = get_plugin_logger()
@@ -51,11 +68,11 @@ class SSEConfirmationHandler:
         self.auth_token = auth_token
         self.auto_reconnect = auto_reconnect
 
-        self._ongoing_requests: dict[str, asyncio.Task[bool]] = {}
+        self._ongoing_requests: dict[str, Task[bool]] = {}
         self._resolved_requests: dict[str, tuple[bool, str]] = {}
         self._resolved_by_us: set[str] = set()
 
-    async def __aenter__(self) -> "SSEConfirmationHandler":
+    async def __aenter__(self) -> SSEConfirmationHandler:
         """Async context manager entry."""
         headers = {}
         if self.auth_token:
@@ -198,8 +215,8 @@ class SSEConfirmationHandler:
 
                 task.cancel()
 
-                with contextlib.suppress(TimeoutError, asyncio.CancelledError):
-                    await asyncio.wait_for(task, timeout=0.1)
+                with contextlib.suppress(TimeoutError, CancelledError):
+                    await runtime_wait_for(task, timeout=0.1)
 
                 logger.info(
                     "permission_cancelled_by_other_handler",
@@ -236,11 +253,11 @@ class SSEConfirmationHandler:
 
             await self.send_response(request.id, allowed)
 
-            await asyncio.sleep(0.5)
+            await runtime_sleep(0.5)
 
             return allowed
 
-        except asyncio.CancelledError:
+        except CancelledError:
             logger.info(
                 "permission_cancelled",
                 request_id=request.id,
@@ -383,7 +400,7 @@ class SSEConfirmationHandler:
                     # Reset retry count and reconnect
                     retry_count = 0
                     print("Connection closed. Reconnecting...")
-                    await asyncio.sleep(1.0)  # Brief pause before reconnecting
+                    await runtime_sleep(1.0)  # Brief pause before reconnecting
                     continue
                 else:
                     print("Connection closed. Exiting (auto-reconnect disabled).")
@@ -421,7 +438,7 @@ class SSEConfirmationHandler:
                     f"Connection failed (attempt {retry_count}/{self.max_retries}). Retrying in {delay}s..."
                 )
 
-                await asyncio.sleep(delay)
+                await runtime_sleep(delay)
                 continue
 
             except Exception as e:
@@ -565,7 +582,7 @@ def connect(
 
     # Run the async handler
     try:
-        asyncio.run(run_handler())
+        runtime_run(run_handler())
     except KeyboardInterrupt:
         logger.info("permission_handler_stopped")
     except Exception as e:

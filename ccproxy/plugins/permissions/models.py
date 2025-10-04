@@ -1,12 +1,13 @@
 """Pydantic models for permission system."""
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+
+from ccproxy.core.async_runtime import create_event
 
 
 class PermissionStatus(Enum):
@@ -48,7 +49,7 @@ class PermissionRequest(BaseModel):
     resolved_at: datetime | None = None
 
     # Private attribute for event-driven waiting
-    _resolved_event: asyncio.Event = PrivateAttr(default_factory=asyncio.Event)
+    _resolved_event: Any = PrivateAttr(default_factory=create_event)
 
     def is_expired(self) -> bool:
         """Check if the request has expired."""
