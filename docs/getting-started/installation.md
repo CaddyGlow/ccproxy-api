@@ -195,6 +195,12 @@ uv run python scripts/docker_runner.py run \
   --port 9000 \
   --env LOGGING__LEVEL=debug \
   --volume "$HOME/custom:/root/custom"
+
+# Install extra tooling or run setup scripts on launch
+uv run python scripts/docker_runner.py run \
+  --apt-package build-essential \
+  --setup-command "apt-get install -y jq" \
+  --setup-script path/to/setup.sh
 ```
 
 The helper automatically mounts:
@@ -207,3 +213,7 @@ The helper automatically mounts:
 It also forwards your UID/GID by default so files created in the container stay
 writable on the host. Disable that behavior with `--no-user-mapping` if you need
 root-owned artifacts.
+
+Use `--apt-package` to install additional Debian packages before the proxy starts,
+`--setup-command` for ad-hoc shell snippets, and `--setup-script` to run a local
+script inside the container (mounted read-only under `/tmp/docker-runner/`).
