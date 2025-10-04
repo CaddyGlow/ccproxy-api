@@ -14,14 +14,17 @@ import shlex
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 import typer
 
 from ccproxy.plugins.docker.adapter import DockerAdapter
 from ccproxy.plugins.docker.config import DockerConfig
 from ccproxy.plugins.docker.models import DockerUserContext
-from ccproxy.plugins.docker.stream_process import OutputMiddleware
+from ccproxy.plugins.docker.stream_process import (
+    OutputMiddleware,
+    RawPassthroughMiddleware,
+)
 
 APP = typer.Typer(help="Build and run the ccproxy Docker image with standard mounts")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -157,6 +160,7 @@ async def _run_container(
     ports: list[str],
     user_mapping: bool,
     extra_args: list[str] | None = None,
+    raw_output: bool = False,
 ) -> int:
     user_context: DockerUserContext | None = None
     if user_mapping:
@@ -171,12 +175,18 @@ async def _run_container(
             )
             user_context = None
 
+    middleware: OutputMiddleware[Any] | None
+    if raw_output:
+        middleware = RawPassthroughMiddleware()
+    else:
+        middleware = StreamPrinter()
+
     return_code, _stdout, _stderr = await adapter.run_container(
         image=image,
         volumes=volumes,
         environment=environment,
         command=command,
-        middleware=StreamPrinter(),
+        middleware=middleware,
         user_context=user_context,
         ports=ports,
         extra_args=extra_args,
@@ -392,6 +402,7 @@ def run(
             ports=ports,
             user_mapping=user_mapping,
             extra_args=docker_args,
+            raw_output=tty,
         )
         if rc != 0:
             raise typer.Exit(rc)

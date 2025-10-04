@@ -24,7 +24,8 @@ Example:
 
 import asyncio
 import shlex
-from typing import Any, Generic, TypeAlias, TypeVar, cast
+import sys
+from typing import Any, BinaryIO, Generic, TypeAlias, TypeVar, cast
 
 
 T = TypeVar("T")  # Type of processed output
@@ -90,6 +91,31 @@ class DefaultOutputMiddleware(OutputMiddleware[str]):
         prefix = self.stdout_prefix if stream_type == "stdout" else self.stderr_prefix
         print(f"{prefix}{line}")
         return line
+
+
+class RawPassthroughMiddleware(OutputMiddleware[None]):
+    """Write raw command output directly to stdout/stderr without modification."""
+
+    def __init__(
+        self,
+        stdout: BinaryIO | None = None,
+        stderr: BinaryIO | None = None,
+    ) -> None:
+        self.stdout = stdout or sys.stdout.buffer
+        self.stderr = stderr or sys.stderr.buffer
+
+    async def process(self, chunk: bytes | str, stream_type: str) -> None:
+        """Write raw bytes to the appropriate stream."""
+
+        if isinstance(chunk, str):
+            data = chunk.encode()
+        else:
+            data = chunk
+
+        target = self.stdout if stream_type == "stdout" else self.stderr
+        target.write(data)
+        target.flush()
+        return None
 
 
 class ChainedOutputMiddleware(OutputMiddleware[T]):
@@ -226,6 +252,8 @@ async def run_command(
         stderr=asyncio.subprocess.PIPE,
     )
 
+    raw_passthrough = isinstance(middleware, RawPassthroughMiddleware)
+
     async def stream_output(stream: asyncio.StreamReader, stream_type: str) -> list[T]:
         """Process output from a stream and capture results.
 
@@ -241,12 +269,14 @@ async def run_command(
             line_bytes = await stream.readline()
             if not line_bytes:
                 break
-            line = line_bytes.decode()
-            if line.endswith("\n"):
-                line = line[:-1]
-            if line.endswith("\r"):
-                line = line[:-1]
-            if line:
+            if raw_passthrough:
+                processed = await middleware.process(line_bytes, stream_type)
+            else:
+                line = line_bytes.decode()
+                if line.endswith("\n"):
+                    line = line[:-1]
+                if line.endswith("\r"):
+                    line = line[:-1]
                 processed = await middleware.process(line, stream_type)
                 if processed is not None:
                     captured.append(processed)
