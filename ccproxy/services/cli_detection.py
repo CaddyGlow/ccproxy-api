@@ -5,15 +5,18 @@ checking versions, and managing CLI-related state across all plugins.
 It eliminates duplicate CLI detection logic by consolidating common patterns.
 """
 
-import asyncio
 import json
 import re
+from asyncio import subprocess as asyncio_subprocess
 from typing import Any, NamedTuple
 
 import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.config.utils import get_ccproxy_cache_dir
+from ccproxy.core.async_runtime import (
+    create_subprocess_exec as runtime_create_subprocess_exec,
+)
 from ccproxy.core.async_runtime import (
     gather as runtime_gather,
 )
@@ -217,10 +220,10 @@ class CLIDetectionService:
             cmd = cli_command + [version_flag]
 
             # Run command with timeout
-            process = await asyncio.create_subprocess_exec(
+            process = await runtime_create_subprocess_exec(
                 *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stdout=asyncio_subprocess.PIPE,
+                stderr=asyncio_subprocess.PIPE,
             )
 
             stdout, stderr = await runtime_wait_for(process.communicate(), timeout=5.0)

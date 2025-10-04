@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from asyncio import subprocess as asyncio_subprocess
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from typing import Any, TypeVar
 
 
@@ -49,6 +49,19 @@ class AsyncRuntime:
     ) -> _T:
         """Wait for an awaitable with an optional timeout."""
         return await asyncio.wait_for(awaitable, timeout=timeout)
+
+    async def wait(
+        self,
+        aws: Iterable[asyncio.Future[Any]],
+        *,
+        timeout: float | None = None,
+        return_when: str = asyncio.ALL_COMPLETED,
+    ) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
+        """Wait for awaitables using the active runtime."""
+        done, pending = await asyncio.wait(
+            aws, timeout=timeout, return_when=return_when
+        )
+        return done, pending
 
     def create_lock(self) -> asyncio.Lock:
         """Return a new lock instance."""
@@ -141,6 +154,16 @@ async def wait_for(awaitable: Awaitable[_T], timeout: float | None) -> _T:
     return await runtime.wait_for(awaitable, timeout)
 
 
+async def wait(
+    aws: Iterable[asyncio.Future[Any]],
+    *,
+    timeout: float | None = None,
+    return_when: str = asyncio.ALL_COMPLETED,
+) -> tuple[set[asyncio.Future[Any]], set[asyncio.Future[Any]]]:
+    """Wait for awaitables using the active runtime."""
+    return await runtime.wait(aws, timeout=timeout, return_when=return_when)
+
+
 async def sleep(delay: float) -> None:
     """Sleep for the requested delay using the runtime."""
     await runtime.sleep(delay)
@@ -205,3 +228,5 @@ def current_task() -> asyncio.Task[Any] | None:
 
 CancelledError = AsyncRuntime.CancelledError
 TimeoutError = AsyncRuntime.TimeoutError
+ALL_COMPLETED = asyncio.ALL_COMPLETED
+FIRST_COMPLETED = asyncio.FIRST_COMPLETED

@@ -22,11 +22,20 @@ Example:
     ```
 """
 
-import asyncio
 import shlex
-from typing import Any, Generic, TypeAlias, TypeVar, cast
+from asyncio import subprocess as asyncio_subprocess
+from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast
 
-from ccproxy.core.async_runtime import create_task as runtime_create_task
+from ccproxy.core.async_runtime import (
+    create_subprocess_exec as runtime_create_subprocess_exec,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+
+
+if TYPE_CHECKING:
+    from asyncio import StreamReader
 
 
 T = TypeVar("T")  # Type of processed output
@@ -222,13 +231,13 @@ async def run_command(
         cmd = shlex.split(cmd)
 
     # Start the async process with pipes for stdout and stderr
-    process = await asyncio.create_subprocess_exec(
+    process = await runtime_create_subprocess_exec(
         *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stdout=asyncio_subprocess.PIPE,
+        stderr=asyncio_subprocess.PIPE,
     )
 
-    async def stream_output(stream: asyncio.StreamReader, stream_type: str) -> list[T]:
+    async def stream_output(stream: "StreamReader", stream_type: str) -> list[T]:
         """Process output from a stream and capture results.
 
         Args:
