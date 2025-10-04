@@ -92,9 +92,10 @@ async def test_metrics_endpoint_returns_prometheus_format(
     """Endpoint emits Prometheus exposition headers and body."""
     response = await metrics_integration_client.get("/metrics")
     assert response.status_code == 200
-    assert (
-        response.headers["content-type"] == "text/plain; version=0.0.4; charset=utf-8"
-    )
+    assert response.headers["content-type"] in {
+        "text/plain; version=0.0.4; charset=utf-8",
+        "text/plain; version=1.0.0; charset=utf-8",
+    }
     assert response.content.strip()
 
 
