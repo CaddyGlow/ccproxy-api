@@ -214,13 +214,18 @@ def build(
         help="Directory containing the Dockerfile (defaults to repo root).",
     ),
     no_cache: bool = typer.Option(False, help="Disable Docker build cache."),
+    tty: bool = typer.Option(
+        False,
+        "--tty/--no-tty",
+        help="Stream docker build output directly with terminal formatting.",
+    ),
 ) -> None:
     """Build the Docker image for ccproxy."""
 
     adapter = DockerAdapter(DockerConfig(docker_image=image))
 
     async def _runner() -> None:
-        rc = await _build_image(adapter, image, context, no_cache)
+        rc = await _build_image(adapter, image, context, no_cache, raw_output=tty)
         if rc != 0:
             raise typer.Exit(rc)
 
