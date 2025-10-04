@@ -32,13 +32,13 @@ DEFAULT_IMAGE = "ccproxy:local"
 DEFAULT_PORT = 8000
 DEFAULT_CONTEXT = PROJECT_ROOT
 DEFAULT_WORKSPACE_MOUNT = "/workspace"
+CONTAINER_HOME = "/home/ccproxy"
 CONTAINER_WORKSPACE = DEFAULT_WORKSPACE_MOUNT
-CONTAINER_STATE_ROOT = f"{CONTAINER_WORKSPACE}/.docker-runner"
-CONTAINER_CONFIG = f"{CONTAINER_STATE_ROOT}/config"
-CONTAINER_CACHE = f"{CONTAINER_STATE_ROOT}/cache"
-CONTAINER_CLAUDE = f"{CONTAINER_STATE_ROOT}/claude"
-CONTAINER_CODEX = f"{CONTAINER_STATE_ROOT}/codex"
-CONTAINER_GH = f"{CONTAINER_STATE_ROOT}/gh"
+CONTAINER_CONFIG = f"{CONTAINER_HOME}/.config/ccproxy"
+CONTAINER_CACHE = f"{CONTAINER_HOME}/.cache/ccproxy"
+CONTAINER_CLAUDE = f"{CONTAINER_HOME}/.claude"
+CONTAINER_CODEX = f"{CONTAINER_HOME}/.codex"
+CONTAINER_GH = f"{CONTAINER_HOME}/.config/gh"
 
 
 class StreamPrinter(OutputMiddleware[None]):
@@ -328,10 +328,11 @@ def run(
     environment: dict[str, str] = {
         "SERVER__HOST": "0.0.0.0",
         "SERVER__PORT": str(container_port),
-        "XDG_CONFIG_HOME": CONTAINER_CONFIG,
-        "XDG_CACHE_HOME": CONTAINER_CACHE,
+        "XDG_CONFIG_HOME": f"{CONTAINER_HOME}/.config",
+        "XDG_CACHE_HOME": f"{CONTAINER_HOME}/.cache",
         "CLAUDE_HOME": CONTAINER_CLAUDE,
         "CLAUDE_WORKSPACE": workspace_mount,
+        "HOME": CONTAINER_HOME,
     }
 
     if user_mapping:

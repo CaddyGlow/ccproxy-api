@@ -213,11 +213,11 @@ uv run python scripts/docker_runner.py extend \
 ```
 
 The helper automatically mounts:
-- `~/.codex` → `/workspace/.docker-runner/codex` (ChatGPT tokens)
-- `~/.claude` → `/workspace/.docker-runner/claude` (Claude credentials)
-- `~/.config/gh` → `/workspace/.docker-runner/gh` (GitHub CLI auth for Copilot)
-- `~/.config/ccproxy` → `/workspace/.docker-runner/config`
-- `~/.cache/ccproxy` → `/workspace/.docker-runner/cache`
+- `~/.codex` → `/home/ccproxy/.codex` (ChatGPT tokens)
+- `~/.claude` → `/home/ccproxy/.claude` (Claude credentials)
+- `~/.config/gh` → `/home/ccproxy/.config/gh` (GitHub CLI auth for Copilot)
+- `~/.config/ccproxy` → `/home/ccproxy/.config/ccproxy`
+- `~/.cache/ccproxy` → `/home/ccproxy/.cache/ccproxy`
 - Your workspace (default repo root → `/workspace`)
 
 It also forwards your UID/GID by default so files created in the container stay
