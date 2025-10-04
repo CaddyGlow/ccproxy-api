@@ -246,11 +246,18 @@ async def run_command(
         cmd = shlex.split(cmd)
 
     # Start the async process with pipes for stdout and stderr
+    stdout_pipe = asyncio.subprocess.PIPE if not raw_passthrough else None
+    stderr_pipe = asyncio.subprocess.PIPE if not raw_passthrough else None
+
     process = await asyncio.create_subprocess_exec(
         *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stdout=stdout_pipe,
+        stderr=stderr_pipe,
     )
+
+    if raw_passthrough:
+        return_code = await process.wait()
+        return return_code, [], []
 
     raw_passthrough = isinstance(middleware, RawPassthroughMiddleware)
 
