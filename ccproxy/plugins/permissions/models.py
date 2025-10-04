@@ -1,7 +1,6 @@
 """Pydantic models for permission system."""
 
 import uuid
-from asyncio import Event as AsyncEvent
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Annotated, Any, Literal
@@ -50,7 +49,7 @@ class PermissionRequest(BaseModel):
     resolved_at: datetime | None = None
 
     # Private attribute for event-driven waiting
-    _resolved_event: AsyncEvent = PrivateAttr(default_factory=create_event)
+    _resolved_event: Any = PrivateAttr(default_factory=create_event)
 
     def is_expired(self) -> bool:
         """Check if the request has expired."""

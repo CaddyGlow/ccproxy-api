@@ -1,6 +1,5 @@
 """API routes for permission request handling via SSE and REST."""
 
-import asyncio
 import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
@@ -14,6 +13,12 @@ if TYPE_CHECKING:
 
 from ccproxy.api.dependencies import OptionalSettingsDep
 from ccproxy.auth.dependencies import ConditionalAuthDep
+from ccproxy.core.async_runtime import (
+    CancelledError,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.errors import (
     PermissionAlreadyResolvedError,
     PermissionNotFoundError,
@@ -89,7 +94,7 @@ async def event_generator(
 
         while not await request.is_disconnected():
             try:
-                event_data = await asyncio.wait_for(queue.get(), timeout=30.0)
+                event_data = await runtime_wait_for(queue.get(), timeout=30.0)
 
                 yield {
                     "event": event_data.get("type", "message"),
@@ -102,7 +107,7 @@ async def event_generator(
                     "data": json.dumps({"message": "keepalive"}),
                 }
 
-    except asyncio.CancelledError:
+    except CancelledError:
         pass
     finally:
         await service.unsubscribe_from_events(queue)
