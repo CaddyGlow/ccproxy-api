@@ -1,15 +1,26 @@
 """Base scheduled task classes and task implementations."""
 
-import asyncio
 import random
 import time
 from abc import ABC, abstractmethod
+from asyncio import Event as AsyncEvent
+from asyncio import Task as AsyncTask
 from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 from packaging import version as pkg_version
 
+from ccproxy.core.async_runtime import (
+    CancelledError,
+    create_event,
+)
+from ccproxy.core.async_runtime import (
+    sleep as runtime_sleep,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.utils.version_checker import (
@@ -66,8 +77,8 @@ class BaseScheduledTask(ABC):
         self._consecutive_failures = 0
         self._last_run_time: float = 0
         self._running = False
-        self._task: asyncio.Task[Any] | None = None
-        self._stop_complete: asyncio.Event | None = None
+        self._task: AsyncTask[Any] | None = None
+        self._stop_complete: AsyncEvent | None = None
 
     @abstractmethod
     async def run(self) -> bool:
@@ -129,7 +140,7 @@ class BaseScheduledTask(ABC):
             return
 
         self._running = True
-        self._stop_complete = asyncio.Event()
+        self._stop_complete = create_event()
         logger.debug("task_starting", task_name=self.name)
 
         try:
@@ -175,7 +186,7 @@ class BaseScheduledTask(ABC):
             try:
                 # Wait for the task to complete cancellation
                 await self._task
-            except asyncio.CancelledError:
+            except CancelledError:
                 # Expected when task is cancelled
                 pass
             except Exception as e:
@@ -192,7 +203,7 @@ class BaseScheduledTask(ABC):
         # Wait for the completion event to be signaled
         if self._stop_complete is not None:
             try:
-                await asyncio.wait_for(self._stop_complete.wait(), timeout=1.0)
+                await runtime_wait_for(self._stop_complete.wait(), timeout=1.0)
             except TimeoutError:
                 logger.warning(
                     "task_stop_completion_timeout",
@@ -262,9 +273,9 @@ class BaseScheduledTask(ABC):
                     )
 
                 # Wait for next execution or cancellation
-                await asyncio.sleep(delay)
+                await runtime_sleep(delay)
 
-            except asyncio.CancelledError:
+            except CancelledError:
                 logger.debug("task_cancelled", task_name=self.name)
                 break
             except TimeoutError as e:
@@ -279,7 +290,7 @@ class BaseScheduledTask(ABC):
                 )
                 # Use backoff delay for exceptions too
                 backoff_delay = self.calculate_next_delay()
-                await asyncio.sleep(backoff_delay)
+                await runtime_sleep(backoff_delay)
             except SchedulerError as e:
                 self._consecutive_failures += 1
                 logger.error(
@@ -292,7 +303,7 @@ class BaseScheduledTask(ABC):
                 )
                 # Use backoff delay for exceptions too
                 backoff_delay = self.calculate_next_delay()
-                await asyncio.sleep(backoff_delay)
+                await runtime_sleep(backoff_delay)
             except Exception as e:
                 self._consecutive_failures += 1
                 logger.error(
@@ -305,7 +316,7 @@ class BaseScheduledTask(ABC):
                 )
                 # Use backoff delay for exceptions too
                 backoff_delay = self.calculate_next_delay()
-                await asyncio.sleep(backoff_delay)
+                await runtime_sleep(backoff_delay)
 
         # Signal that the task has completed
         if self._stop_complete is not None:
