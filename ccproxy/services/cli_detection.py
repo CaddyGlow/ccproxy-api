@@ -14,6 +14,12 @@ import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.config.utils import get_ccproxy_cache_dir
+from ccproxy.core.async_runtime import (
+    gather as runtime_gather,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.utils.binary_resolver import BinaryResolver, CLIInfo
 from ccproxy.utils.caching import TTLCache
 
@@ -217,7 +223,7 @@ class CLIDetectionService:
                 stderr=asyncio.subprocess.PIPE,
             )
 
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5.0)
+            stdout, stderr = await runtime_wait_for(process.communicate(), timeout=5.0)
 
             version = None
             if process.returncode == 0 and stdout:
@@ -406,7 +412,7 @@ class CLIDetectionService:
                 self.detect_cli(binary_name, package_name)
                 for binary_name, package_name in binaries
             ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            results = await runtime_gather(*tasks, return_exceptions=True)
 
             detected: dict[str, CLIDetectionResult] = {}
             for (binary_name, _), result in zip(binaries, results, strict=False):
