@@ -1,12 +1,12 @@
 import contextlib
 import time
-from asyncio import Task as AsyncTask
 from pathlib import Path
 
 import aiofiles
 
 from ccproxy.core.async_runtime import (
     CancelledError,
+    Task,
     create_lock,
 )
 from ccproxy.core.async_runtime import (
@@ -50,7 +50,7 @@ class AccessLogWriter:
 
         self._buffer: list[str] = []
         self._lock = create_lock()
-        self._flush_task: AsyncTask[None] | None = None
+        self._flush_task: Task[None] | None = None
         self._last_flush = time.time()
 
         # Ensure parent directory exists

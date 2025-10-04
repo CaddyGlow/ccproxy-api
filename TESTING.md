@@ -105,7 +105,7 @@ tests/
 - Mock at **service boundaries only** - never mock internal components
 - Test **pure functions and single components** in isolation
 - **No HTTP layer testing** - use service layer mocks instead
-- **No timing dependencies** - all asyncio.sleep() removed
+- **No timing dependencies** - all direct `asyncio.sleep()` calls should instead patch `ccproxy.core.async_runtime.sleep`
 - **No database operations** - moved to integration tests
 
 **Integration Tests** (tests/integration/):
