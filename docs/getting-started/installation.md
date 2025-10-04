@@ -210,10 +210,11 @@ uv run python scripts/docker_runner.py extend \
 ```
 
 The helper automatically mounts:
-- `~/.codex` (ChatGPT tokens)
-- `~/.claude` (Claude credentials)
-- `~/.config/gh` (GitHub CLI auth for Copilot)
-- `~/.config/ccproxy` and `~/.cache/ccproxy` (proxy config/cache)
+- `~/.codex` → `/workspace/.docker-runner/codex` (ChatGPT tokens)
+- `~/.claude` → `/workspace/.docker-runner/claude` (Claude credentials)
+- `~/.config/gh` → `/workspace/.docker-runner/gh` (GitHub CLI auth for Copilot)
+- `~/.config/ccproxy` → `/workspace/.docker-runner/config`
+- `~/.cache/ccproxy` → `/workspace/.docker-runner/cache`
 - Your workspace (default repo root → `/workspace`)
 
 It also forwards your UID/GID by default so files created in the container stay
@@ -226,3 +227,5 @@ script inside the container (mounted read-only under `/tmp/docker-runner/`).
 
 If you want a reusable image containing those changes, use the `extend` command to
 build a new tag layered on top of the base ccproxy image.
+
+Need an interactive shell? Add `--tty` to start the container with `docker run -it`.

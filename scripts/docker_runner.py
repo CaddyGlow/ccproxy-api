@@ -156,6 +156,7 @@ async def _run_container(
     environment: dict[str, str],
     ports: list[str],
     user_mapping: bool,
+    extra_args: list[str] | None = None,
 ) -> int:
     user_context: DockerUserContext | None = None
     if user_mapping:
@@ -178,6 +179,7 @@ async def _run_container(
         middleware=StreamPrinter(),
         user_context=user_context,
         ports=ports,
+        extra_args=extra_args,
     )
     return return_code
 
@@ -279,6 +281,11 @@ def run(
         "--setup-command",
         help="Inline shell commands to run before starting the proxy.",
     ),
+    tty: bool = typer.Option(
+        False,
+        "--tty/--no-tty",
+        help="Attach an interactive TTY (-it) when starting the container.",
+    ),
 ) -> None:
     """Run the ccproxy container with helpful mounts."""
 
@@ -332,6 +339,16 @@ def run(
 
     final_command = command_list if command_list else ["ccproxy"]
     setup_lines: list[str] = []
+    docker_args: list[str] = []
+
+    if tty:
+        if os.isatty(0) and os.isatty(1):
+            docker_args.extend(["-it"])
+        else:
+            typer.echo(
+                "Warning: --tty requested but current stdin/stdout are not TTYs.",
+                err=True,
+            )
 
     if apt_package:
         quoted = " ".join(shlex.quote(pkg) for pkg in apt_package)
@@ -369,6 +386,7 @@ def run(
             environment=environment,
             ports=ports,
             user_mapping=user_mapping,
+            extra_args=docker_args,
         )
         if rc != 0:
             raise typer.Exit(rc)

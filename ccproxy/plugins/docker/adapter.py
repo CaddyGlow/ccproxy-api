@@ -134,10 +134,13 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
         user_context: DockerUserContext | None = None,
         entrypoint: str | None = None,
         ports: list[DockerPortSpec] | None = None,
+        extra_args: list[str] | None = None,
     ) -> ProcessResult[T]:
         """Run a Docker container with specified configuration."""
 
         docker_cmd = ["docker", "run", "--rm"]
+        if extra_args:
+            docker_cmd.extend(extra_args)
 
         # Add user context if provided and should be used
         if user_context and user_context.should_use_user_mapping():
@@ -165,6 +168,7 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
         for key, value in environment.items():
             docker_cmd.extend(["-e", f"{key}={value}"])
 
+        docker_cmd.append("-it")
         # Add image
         docker_cmd.append(image)
 
@@ -214,6 +218,7 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
         user_context: DockerUserContext | None = None,
         entrypoint: str | None = None,
         ports: list[DockerPortSpec] | None = None,
+        extra_args: list[str] | None = None,
     ) -> ProcessResult[T]:
         """Run a Docker container with specified configuration.
 
@@ -228,6 +233,7 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
             user_context=user_context,
             entrypoint=entrypoint,
             ports=ports,
+            extra_args=extra_args,
         )
 
     def exec_container(

@@ -77,6 +77,7 @@ class DockerAdapterProtocol(Protocol):
         user_context: DockerUserContext | None = None,
         entrypoint: str | None = None,
         ports: list[DockerPortSpec] | None = None,
+        extra_args: list[str] | None = None,
     ) -> Awaitable[ProcessResult[T]]:
         """Run a Docker container with specified configuration.
 
@@ -89,6 +90,7 @@ class DockerAdapterProtocol(Protocol):
             user_context: Optional user context for Docker --user flag
             entrypoint: Optional custom entrypoint to override the image's default
             ports: Optional port specifications (e.g., ["8080:80", "localhost:9000:9000"])
+            extra_args: Additional raw arguments inserted before the image reference
 
         Returns:
             Tuple containing (return_code, stdout_lines, stderr_lines)
