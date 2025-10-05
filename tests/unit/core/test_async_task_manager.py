@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from unittest.mock import Mock, patch
 
+import anyio
 import pytest
 
 from ccproxy.api.bootstrap import create_service_container
@@ -533,3 +534,43 @@ class TestTaskManagerIntegration:
         await asyncio.gather(*created_tasks)
 
         await manager.stop()
+
+    @pytest.mark.slow
+    @pytest.mark.asyncio
+    async def test_manager_with_cancellation_stress(self) -> None:
+        """Exercise repeated start/stop cycles with mixed task outcomes."""
+
+        manager = AsyncTaskManager(
+            cleanup_interval=0.05,
+            shutdown_timeout=5.0,
+            max_tasks=512,
+        )
+
+        async def worker(delay: float, should_fail: bool) -> None:
+            try:
+                await anyio.sleep(delay)
+                if should_fail:
+                    raise RuntimeError("intentional failure")
+            except asyncio.CancelledError:
+                raise
+
+        for cycle in range(3):
+            await manager.start()
+            created_tasks = []
+            for index in range(160):
+                delay = (index % 5) * 0.002
+                should_fail = index % 13 == 0
+                task = await manager.create_task(
+                    worker(delay, should_fail),
+                    name=f"stress_task_{cycle}_{index}",
+                    creator="stress",
+                )
+                created_tasks.append(task)
+
+            for idx, task in enumerate(created_tasks):
+                if idx % 7 == 0:
+                    task.cancel()
+
+            await anyio.sleep(0.05)
+            await manager.stop()
+            assert manager._tasks == {}
