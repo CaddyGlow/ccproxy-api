@@ -1,56 +1,104 @@
 #!/usr/bin/env bash
 #
-# Docker Entrypoint Script for Claude Application Container
+# Docker Entrypoint Script for configurable UID/GID containers.
 #
-# This script manages user/group creation and privilege dropping for a containerized
-# Claude application. It supports both rootless and root execution modes.
-#
-# USAGE:
-#   - When running as root: Creates 'claude' user/group with specified PUID/PGID,
-#     sets up directory structure, and drops privileges before executing the main command
-#   - When running as non-root: Executes the command directly without user management
-#
-# ENVIRONMENT VARIABLES:
-#   CLAUDE_HOME      - Claude user home directory (default: /data/home)
-#   CLAUDE_WORKSPACE - Claude workspace directory (default: $CLAUDE_HOME)
-#   PUID             - User ID for claude user (default: 1000)
-#   PGID             - Group ID for claude group (default: 1000)
-#
-# FEATURES:
-#   - Handles existing user/group ID conflicts intelligently
-#   - Creates necessary directories (.cache, .config, .local) with proper ownership
-#   - Uses setpriv for secure privilege dropping
-#   - Provides detailed logging of user/group setup process
-#   - Supports Docker's user namespace mapping via PUID/PGID
-#
-# DOCKER USAGE:
-#   docker run -e PUID=1001 -e PGID=1001 -v /host/data:/data your-image
-#
-set -e
+# This script creates (or reuses) a user and group inside the container so that
+# mounted volumes remain accessible when mapped to a host UID/GID. It supports
+# both rootless execution (no user management) and privileged execution where it
+# manages the user before dropping privileges with setpriv.
 
-CLAUDE_HOME=${CLAUDE_HOME:-"/data/home"}
-CLAUDE_WORKSPACE=${CLAUDE_WORKSPACE:-$CLAUDE_HOME}
+set -euo pipefail
 
-# Check if running as root
-if [[ $EUID -ne 0 ]]; then
-  export HOME="$CLAUDE_HOME"
-  export CLAUDE_USER="claude"
+APT_PACKAGE="${APT_PACKAGE:-}"
+if [[ -n "${APT_PACKAGE}" ]]; then
+  echo "APT_PACKAGE specified: ${APT_PACKAGE}"
+  packages=$(echo "${APT_PACKAGE}" | tr ',' ' ')
+  echo "Installing packages: ${packages}"
+  apt-get update && apt-get install -y ${packages} && rm -rf /var/lib/apt/lists/*
+fi
 
-  cd "$CLAUDE_WORKSPACE"
+run_init_script_current() {
+  local script_path="$1"
+  if [[ -z "${script_path}" ]]; then
+    return
+  fi
+  if [[ ! -f "${script_path}" ]]; then
+    echo "Init script ${script_path} not found; skipping" >&2
+    return
+  fi
+  if [[ -x "${script_path}" ]]; then
+    "${script_path}"
+  else
+    bash "${script_path}"
+  fi
+}
+
+run_init_script_as_user() {
+  local script_path="$1"
+  local uid="$2"
+  local gid="$3"
+  if [[ -z "${script_path}" ]]; then
+    return
+  fi
+  if [[ ! -f "${script_path}" ]]; then
+    echo "Init script ${script_path} not found; skipping" >&2
+    return
+  fi
+  local runner=(setpriv "--reuid=${uid}" "--regid=${gid}" --init-groups)
+  if [[ -x "${script_path}" ]]; then
+    "${runner[@]}" "${script_path}"
+  else
+    "${runner[@]}" bash "${script_path}"
+  fi
+}
+
+should_enable_sudo() {
+  local value="${ENABLE_SUDO:-}"
+  if [[ -z "${value}" ]]; then
+    return 1
+  fi
+  value="${value,,}"
+  case "${value}" in
+  1 | true | yes | on)
+    return 0
+    ;;
+  *)
+    return 1
+    ;;
+  esac
+}
+
+APP_USER="${APP_USER:-appuser}"
+APP_GROUP="${APP_GROUP:-appgroup}"
+USER_HOME="${USER_HOME:-/home/user}" # Default home if we need to create the user
+WORKDIR="${WORKDIR:-/workspace}"
+PUID="${PUID:-1000}"
+PGID="${PGID:-1000}"
+
+# When the container runs without root privileges, we cannot manage system
+# users. Simply export HOME and execute the command.
+if [[ "${EUID}" -ne 0 ]]; then
+  export HOME="${USER_HOME}"
+  export USER="${APP_USER}"
+  cd "${WORKDIR}"
+  if should_enable_sudo; then
+    echo "ENABLE_SUDO requested but container is not running as root; skipping" >&2
+  fi
+  init_script="${INIT_SCRIPT:-}"
+  if [[ -n "${init_script}" ]]; then
+    echo "Running init script as ${USER}: ${init_script}"
+    run_init_script_current "${init_script}"
+  fi
   echo "Not running as root, executing command directly: $*"
   exec "$@"
 fi
 
-# Get PUID and PGID from environment or use defaults
-PUID=${PUID:-1000}
-PGID=${PGID:-1000}
+echo "Running as root, configuring container user"
+echo "Requested UID=${PUID}, GID=${PGID}"
+echo "Target user=${APP_USER}, group=${APP_GROUP}"
+echo "USER_HOME=${USER_HOME}"
+echo "WORKDIR=${WORKDIR}"
 
-echo "Running as root, setting up user/group management"
-echo "Starting Claude Proxy with PUID=$PUID, PGID=$PGID"
-echo "CLAUDE_HOME=$CLAUDE_HOME"
-echo "CLAUDE_WORKSPACE=$CLAUDE_WORKSPACE"
-
-# Function to check if user/group exists
 user_exists() {
   id "$1" &>/dev/null
 }
@@ -59,125 +107,125 @@ group_exists() {
   getent group "$1" &>/dev/null
 }
 
-# Handle claude group creation/modification
-if group_exists claude; then
-  current_gid=$(getent group claude | cut -d: -f3)
-  if [[ "$current_gid" != "$PGID" ]]; then
-    echo "Claude group exists with GID $current_gid, need to change to $PGID"
-    # Check if target GID is already in use by another group
-    if getent group "$PGID" &>/dev/null; then
-      target_group=$(getent group "$PGID" | cut -d: -f1)
-      echo "Warning: GID $PGID is already used by group '$target_group'"
-      echo "Removing claude group and adding claude user to existing group '$target_group'"
-      groupdel claude || true
-      CLAUDE_GROUP_NAME="$target_group"
+# Determine the actual group name backed by PGID, creating or updating as needed.
+actual_group="${APP_GROUP}"
+if group_exists "${APP_GROUP}"; then
+  current_gid=$(getent group "${APP_GROUP}" | cut -d: -f3)
+  if [[ "${current_gid}" != "${PGID}" ]]; then
+    if getent group "${PGID}" &>/dev/null; then
+      existing_group=$(getent group "${PGID}" | cut -d: -f1)
+      echo "Group ${APP_GROUP} currently uses GID ${current_gid}"
+      echo "Using existing group ${existing_group} for requested GID ${PGID}"
+      actual_group="${existing_group}"
     else
-      echo "Modifying claude group to GID $PGID"
-      groupmod -g "$PGID" claude
-      CLAUDE_GROUP_NAME="claude"
+      echo "Updating ${APP_GROUP} group GID ${current_gid} -> ${PGID}"
+      groupmod -g "${PGID}" "${APP_GROUP}"
     fi
-  else
-    echo "Claude group already has correct GID $PGID"
-    CLAUDE_GROUP_NAME="claude"
   fi
 else
-  # Check if target GID is already in use
-  if getent group "$PGID" &>/dev/null; then
-    target_group=$(getent group "$PGID" | cut -d: -f1)
-    echo "GID $PGID is already used by group '$target_group', will use existing group"
-    CLAUDE_GROUP_NAME="$target_group"
+  if getent group "${PGID}" &>/dev/null; then
+    existing_group=$(getent group "${PGID}" | cut -d: -f1)
+    echo "GID ${PGID} already taken; using existing group ${existing_group}"
+    actual_group="${existing_group}"
   else
-    echo "Creating claude group with GID $PGID"
-    groupadd -g "$PGID" claude
-    CLAUDE_GROUP_NAME="claude"
+    echo "Creating group ${APP_GROUP} with GID ${PGID}"
+    groupadd -g "${PGID}" "${APP_GROUP}"
   fi
 fi
 
-# Create or modify claude user
-if user_exists claude; then
-  current_uid=$(id -u claude)
-  current_gid=$(id -g claude)
-  echo "Claude user exists with UID $current_uid, GID $current_gid"
+APP_GROUP="${actual_group}"
 
-  if [[ "$current_uid" != "$PUID" ]]; then
-    # Check if target UID is already in use
-    if getent passwd "$PUID" &>/dev/null; then
-      existing_user=$(getent passwd "$PUID" | cut -d: -f1)
-      if [[ "$existing_user" != "claude" ]]; then
-        echo "Warning: UID $PUID is already used by user '$existing_user'"
-        echo "Cannot modify claude user UID, will use existing UID $current_uid"
-        PUID="$current_uid"
+# Determine the actual user name backed by PUID, creating or updating as needed.
+if user_exists "${APP_USER}"; then
+  current_uid=$(id -u "${APP_USER}")
+  current_gid=$(id -g "${APP_USER}")
+  echo "User ${APP_USER} exists (UID=${current_uid}, GID=${current_gid})"
+
+  if [[ "${current_uid}" != "${PUID}" ]]; then
+    if getent passwd "${PUID}" &>/dev/null; then
+      conflict_user=$(getent passwd "${PUID}" | cut -d: -f1)
+      if [[ "${conflict_user}" != "${APP_USER}" ]]; then
+        echo "Warning: UID ${PUID} already used by ${conflict_user}"
+        echo "Keeping existing UID ${current_uid} for ${APP_USER}"
+        PUID="${current_uid}"
+      else
+        echo "Updating ${APP_USER} UID ${current_uid} -> ${PUID}"
+        usermod -u "${PUID}" "${APP_USER}"
       fi
     else
-      echo "Modifying claude user UID to $PUID"
-      usermod -u "$PUID" claude
+      usermod -u "${PUID}" "${APP_USER}"
     fi
   fi
 
-  # Update group membership and shell
-  echo "Setting claude user group to $CLAUDE_GROUP_NAME and shell to /bin/bash"
-  usermod -g "$CLAUDE_GROUP_NAME" -s /bin/bash claude
+  if [[ "${current_gid}" != "${PGID}" ]]; then
+    echo "Updating ${APP_USER} primary group to ${APP_GROUP}"
+    usermod -g "${APP_GROUP}" "${APP_USER}"
+  fi
 else
-  # Check if target UID is already in use
-  if getent passwd "$PUID" &>/dev/null; then
-    existing_user=$(getent passwd "$PUID" | cut -d: -f1)
-    echo "Warning: UID $PUID is already used by user '$existing_user'"
-    echo "Will create claude user with a different UID"
-    # Find next available UID starting from 1001
-    PUID=1001
-    while getent passwd "$PUID" &>/dev/null; do
-      ((PUID++))
+  if getent passwd "${PUID}" &>/dev/null; then
+    existing_user=$(getent passwd "${PUID}" | cut -d: -f1)
+    echo "Warning: UID ${PUID} already used by ${existing_user}"
+    echo "Searching for a free UID"
+    next_uid=1001
+    while getent passwd "${next_uid}" &>/dev/null; do
+      ((next_uid++))
     done
-    echo "Using available UID $PUID for claude user"
+    echo "Assigning UID ${next_uid} to ${APP_USER}"
+    PUID="${next_uid}"
   fi
 
-  echo "Creating claude user with UID $PUID, group $CLAUDE_GROUP_NAME"
-  useradd -u "$PUID" -g "$CLAUDE_GROUP_NAME" -d "$CLAUDE_HOME" -s /bin/bash -m claude
+  echo "Creating user ${APP_USER} (UID=${PUID}, GID=${PGID})"
+  useradd -u "${PUID}" -g "${APP_GROUP}" -d "${USER_HOME}" -s /bin/bash -m "${APP_USER}"
 fi
 
-# Ensure claude home directory exists and has correct ownership
-echo "Setting up Claude home directory: $CLAUDE_HOME"
-mkdir -p "$CLAUDE_HOME"
-
-# Also ensure the user's actual home directory exists with proper ownership
-CLAUDE_USER_HOME=$(getent passwd claude | cut -d: -f6)
-if [[ "$CLAUDE_USER_HOME" != "$CLAUDE_HOME" ]]; then
-  echo "Setting up Claude user home directory: $CLAUDE_USER_HOME"
-  mkdir -p "$CLAUDE_USER_HOME"
-  chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_USER_HOME"
+# Refresh user metadata after potential modifications.
+FINAL_UID=$(id -u "${APP_USER}")
+FINAL_GID=$(id -g "${APP_USER}")
+actual_home=$(getent passwd "${APP_USER}" | cut -d: -f6)
+if [[ -n "${actual_home}" ]]; then
+  USER_HOME="${actual_home}"
 fi
 
-# Create additional directories that Claude might need
-mkdir -p "$CLAUDE_HOME"/{.cache,.config,.local}
-chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_HOME"
+# Ensure the home directory exists and is owned correctly.
+mkdir -p "${USER_HOME}"
+chown -R "${APP_USER}:${APP_GROUP}" "${USER_HOME}" || true
+mkdir -p "${USER_HOME}/.cache" "${USER_HOME}/.config" "${USER_HOME}/.local"
 
-# Ensure workspace directory exists
-mkdir -p "$CLAUDE_WORKSPACE"
-chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_WORKSPACE"
+# Ensure the workspace exists and is owned correctly.
+mkdir -p "${WORKDIR}"
+chown -R "${APP_USER}:${APP_GROUP}" "${WORKDIR}" || true
 
-# Update environment variables for the application
-export CLAUDE_USER="claude"
-export CLAUDE_GROUP="$CLAUDE_GROUP_NAME"
-export CLAUDE_WORKSPACE="$CLAUDE_WORKSPACE"
-export HOME="$CLAUDE_HOME"
+if should_enable_sudo; then
+  if command -v sudo >/dev/null 2>&1; then
+    echo "Enabling passwordless sudo for ${APP_USER}"
+    if getent group sudo >/dev/null 2>&1; then
+      usermod -aG sudo "${APP_USER}"
+    fi
+    echo "${APP_USER} ALL=(ALL) NOPASSWD:ALL" >"/etc/sudoers.d/${APP_USER}"
+    chmod 0440 "/etc/sudoers.d/${APP_USER}"
+  else
+    echo "ENABLE_SUDO requested but sudo is not installed; skipping" >&2
+  fi
+fi
 
-cd "$CLAUDE_WORKSPACE"
+export USER="${APP_USER}"
+export HOME="${USER_HOME}"
+export WORKDIR="${WORKDIR}"
 
-# Get final UID/GID values
-FINAL_PUID=$(id -u claude)
-FINAL_PGID=$(id -g claude)
+cd "${WORKDIR}"
 
 echo "PUID/PGID configuration complete"
-echo "  Requested: UID=$PUID, GID=$PGID"
-echo "  Final: UID=$FINAL_PUID, GID=$FINAL_PGID"
-echo "  User: claude, Group: $CLAUDE_GROUP_NAME"
-echo "Enabling privilege dropping to claude user"
+echo "  Requested UID=${PUID}, GID=${PGID}"
+echo "  Final UID=${FINAL_UID}, GID=${FINAL_GID}"
+echo "  User=${APP_USER}, Group=${APP_GROUP}"
+echo "  Home=${USER_HOME}"
+echo "  Workspace=${WORKDIR}"
 
-echo "Final configuration:"
-echo "  Claude user: $(id claude)"
-echo "  Claude home: $CLAUDE_HOME ($(ls -ld "$CLAUDE_HOME"))"
-echo "  Environment: CLAUDE_USER=$CLAUDE_USER, CLAUDE_GROUP=$CLAUDE_GROUP_NAME"
+init_script="${INIT_SCRIPT:-}"
+if [[ -n "${init_script}" ]]; then
+  echo "Running init script as ${APP_USER}: ${init_script}"
+  run_init_script_as_user "${init_script}" "${FINAL_UID}" "${FINAL_GID}"
+fi
 
-# Execute the main command
 echo "Starting application: $*"
-setpriv --reuid=claude --regid=claude --init-groups "$@"
+exec setpriv --reuid="${FINAL_UID}" --regid="${FINAL_GID}" --init-groups "$@"

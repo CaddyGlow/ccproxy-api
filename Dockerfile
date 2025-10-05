@@ -12,7 +12,21 @@
 
 # Stage 1: Install bun from the official image
 FROM oven/bun:1-slim AS bun-deps
-RUN bun install -g @anthropic-ai/claude-code
+# RUN bun install -g @openai/codex && \
+#   bun install -g @anthropic-ai/claude-code && \
+#   bun install -g @google/gemini-cli && \
+#   bun install -g @charmland/crush && \
+#   bun install -g opencode-ai@latest
+
+FROM node:22-slim AS node-deps
+RUN npm install -g pnpm
+
+FROM rust:1.90-slim AS rust-deps
+RUN cargo install --git https://github.com/MordechaiHadad/bob.git --branch master bob-nvim && \
+  cargo install procs && cargo install --force yazi-build
+
+FROM golang:1.25-trixie AS go-deps
+RUN go install github.com/joshmedeski/sesh/v2@latest
 
 # Stage 2: Python builder
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
@@ -49,7 +63,7 @@ FROM python:3.11-slim-bookworm
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   apt-get update && apt-get install -y \
-  curl wget ripgrep fd-find exa sed mawk procps\
+  curl wget ripgrep fd-find exa sed mawk procps sudo \
   build-essential \
   git \
   && rm -rf /var/lib/apt/lists/*
@@ -81,27 +95,29 @@ WORKDIR /app
 
 # Ensure venv binaries and CLI tools are discoverable
 ENV PATH="/app/.venv/bin:/usr/local/bin:$PATH"
+
 ENV PYTHONPATH=/app
-ENV HOME=/home/ccproxy
+ENV HOME=/home/user
 ENV SERVER__HOST=0.0.0.0
 ENV SERVER__PORT=8000
 ENV LOGGING__LEVEL=INFO
 ENV LOGGING__FORMAT=json
 
-# Create non-root user and workspace directory
-RUN groupadd --system ccproxy \
-  && useradd --system --create-home --home-dir /home/ccproxy --gid ccproxy ccproxy \
-  && mkdir -p /workspace \
-  && chown ccproxy:ccproxy /workspace
+# Set default workspace and home
+ENV USER_HOME=/home/user
+ENV WORKDIR=/workspace
 
 WORKDIR /workspace
-
-USER ccproxy
+# USER ccproxy
 
 EXPOSE ${SERVER__PORT:-8000}
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:${SERVER__PORT:-8000}/health || exit 1
 
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 # Run the API server by default
-CMD ["ccproxy"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# CMD ["ccproxy"]

@@ -1,0 +1,218 @@
+# syntax=docker/dockerfile:1.5-labs
+
+FROM oven/bun:1-slim AS bun-deps
+# RUN bun install -g @openai/codex && \
+#   bun install -g @anthropic-ai/claude-code && \
+#   bun install -g @google/gemini-cli && \
+#   bun install -g @charmland/crush && \
+#   bun install -g opencode-ai@latest
+
+FROM node:22-slim AS node-deps
+RUN npm install -g pnpm
+
+FROM rust:1.90-slim AS rust-deps
+RUN cargo install --git https://github.com/MordechaiHadad/bob.git --branch master bob-nvim && \
+  cargo install procs && cargo install --force yazi-build
+
+FROM golang:1.25-trixie AS go-deps
+RUN go install github.com/joshmedeski/sesh/v2@latest
+
+FROM python:3.13-slim AS python-deps
+
+FROM nixos/nix:latest AS nix-deps
+
+# Configure Nix
+RUN mkdir -p /etc/nix && \
+  echo "experimental-features = nix-command flakes" > /etc/nix/nix.conf && \
+  echo "build-users-group =" >> /etc/nix/nix.conf && \
+  echo "sandbox = false" >> /etc/nix/nix.conf
+
+# Install devenv with Nix
+RUN /nix/var/nix/profiles/default/bin/nix profile add \
+  --accept-flake-config \
+  --no-write-lock-file \
+  github:cachix/devenv/latest
+
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
+
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
+ENV UV_PYTHON_DOWNLOADS=0
+
+WORKDIR /app
+
+# Install git with apt cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  apt-get update && apt-get install -y \
+  git \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+  --mount=type=bind,source=uv.lock,target=uv.lock \
+  --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+  uv sync --locked --no-install-project --no-dev
+
+# Copy application code
+COPY . /app
+
+# Install the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+  uv sync --locked --no-dev
+
+FROM debian:trixie-slim AS base
+
+# get deb files
+ADD https://github.com/twpayne/chezmoi/releases/download/v2.65.2/chezmoi_2.65.2_linux_amd64.deb /tmp/chezmoi.deb
+ADD https://github.com/carapace-sh/carapace-bin/releases/download/v1.5.0/carapace-bin_1.5.0_linux_amd64.deb /tmp/carapace.deb
+
+# setup github cli debian repostitory
+ADD https://cli.github.com/packages/githubcli-archive-keyring.gpg /usr/share/keyrings/githubcli-archive-keyring.gpg
+RUN chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+  mkdir -p -m 0755 /etc/apt/sources.list.d && \
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list
+
+
+# Install tools with apt cache
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  apt-get update && \
+  DEBIAN_FRONTEND=noninteractive TZ=UTC \
+  LANG=en_US.UTF-8 LC_CTYPE=en_US.UTF-8 \
+  apt-get install -y --no-install-recommends \
+  age \
+  atuin \
+  bash bash-completion bash-argsparse\
+  bat \
+  build-essential \
+  ca-certificates \
+  cmake \
+  curl \
+  delta \
+  direnv \
+  entr \
+  eza \
+  fd-find \
+  ffmpeg \
+  file \
+  fish \
+  fzf \
+  gh \
+  git \
+  glow \
+  gpg \
+  httpie \
+  hyperfine \
+  imagemagick \
+  iproute2 \
+  jq \
+  lynx \
+  lzma \
+  locales \
+  mawk \
+  ninja-build \
+  p7zip-full \
+  pandoc \
+  pass \
+  poppler-utils \
+  ripgrep \
+  sd \
+  sed \
+  sqlite3 \
+  starship \
+  stow \
+  sudo \
+  tmux \
+  tzdata \
+  unzip \
+  w3m w3m-img \
+  wget \
+  xxd \
+  xz-utils \
+  zoxide \
+  zsh zsh-autosuggestions zsh-syntax-highlighting\
+  && apt-get install -y /tmp/chezmoi.deb /tmp/carapace.deb\
+  && rm -rf /tmp/chezmoi.deb /tmp/carapace.deb /var/lib/apt/lists/*
+
+
+ADD https://github.com/walles/moor/releases/download/v2.4.0/moor-v2.4.0-linux-amd64 /usr/local/bin/moar
+RUN chmod +x /usr/local/bin/moar
+
+ADD https://github.com/getsops/sops/releases/download/v3.11.0/sops-v3.11.0.linux.amd64 /usr/local/bin/sops
+RUN chmod +x /usr/local/bin/sops
+
+
+ARG USER=appuser
+ARG UID=1000
+ARG GID=1000
+
+RUN mkdir -p /etc/sudoers.d/
+RUN groupadd --gid ${GID} $USER 2>/dev/null || true && \
+  useradd --uid ${UID} --gid ${GID} --create-home --shell /bin/bash ${USER}
+# echo "${USER} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/userconf && \
+# chmod 0440 /etc/sudoers.d/userconf
+
+# Copy Python application from builder
+COPY --from=builder /app /app
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+COPY --from=bun-deps /usr/local/bin /usr/local/bin
+
+COPY --from=node-deps /usr/local/bin /usr/local/bin
+COPY --from=node-deps /usr/local/lib /usr/local/lib
+
+COPY --from=rust-deps /usr/local/cargo/bin /usr/local/bin
+COPY --from=rust-deps /usr/local/rustup /usr/local/rustup
+
+COPY --from=go-deps /usr/local/go /usr/local/go
+COPY --from=go-deps --chown=${UID}:${GID} /go /home/${USER}/go
+
+COPY --from=python-deps /usr/local/bin /usr/local/bin
+COPY --from=python-deps /usr/local/lib /usr/local/lib
+COPY --from=python-deps /usr/local/include/python3.13 /usr/local/include/python3.13
+
+COPY --from=nix-deps --chown=${UID}:${GID} /nix /nix
+COPY --from=nix-deps --chown=${UID}:${GID} /etc/nix /etc/nix
+
+COPY --chmod=0755 scripts/entrypoint.sh /usr/local/bin/container-entrypoint
+
+ENV PYTHON_VERSION=3.13
+
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV PATH="/nix/var/nix/profiles/default/bin:${PATH}"
+
+ARG S6_OVERLAY_VERSION=3.2.1.0
+ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz /tmp
+RUN tar -C / -Jxpf /tmp/s6-overlay-noarch.tar.xz
+ADD https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-x86_64.tar.xz /tmp
+RUN tar -C / -Jxpf /tmp/s6-overlay-x86_64.tar.xz
+
+# S6 service to keep alive the container
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/keep-alive && \
+  echo "longrun" > /etc/s6-overlay/s6-rc.d/keep-alive/type && \
+  echo '#!/command/with-contenv bash' > /etc/s6-overlay/s6-rc.d/keep-alive/run && \
+  echo 'exec sleep infinity' >> /etc/s6-overlay/s6-rc.d/keep-alive/run && \
+  chmod +x /etc/s6-overlay/s6-rc.d/keep-alive/run
+
+WORKDIR /home/${USER}
+ENV HOME=/home/${USER}
+
+ENV CARGO_HOME=/usr/local/cargo
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV GOPATH="${HOME}/go"
+
+ENV PATH="${HOME}/.local/bin:${PATH}"
+ENV PATH="${HOME}/.bun/bin:${PATH}"
+ENV PATH="${GOPATH}/bin:${PATH}"
+ENV PATH="${HOME}/.nix-profile/bin:${PATH}"
+
+
+RUN echo '. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh 2>/dev/null || true' >> ${HOME}/.bashrc && \
+  echo '. /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh 2>/dev/null || true' >> ${HOME}/.zshrc
+
+RUN bob install nightly && bob use nightly
+
+ENV PATH="${HOME}/.local/share/bob/nvim-bin:${PATH}"
+
+ENTRYPOINT ["/usr/local/bin/container-entrypoint"]
