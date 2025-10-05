@@ -2,18 +2,29 @@
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import anyio
 import structlog
 
-from ccproxy.core.async_runtime import create_task as runtime_create_task
-from ccproxy.core.async_task_manager import AsyncTaskManager, create_managed_task
+from ccproxy.core.async_runtime import (
+    Task,
+    create_lock,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+from ccproxy.core.async_runtime import (
+    current_task as runtime_current_task,
+)
+from ccproxy.core.async_runtime import (
+    gather as runtime_gather,
+)
+from ccproxy.core.async_task_manager import AsyncTaskManager
 
 from .base import Hook, HookContext
 
@@ -35,8 +46,8 @@ class BackgroundHookThreadManager:
 
     def __init__(self, task_manager: AsyncTaskManager | None = None) -> None:
         self._task_manager = task_manager
-        self._tasks: set[asyncio.Task[Any]] = set()
-        self._lock = asyncio.Lock()
+        self._tasks: set[Task[Any]] = set()
+        self._lock = create_lock()
 
     async def emit_async(self, context: HookContext, registry: Any) -> None:
         """Schedule hook execution without blocking the caller."""
@@ -44,7 +55,7 @@ class BackgroundHookThreadManager:
         hook_task = HookTask(context=context)
 
         async def runner() -> None:
-            task = asyncio.current_task()
+            task = runtime_current_task()
             try:
                 await self._execute_task(hook_task, registry)
             finally:
@@ -79,7 +90,7 @@ class BackgroundHookThreadManager:
 
         try:
             with anyio.move_on_after(timeout):
-                await asyncio.gather(*tasks, return_exceptions=True)
+                await runtime_gather(*tasks, return_exceptions=True)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.warning("hook_executor_stop_error", error=str(exc), exc_info=True)
 
