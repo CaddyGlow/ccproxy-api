@@ -14,11 +14,13 @@ import functools
 import time
 from asyncio import subprocess as asyncio_subprocess
 from builtins import TimeoutError as BuiltinTimeoutError
-from collections.abc import Awaitable, Callable, Coroutine, Iterable
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Iterable
+from contextlib import asynccontextmanager
 from typing import Any, TypeVar, cast
 
 import anyio
 import sniffio
+from anyio import abc as anyio_abc
 
 
 _T = TypeVar("_T")
@@ -102,6 +104,25 @@ class AsyncRuntime:
     def create_queue(self, maxsize: int = 0) -> asyncio.Queue[Any]:
         """Return a new queue instance."""
         return asyncio.Queue(maxsize=maxsize)
+
+    @asynccontextmanager
+    async def task_group(self) -> AsyncIterator[anyio_abc.TaskGroup]:
+        """Yield an anyio task group tied to the active runtime."""
+
+        async with anyio.create_task_group() as group:
+            yield group
+
+    def cancel_scope(self) -> anyio.CancelScope:
+        """Return a new anyio cancel scope."""
+
+        return anyio.CancelScope()
+
+    def memory_object_stream(
+        self, max_buffer_size: int = 0
+    ) -> tuple[anyio_abc.ObjectSendStream[Any], anyio_abc.ObjectReceiveStream[Any]]:
+        """Return connected send/receive streams for in-memory messaging."""
+
+        return anyio.create_memory_object_stream(max_buffer_size)
 
     def create_future(self) -> asyncio.Future[Any]:
         """Create a future bound to the active event loop."""
@@ -241,6 +262,28 @@ def create_semaphore(value: int) -> anyio.Semaphore:
 def create_queue(maxsize: int = 0) -> asyncio.Queue[Any]:
     """Return a runtime-managed queue."""
     return runtime.create_queue(maxsize=maxsize)
+
+
+@asynccontextmanager
+async def task_group() -> AsyncIterator[anyio_abc.TaskGroup]:
+    """Yield an anyio task group tied to the runtime."""
+
+    async with runtime.task_group() as group:
+        yield group
+
+
+def cancel_scope() -> anyio.CancelScope:
+    """Return a runtime-managed cancel scope."""
+
+    return runtime.cancel_scope()
+
+
+def memory_object_stream(
+    max_buffer_size: int = 0,
+) -> tuple[anyio_abc.ObjectSendStream[Any], anyio_abc.ObjectReceiveStream[Any]]:
+    """Return runtime-managed memory object streams."""
+
+    return runtime.memory_object_stream(max_buffer_size)
 
 
 def create_future() -> asyncio.Future[Any]:
