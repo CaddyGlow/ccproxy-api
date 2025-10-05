@@ -1,6 +1,6 @@
 """Tests for scenario generation utilities."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -88,7 +88,7 @@ def test_analyze_distribution():
             message_type="tool",
             streaming=False,
             response_type="success",
-            timestamp=now.replace(second=now.second + 1),
+            timestamp=now + timedelta(seconds=1),
             api_format="anthropic",
             headers={},
         ),
