@@ -131,11 +131,12 @@ class TestAsyncTaskManager:
 
         await manager.start()
         assert manager.is_started
-        assert manager._cleanup_task is not None
+        assert manager._tasks == {}
+        assert manager._active_tasks == 0
 
         await manager.stop()
         assert not manager.is_started
-        assert manager._cleanup_task is None or manager._cleanup_task.done()
+        assert manager._tasks == {}
 
     async def test_double_start(self, manager):
         """Test that starting twice doesn't cause issues."""

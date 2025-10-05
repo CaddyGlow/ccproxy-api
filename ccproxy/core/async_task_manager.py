@@ -1,32 +1,21 @@
-"""Centralized async task management for lifecycle control and resource cleanup.
+"""Centralized async task management with unified lifecycle control."""
 
-This module provides a centralized task manager that tracks all spawned async tasks,
-handles proper cancellation on shutdown, and provides exception handling for
-background tasks to prevent resource leaks and unhandled exceptions.
-"""
+from __future__ import annotations
 
+import asyncio
 import contextlib
 import time
 import uuid
 from asyncio import InvalidStateError
 from asyncio import Task as AsyncTask
 from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any, Optional, TypeVar
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, TypeVar
 
-from ccproxy.core.async_runtime import (
-    CancelledError,
-    create_event,
-    create_lock,
-)
-from ccproxy.core.async_runtime import (
-    create_task as runtime_create_task,
-)
-from ccproxy.core.async_runtime import (
-    gather as runtime_gather,
-)
-from ccproxy.core.async_runtime import (
-    wait_for as runtime_wait_for,
-)
+import anyio
+
+from ccproxy.core.async_runtime import CancelledError, create_lock
+from ccproxy.core.async_runtime import create_task as runtime_create_task
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 
@@ -39,59 +28,38 @@ T = TypeVar("T")
 logger: TraceBoundLogger = get_logger(__name__)
 
 
+@dataclass
 class TaskInfo:
     """Information about a managed task."""
 
-    def __init__(
-        self,
-        task: AsyncTask[Any],
-        name: str,
-        created_at: float,
-        creator: str | None = None,
-        cleanup_callback: Callable[[], None] | None = None,
-    ):
-        self.task = task
-        self.name = name
-        self.created_at = created_at
-        self.creator = creator
-        self.cleanup_callback = cleanup_callback
-        self.task_id = str(uuid.uuid4())
+    task: AsyncTask[Any]
+    name: str
+    created_at: float
+    creator: str | None = None
+    cleanup_callback: Callable[[], None] | None = None
+    task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     @property
     def age_seconds(self) -> float:
-        """Get the age of the task in seconds."""
         return time.time() - self.created_at
 
     @property
     def is_done(self) -> bool:
-        """Check if the task is done."""
         return self.task.done()
 
     @property
     def is_cancelled(self) -> bool:
-        """Check if the task was cancelled."""
         return self.task.cancelled()
 
     def get_exception(self) -> BaseException | None:
-        """Get the exception if the task failed."""
         if self.task.done() and not self.task.cancelled():
-            try:
+            with contextlib.suppress(InvalidStateError):
                 return self.task.exception()
-            except InvalidStateError:
-                return None
         return None
 
 
 class AsyncTaskManager:
-    """Centralized manager for async tasks with lifecycle control.
-
-    This class provides:
-    - Task registration and tracking
-    - Automatic cleanup of completed tasks
-    - Graceful shutdown with cancellation
-    - Exception handling for background tasks
-    - Task monitoring and statistics
-    """
+    """Centralized manager for async tasks with lifecycle control."""
 
     def __init__(
         self,
@@ -99,59 +67,63 @@ class AsyncTaskManager:
         shutdown_timeout: float = 30.0,
         max_tasks: int = 1000,
     ):
-        """Initialize the task manager.
-
-        Args:
-            cleanup_interval: Interval for cleaning up completed tasks (seconds)
-            shutdown_timeout: Timeout for graceful shutdown (seconds)
-            max_tasks: Maximum number of tasks to track (prevents memory leaks)
-        """
         self.cleanup_interval = cleanup_interval
         self.shutdown_timeout = shutdown_timeout
         self.max_tasks = max_tasks
 
         self._tasks: dict[str, TaskInfo] = {}
         self._lock = create_lock()
-        self._shutdown_event = create_event()
-        self._cleanup_task: AsyncTask[None] | None = None
         self._started = False
+        self._active_tasks = 0
+        self._completed_tasks = 0
+        self._total_tasks_created = 0
 
     async def start(self) -> None:
-        """Start the task manager and its cleanup task."""
+        """Mark the task manager as ready."""
         if self._started:
             logger.warning("task_manager_already_started")
             return
 
         self._started = True
-        logger.debug("task_manager_starting", cleanup_interval=self.cleanup_interval)
-
-        # Start cleanup task
-        self._cleanup_task = runtime_create_task(
-            self._cleanup_loop(), name="task_manager_cleanup"
-        )
-
         logger.debug("task_manager_started")
 
     async def stop(self) -> None:
-        """Stop the task manager and cancel all managed tasks."""
+        """Cancel all managed tasks and reset state."""
         if not self._started:
             return
 
         logger.debug("task_manager_stopping", active_tasks=len(self._tasks))
-        self._shutdown_event.set()
 
-        # Stop cleanup task first
-        if self._cleanup_task and not self._cleanup_task.done():
-            self._cleanup_task.cancel()
-            with contextlib.suppress(CancelledError):
-                await self._cleanup_task
+        async with self._lock:
+            tasks_to_cancel: list[AsyncTask[Any]] = []
+            for info in self._tasks.values():
+                if not info.task.done():
+                    info.task.cancel()
+                tasks_to_cancel.append(info.task)
 
-        # Cancel all managed tasks
-        await self._cancel_all_tasks()
+        if tasks_to_cancel:
+            try:
+                with anyio.move_on_after(self.shutdown_timeout) as scope:
+                    await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+                if scope.cancel_called:
+                    logger.warning(
+                        "task_cancellation_timeout",
+                        timeout=self.shutdown_timeout,
+                        remaining_tasks=sum(
+                            not task.done() for task in tasks_to_cancel
+                        ),
+                    )
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.error(
+                    "task_manager_shutdown_error",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    exc_info=True,
+                )
 
-        # Clear task registry
         async with self._lock:
             self._tasks.clear()
+            self._active_tasks = 0
 
         self._started = False
         logger.debug("task_manager_stopped")
@@ -164,75 +136,65 @@ class AsyncTaskManager:
         creator: str | None = None,
         cleanup_callback: Callable[[], None] | None = None,
     ) -> AsyncTask[T]:
-        """Create a managed task.
-
-        Args:
-            coro: Coroutine to execute
-            name: Optional name for the task (auto-generated if None)
-            creator: Optional creator identifier for debugging
-            cleanup_callback: Optional callback to run when task completes
-
-        Returns:
-            The created task
-
-        Raises:
-            RuntimeError: If task manager is not started or has too many tasks
-        """
+        """Create a managed asyncio task."""
         if not self._started:
             raise RuntimeError("Task manager is not started")
 
-        # Check task limit
-        if len(self._tasks) >= self.max_tasks:
-            logger.warning(
-                "task_manager_at_capacity",
-                current_tasks=len(self._tasks),
-                max_tasks=self.max_tasks,
-            )
-            # Clean up completed tasks to make room
-            await self._cleanup_completed_tasks()
-
-            if len(self._tasks) >= self.max_tasks:
+        async with self._lock:
+            if self._active_tasks >= self.max_tasks:
+                logger.warning(
+                    "task_manager_at_capacity",
+                    current_tasks=self._active_tasks,
+                    max_tasks=self.max_tasks,
+                )
                 raise RuntimeError(f"Task manager at capacity ({self.max_tasks} tasks)")
+            self._active_tasks += 1
+            task_name = name or f"managed_task_{self._active_tasks}"
 
-        # Generate name if not provided
-        if name is None:
-            name = f"managed_task_{len(self._tasks)}"
+        async def managed() -> T:
+            try:
+                return await self._wrap_with_exception_handling(coro, task_name)
+            finally:
+                if cleanup_callback:
+                    with contextlib.suppress(Exception):
+                        cleanup_callback()
+                await self._remove_task(task_id)
 
-        # Create the task with exception handling
-        task: AsyncTask[T] = runtime_create_task(
-            self._wrap_with_exception_handling(coro, name),
-            name=name,
-        )
-
-        # Register the task
+        task = runtime_create_task(managed(), name=task_name)
         task_info = TaskInfo(
             task=task,
-            name=name,
+            name=task_name,
             created_at=time.time(),
             creator=creator,
             cleanup_callback=cleanup_callback,
         )
 
-        async with self._lock:
-            self._tasks[task_info.task_id] = task_info
+        task_id = task_info.task_id
 
-        # Add done callback for automatic cleanup
-        task.add_done_callback(lambda t: self._schedule_cleanup_callback(task_info))
+        async with self._lock:
+            self._tasks[task_id] = task_info
+            self._total_tasks_created += 1
 
         logger.debug(
             "task_created",
-            task_id=task_info.task_id,
-            task_name=name,
+            task_id=task_id,
+            task_name=task_name,
             creator=creator,
             total_tasks=len(self._tasks),
         )
 
         return task
 
+    async def _remove_task(self, task_id: str) -> None:
+        """Remove a task from tracking when it completes."""
+        async with self._lock:
+            self._tasks.pop(task_id, None)
+            self._active_tasks = max(0, self._active_tasks - 1)
+            self._completed_tasks += 1
+
     async def _wrap_with_exception_handling(
         self, coro: Coroutine[Any, Any, T], task_name: str
     ) -> T:
-        """Wrap coroutine with exception handling."""
         try:
             return await coro
         except CancelledError:
@@ -248,102 +210,7 @@ class AsyncTaskManager:
             )
             raise
 
-    def _schedule_cleanup_callback(self, task_info: TaskInfo) -> None:
-        """Schedule cleanup callback for completed task."""
-        try:
-            # Run cleanup callback if provided
-            if task_info.cleanup_callback:
-                task_info.cleanup_callback()
-        except Exception as e:
-            logger.warning(
-                "task_cleanup_callback_failed",
-                task_id=task_info.task_id,
-                task_name=task_info.name,
-                error=str(e),
-                exc_info=True,
-            )
-
-    async def _cleanup_loop(self) -> None:
-        """Background loop for cleaning up completed tasks."""
-        logger.debug("task_cleanup_loop_started")
-
-        while not self._shutdown_event.is_set():
-            try:
-                await runtime_wait_for(
-                    self._shutdown_event.wait(), timeout=self.cleanup_interval
-                )
-                break  # Shutdown event set
-            except TimeoutError:
-                pass  # Continue with cleanup
-
-            await self._cleanup_completed_tasks()
-
-        logger.debug("task_cleanup_loop_stopped")
-
-    async def _cleanup_completed_tasks(self) -> None:
-        """Clean up completed tasks from the registry."""
-        completed_tasks = []
-
-        async with self._lock:
-            for task_id, task_info in list(self._tasks.items()):
-                if task_info.is_done:
-                    completed_tasks.append((task_id, task_info))
-                    del self._tasks[task_id]
-
-        if completed_tasks:
-            logger.debug(
-                "tasks_cleaned_up",
-                completed_count=len(completed_tasks),
-                remaining_tasks=len(self._tasks),
-            )
-
-            # Log any task exceptions
-            for task_id, task_info in completed_tasks:
-                if task_info.get_exception():
-                    logger.warning(
-                        "completed_task_had_exception",
-                        task_id=task_id,
-                        task_name=task_info.name,
-                        exception=str(task_info.get_exception()),
-                    )
-
-    async def _cancel_all_tasks(self) -> None:
-        """Cancel all managed tasks with timeout."""
-        if not self._tasks:
-            return
-
-        logger.debug("cancelling_all_tasks", task_count=len(self._tasks))
-
-        # Cancel all tasks
-        tasks_to_cancel = []
-        async with self._lock:
-            for task_info in self._tasks.values():
-                if not task_info.is_done:
-                    task_info.task.cancel()
-                    tasks_to_cancel.append(task_info.task)
-
-        if not tasks_to_cancel:
-            return
-
-        # Wait for cancellation with timeout
-        try:
-            await runtime_wait_for(
-                runtime_gather(
-                    *tasks_to_cancel,
-                    return_exceptions=True,
-                ),
-                timeout=self.shutdown_timeout,
-            )
-            logger.debug("all_tasks_cancelled_gracefully")
-        except TimeoutError:
-            logger.warning(
-                "task_cancellation_timeout",
-                timeout=self.shutdown_timeout,
-                remaining_tasks=sum(1 for t in tasks_to_cancel if not t.done()),
-            )
-
     async def get_task_stats(self) -> dict[str, Any]:
-        """Get statistics about managed tasks."""
         async with self._lock:
             active_tasks = sum(1 for t in self._tasks.values() if not t.is_done)
             cancelled_tasks = sum(1 for t in self._tasks.values() if t.is_cancelled)
@@ -352,63 +219,43 @@ class AsyncTaskManager:
                 for t in self._tasks.values()
                 if t.is_done and not t.is_cancelled and t.get_exception()
             )
-
             return {
-                "total_tasks": len(self._tasks),
+                "total_tasks": self._total_tasks_created,
                 "active_tasks": active_tasks,
                 "cancelled_tasks": cancelled_tasks,
                 "failed_tasks": failed_tasks,
-                "completed_tasks": len(self._tasks) - active_tasks,
+                "completed_tasks": self._completed_tasks,
                 "started": self._started,
                 "max_tasks": self.max_tasks,
             }
 
     async def list_active_tasks(self) -> list[dict[str, Any]]:
-        """Get list of active tasks with details."""
-        active_tasks = []
-
         async with self._lock:
-            for task_info in self._tasks.values():
-                if not task_info.is_done:
-                    active_tasks.append(
-                        {
-                            "task_id": task_info.task_id,
-                            "name": task_info.name,
-                            "creator": task_info.creator,
-                            "age_seconds": task_info.age_seconds,
-                            "created_at": task_info.created_at,
-                        }
-                    )
-
-        return active_tasks
+            return [
+                {
+                    "task_id": info.task_id,
+                    "name": info.name,
+                    "creator": info.creator,
+                    "age_seconds": info.age_seconds,
+                    "created_at": info.created_at,
+                }
+                for info in self._tasks.values()
+                if not info.is_done
+            ]
 
     @property
     def is_started(self) -> bool:
-        """Check if the task manager is started."""
         return self._started
 
 
-# Dependency-injected access helpers
+# Dependency-injected helpers
 
 
 def _resolve_task_manager(
     *,
-    container: Optional["ServiceContainer"] = None,
-    task_manager: Optional["AsyncTaskManager"] = None,
-) -> "AsyncTaskManager":
-    """Resolve the async task manager instance using dependency injection.
-
-    Args:
-        container: Optional service container to resolve the manager from
-        task_manager: Optional explicit manager instance (takes precedence)
-
-    Returns:
-        AsyncTaskManager instance
-
-    Raises:
-        RuntimeError: If the manager cannot be resolved
-    """
-
+    container: ServiceContainer | None = None,
+    task_manager: AsyncTaskManager | None = None,
+) -> AsyncTaskManager:
     if task_manager is not None:
         return task_manager
 
@@ -438,23 +285,9 @@ async def create_managed_task(
     name: str | None = None,
     creator: str | None = None,
     cleanup_callback: Callable[[], None] | None = None,
-    container: Optional["ServiceContainer"] = None,
-    task_manager: Optional["AsyncTaskManager"] = None,
+    container: ServiceContainer | None = None,
+    task_manager: AsyncTaskManager | None = None,
 ) -> AsyncTask[T]:
-    """Create a managed task using the dependency-injected task manager.
-
-    Args:
-        coro: Coroutine to execute
-        name: Optional name for the task
-        creator: Optional creator identifier
-        cleanup_callback: Optional cleanup callback
-        container: Optional service container for resolving the task manager
-        task_manager: Optional explicit task manager instance
-
-    Returns:
-        The created managed task
-    """
-
     manager = _resolve_task_manager(container=container, task_manager=task_manager)
     return await manager.create_task(
         coro, name=name, creator=creator, cleanup_callback=cleanup_callback
@@ -463,22 +296,18 @@ async def create_managed_task(
 
 async def start_task_manager(
     *,
-    container: Optional["ServiceContainer"] = None,
-    task_manager: Optional["AsyncTaskManager"] = None,
+    container: ServiceContainer | None = None,
+    task_manager: AsyncTaskManager | None = None,
 ) -> None:
-    """Start the dependency-injected task manager."""
-
     manager = _resolve_task_manager(container=container, task_manager=task_manager)
     await manager.start()
 
 
 async def stop_task_manager(
     *,
-    container: Optional["ServiceContainer"] = None,
-    task_manager: Optional["AsyncTaskManager"] = None,
+    container: ServiceContainer | None = None,
+    task_manager: AsyncTaskManager | None = None,
 ) -> None:
-    """Stop the dependency-injected task manager."""
-
     manager = _resolve_task_manager(container=container, task_manager=task_manager)
     await manager.stop()
 
@@ -488,27 +317,12 @@ def create_fire_and_forget_task(
     *,
     name: str | None = None,
     creator: str | None = None,
-    container: Optional["ServiceContainer"] = None,
-    task_manager: Optional["AsyncTaskManager"] = None,
+    container: ServiceContainer | None = None,
+    task_manager: AsyncTaskManager | None = None,
 ) -> None:
-    """Create a fire-and-forget managed task from a synchronous context.
-
-    This function schedules a coroutine to run as a managed task without
-    needing to await it. Useful for calling from synchronous functions
-    that need to schedule background work.
-
-    Args:
-        coro: Coroutine to execute
-        name: Optional name for the task
-        creator: Optional creator identifier
-        container: Optional service container to resolve the task manager
-        task_manager: Optional explicit task manager instance
-    """
-
     manager = _resolve_task_manager(container=container, task_manager=task_manager)
 
     if not manager.is_started:
-        # If task manager isn't started, fall back to scheduling directly
         logger.warning(
             "task_manager_not_started_fire_and_forget",
             name=name,
@@ -517,18 +331,7 @@ def create_fire_and_forget_task(
         runtime_create_task(coro, name=name)
         return
 
-    # Schedule the task creation as a fire-and-forget operation
     async def _create_managed_task() -> None:
-        try:
-            await manager.create_task(coro, name=name, creator=creator)
-        except Exception as e:
-            logger.error(
-                "fire_and_forget_task_creation_failed",
-                name=name,
-                creator=creator,
-                error=str(e),
-                exc_info=True,
-            )
+        await manager.create_task(coro, name=name, creator=creator)
 
-    # Use asyncio.create_task to schedule the managed task creation
     runtime_create_task(_create_managed_task(), name=f"create_{name or 'unnamed'}")
