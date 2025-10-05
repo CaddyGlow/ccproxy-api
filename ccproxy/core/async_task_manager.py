@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import time
 import uuid
-from asyncio import InvalidStateError
-from asyncio import Task as AsyncTask
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import anyio
 
-from ccproxy.core.async_runtime import CancelledError, create_lock
-from ccproxy.core.async_runtime import create_task as runtime_create_task
+from ccproxy.core.async_runtime import (
+    CancelledError,
+    InvalidStateError,
+    Task,
+    create_lock,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+from ccproxy.core.async_runtime import (
+    gather as runtime_gather,
+)
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 
@@ -32,7 +39,7 @@ logger: TraceBoundLogger = get_logger(__name__)
 class TaskInfo:
     """Information about a managed task."""
 
-    task: AsyncTask[Any]
+    task: Task[Any]
     name: str
     created_at: float
     creator: str | None = None
@@ -95,7 +102,7 @@ class AsyncTaskManager:
         logger.debug("task_manager_stopping", active_tasks=len(self._tasks))
 
         async with self._lock:
-            tasks_to_cancel: list[AsyncTask[Any]] = []
+            tasks_to_cancel: list[Task[Any]] = []
             for info in self._tasks.values():
                 if not info.task.done():
                     info.task.cancel()
@@ -104,7 +111,7 @@ class AsyncTaskManager:
         if tasks_to_cancel:
             try:
                 with anyio.move_on_after(self.shutdown_timeout) as scope:
-                    await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
+                    await runtime_gather(*tasks_to_cancel, return_exceptions=True)
                 if scope.cancel_called:
                     logger.warning(
                         "task_cancellation_timeout",
@@ -135,8 +142,8 @@ class AsyncTaskManager:
         name: str | None = None,
         creator: str | None = None,
         cleanup_callback: Callable[[], None] | None = None,
-    ) -> AsyncTask[T]:
-        """Create a managed asyncio task."""
+    ) -> Task[T]:
+        """Create a managed background task."""
         if not self._started:
             raise RuntimeError("Task manager is not started")
 
@@ -287,7 +294,7 @@ async def create_managed_task(
     cleanup_callback: Callable[[], None] | None = None,
     container: ServiceContainer | None = None,
     task_manager: AsyncTaskManager | None = None,
-) -> AsyncTask[T]:
+) -> Task[T]:
     manager = _resolve_task_manager(container=container, task_manager=task_manager)
     return await manager.create_task(
         coro, name=name, creator=creator, cleanup_callback=cleanup_callback

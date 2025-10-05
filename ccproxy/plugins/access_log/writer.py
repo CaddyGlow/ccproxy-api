@@ -27,7 +27,7 @@ class AccessLogWriter:
     Features:
     - Async file I/O for performance
     - Optional buffering to reduce I/O operations
-    - Thread-safe with asyncio.Lock
+    - Thread-safe with the runtime lock abstraction
     - Auto-creates parent directories
     """
 
