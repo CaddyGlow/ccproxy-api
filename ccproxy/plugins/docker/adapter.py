@@ -358,6 +358,7 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
         image_name: str,
         image_tag: str = "latest",
         no_cache: bool = False,
+        dockerfile_path: Path | None = None,
         middleware: OutputMiddleware[T] | None = None,
     ) -> ProcessResult[T]:
         """Build a Docker image from a Dockerfile."""
@@ -389,9 +390,15 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
             )
             raise error
 
-        # Check for Dockerfile
-        dockerfile_path = dockerfile_dir / "Dockerfile"
-        if not dockerfile_path.exists():
+        if dockerfile_path is None:
+            dockerfile_path = dockerfile_dir / "Dockerfile"
+        else:
+            candidate = Path(dockerfile_path)
+            if not candidate.is_absolute():
+                candidate = (dockerfile_dir / candidate).resolve()
+            dockerfile_path = candidate
+
+        if not dockerfile_path.exists() or not dockerfile_path.is_file():
             error = create_docker_error(
                 f"Dockerfile not found: {dockerfile_path}",
                 None,
@@ -411,6 +418,11 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
 
         if no_cache:
             docker_cmd.append("--no-cache")
+
+        # Only pass custom Dockerfile if it differs from the default location
+        default_dockerfile = dockerfile_dir / "Dockerfile"
+        if dockerfile_path != default_dockerfile:
+            docker_cmd.extend(["-f", str(dockerfile_path)])
 
         docker_cmd.append(str(dockerfile_dir))
 

@@ -23,6 +23,8 @@ Example:
 """
 
 import asyncio
+import contextlib
+import errno
 import os
 import pty
 import shlex
@@ -30,7 +32,7 @@ import signal
 import sys
 import termios
 import tty
-from typing import Any, BinaryIO, Generic, TypeAlias, TypeVar, cast
+from typing import Any, BinaryIO, Generic, TypeAlias, TypeVar, Union, cast
 
 
 T = TypeVar("T")  # Type of processed output
@@ -276,13 +278,21 @@ async def run_command(
         finally:
             os.close(slave_fd)
 
+        # Cast middleware to RawPassthroughMiddleware since we're in raw_passthrough mode
+        raw_middleware = cast(RawPassthroughMiddleware, middleware)
+
         async def _forward_output() -> None:
             try:
                 while True:
-                    data = await asyncio.to_thread(os.read, master_fd, 4096)
+                    try:
+                        data = await asyncio.to_thread(os.read, master_fd, 4096)
+                    except OSError as exc:
+                        if exc.errno == errno.EIO:
+                            break
+                        raise
                     if not data:
                         break
-                    await middleware.process(data, "stdout")
+                    await raw_middleware.process(data, "stdout")
             finally:
                 os.close(master_fd)
 
@@ -302,10 +312,10 @@ async def run_command(
         input_task = asyncio.create_task(_forward_input())
 
         loop = asyncio.get_running_loop()
-        forwarded: list[signal.Signals] = []
+        forwarded: list[signal.Signals | int] = []
         exit_requested = False
 
-        def _forward_signal(sig: signal.Signals) -> None:
+        def _forward_signal(sig: signal.Signals | int) -> None:
             nonlocal exit_requested
             if process.returncode is not None:
                 return
@@ -326,18 +336,18 @@ async def run_command(
         try:
             return_code = await process.wait()
         finally:
-            for sig in forwarded:
-                try:
+            for sig in forwarded:  # type: ignore[assignment]
+                with contextlib.suppress(
+                    NotImplementedError
+                ):  # pragma: no cover - platform guard
                     loop.remove_signal_handler(sig)
-                except NotImplementedError:  # pragma: no cover - platform guard
-                    pass
             await input_task
             await output_task
             if stdin_fd is not None and original_term_settings is not None:
-                try:
-                    termios.tcsetattr(stdin_fd, termios.TCSADRAIN, original_term_settings)
-                except termios.error:  # pragma: no cover
-                    pass
+                with contextlib.suppress(termios.error):  # pragma: no cover
+                    termios.tcsetattr(
+                        stdin_fd, termios.TCSADRAIN, original_term_settings
+                    )
 
         exit_code = 130 if exit_requested and return_code == 0 else return_code
         return exit_code, [], []
@@ -362,12 +372,22 @@ async def run_command(
             List of processed output lines
         """
         captured: list[T] = []
+        # Cast middleware to RawPassthroughMiddleware when in raw_passthrough mode
+        raw_middleware = (
+            cast(RawPassthroughMiddleware, middleware) if raw_passthrough else None
+        )
+
         while True:
             line_bytes = await stream.readline()
             if not line_bytes:
                 break
             if raw_passthrough:
-                processed = await middleware.process(line_bytes, stream_type)
+                assert (
+                    raw_middleware is not None
+                )  # raw_middleware is set when raw_passthrough is True
+                await raw_middleware.process(line_bytes, stream_type)
+                # RawPassthroughMiddleware returns None, so we don't capture it
+                continue
             else:
                 line = line_bytes.decode()
                 if line.endswith("\n"):

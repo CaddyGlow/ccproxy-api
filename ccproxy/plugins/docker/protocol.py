@@ -136,6 +136,7 @@ class DockerAdapterProtocol(Protocol):
         image_name: str,
         image_tag: str = "latest",
         no_cache: bool = False,
+        dockerfile_path: Path | None = None,
         middleware: OutputMiddleware[T] | None = None,
     ) -> Awaitable[ProcessResult[T]]:
         """Build a Docker image from a Dockerfile.
@@ -145,6 +146,7 @@ class DockerAdapterProtocol(Protocol):
             image_name: Name to tag the built image with
             image_tag: Tag to use for the image
             no_cache: Whether to use Docker's cache during build
+            dockerfile_path: Optional path to an alternate Dockerfile
             middleware: Optional middleware for processing output
 
         Returns:
