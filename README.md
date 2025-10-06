@@ -152,20 +152,18 @@ export PLUGINS__METRICS__ENABLED=true
 
 ## Running
 
-To try the latest development branch without cloning the repo, use `uvx` to
-install directly from GitHub:
+To install the latest stable release without cloning the repository, use `uvx`
+to grab the published wheel and launch the CLI:
 
 ```bash
-uvx --with 'ccproxy-api[all] @ git+https://github.com/caddyglow/ccproxy-api@dev/v0.2' ccproxy
+uvx --with "ccproxy-api[all]==0.2.0" ccproxy serve --port 8000
 ```
 
-Or, if you prefer `pipx`, you can run the same branch directly:
+If you prefer `pipx`, install the package (optionally with extras) and use the
+local shim:
 
 ```bash
-pipx run --spec 'ccproxy-api[all] @ git+https://github.com/caddyglow/ccproxy-api@dev/v0.2' ccproxy
-```
-
-```bash
+pipx install "ccproxy-api[all]==0.2.0"
 ccproxy serve  # default on localhost:8000
 ```
 

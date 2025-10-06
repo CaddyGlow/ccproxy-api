@@ -2,6 +2,7 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+import anyio
 import pytest
 
 from ccproxy.core.plugins.hooks.base import HookContext
@@ -31,17 +32,13 @@ async def test_background_hook_manager_no_race_on_start(
     registry = _Registry([hook_fn])
     manager = BackgroundHookThreadManager()
 
-    manager.start()
-    # Immediately emit without any sleep to simulate race window
-    # Use an existing HookEvent value to avoid creating a new Enum
     ctx = HookContext(
         event=HookEvent.CUSTOM_EVENT, timestamp=datetime.now(UTC), data={}, metadata={}
     )
-    manager.emit_async(ctx, registry)
+    await manager.emit_async(ctx, registry)
 
-    # allow background thread to process
     await asyncio.sleep(0.05)
-    manager.stop()
+    await manager.stop()
 
     assert sum(executed) == 1
     logs = "\n".join(
@@ -65,14 +62,13 @@ async def test_background_hook_manager_lazy_start_emit(
     registry = _Registry([hook_fn])
     manager = BackgroundHookThreadManager()
 
-    # Do not call start() explicitly; emit triggers lazy start
     ctx = HookContext(
         event=HookEvent.CUSTOM_EVENT, timestamp=datetime.now(UTC), data={}, metadata={}
     )
-    manager.emit_async(ctx, registry)
+    await manager.emit_async(ctx, registry)
 
     await asyncio.sleep(0.05)
-    manager.stop()
+    await manager.stop()
 
     assert sum(executed) == 1
     logs = "\n".join(
@@ -80,3 +76,42 @@ async def test_background_hook_manager_lazy_start_emit(
     )
     assert "background_thread_not_ready_dropping_task" not in logs
     assert "is bound to a different event loop" not in logs
+
+
+@pytest.mark.unit
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_background_hook_manager_stress_high_concurrency() -> None:
+    total_events = 250
+    processed = 0
+    processed_lock = anyio.Lock()
+
+    async def hook_fn(ctx: HookContext) -> None:  # noqa: ARG001
+        nonlocal processed
+        async with processed_lock:
+            processed += 1
+        await anyio.sleep(0)
+
+    registry = _Registry([hook_fn])
+    manager = BackgroundHookThreadManager()
+
+    async with anyio.create_task_group() as tg:
+        for _ in range(total_events):
+            ctx = HookContext(
+                event=HookEvent.CUSTOM_EVENT,
+                timestamp=datetime.now(UTC),
+                data={},
+                metadata={},
+            )
+            tg.start_soon(manager.emit_async, ctx, registry)
+
+    with anyio.fail_after(3.0):
+        while True:
+            async with processed_lock:
+                if processed >= total_events:
+                    break
+            await anyio.sleep(0.01)
+
+    await manager.stop()
+
+    assert processed == total_events

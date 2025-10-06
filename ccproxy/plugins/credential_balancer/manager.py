@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -15,6 +14,7 @@ from ccproxy.auth.manager import AuthManager
 from ccproxy.auth.managers.token_snapshot import TokenSnapshot
 from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.oauth.protocol import StandardProfileFields
+from ccproxy.core.async_runtime import create_lock
 from ccproxy.core.logging import TraceBoundLogger, get_plugin_logger
 from ccproxy.core.request_context import RequestContext
 
@@ -41,7 +41,10 @@ class CredentialEntry:
     logger: TraceBoundLogger
     _failure_count: int = 0
     _disabled_until: float | None = None
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
+    _lock: Any = field(init=False)
+
+    def __post_init__(self) -> None:
+        self._lock = create_lock()
 
     @property
     def label(self) -> str:
@@ -174,8 +177,8 @@ class CredentialBalancerTokenManager(AuthManager):
         self._entries = entries
         self._strategy = config.strategy
         self._failure_codes = set(config.failure_status_codes)
-        self._lock = asyncio.Lock()
-        self._state_lock = asyncio.Lock()
+        self._lock = create_lock()
+        self._state_lock = create_lock()
         self._request_states: dict[str, _RequestState] = {}
         self._active_index = 0
         self._next_index = 0

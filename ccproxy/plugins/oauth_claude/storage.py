@@ -1,12 +1,12 @@
 """Token storage for Claude OAuth plugin."""
 
-import asyncio
 import json
 import tempfile
 from pathlib import Path
 from typing import Any, cast
 
 from ccproxy.auth.storage.base import BaseJsonStorage
+from ccproxy.core.async_runtime import to_thread as runtime_to_thread
 from ccproxy.core.logging import get_plugin_logger
 
 from .models import ClaudeCredentials, ClaudeProfileInfo
@@ -132,7 +132,7 @@ class ClaudeProfileStorage:
             # Atomic rename
             tmp_path.replace(self.file_path)
 
-        await asyncio.to_thread(write_file)
+        await runtime_to_thread(write_file)
 
     async def _read_json(self) -> dict[str, Any] | None:
         """Read JSON data from file.
@@ -147,7 +147,7 @@ class ClaudeProfileStorage:
             with self.file_path.open("r") as f:
                 return cast(dict[str, Any], json.load(f))
 
-        return cast(dict[str, Any], await asyncio.to_thread(read_file))
+        return cast(dict[str, Any], await runtime_to_thread(read_file))
 
     async def save_profile(self, profile_data: dict[str, Any]) -> bool:
         """Save Claude profile data.

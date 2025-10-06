@@ -1,10 +1,26 @@
 """Permission service for handling permission requests without UI dependencies."""
 
-import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
+from ccproxy.core.async_runtime import (
+    CancelledError,
+    Queue,
+    QueueFull,
+    Task,
+    create_lock,
+    create_queue,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+from ccproxy.core.async_runtime import (
+    sleep as runtime_sleep,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import AsyncTaskManager, create_managed_task
 from ccproxy.core.errors import (
     PermissionNotFoundError,
@@ -32,10 +48,10 @@ class PermissionService:
     def __init__(self, timeout_seconds: int = 30):
         self._timeout_seconds = timeout_seconds
         self._requests: dict[str, PermissionRequest] = {}
-        self._expiry_task: asyncio.Task[None] | None = None
+        self._expiry_task: Task[None] | None = None
         self._shutdown = False
-        self._event_queues: list[asyncio.Queue[dict[str, Any]]] = []
-        self._lock = asyncio.Lock()
+        self._event_queues: list[Queue[dict[str, Any]]] = []
+        self._lock = create_lock()
 
     async def start(
         self,
@@ -64,7 +80,7 @@ class PermissionService:
                 "permission_service_task_manager_unavailable",
                 error=str(exc),
             )
-            self._expiry_task = asyncio.create_task(
+            self._expiry_task = runtime_create_task(
                 self._expiry_checker(), name="permission_expiry_checker"
             )
 
@@ -74,7 +90,7 @@ class PermissionService:
         self._shutdown = True
         if self._expiry_task:
             self._expiry_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            with contextlib.suppress(CancelledError):
                 await self._expiry_task
             self._expiry_task = None
         logger.debug("permission_service_stopped")
@@ -212,7 +228,7 @@ class PermissionService:
     async def _expiry_checker(self) -> None:
         while not self._shutdown:
             try:
-                await asyncio.sleep(self._get_expiry_poll_interval())
+                await runtime_sleep(self._get_expiry_poll_interval())
 
                 now = datetime.now(UTC)
                 expired_ids = []
@@ -247,7 +263,7 @@ class PermissionService:
                         count=len(expired_ids),
                     )
 
-            except asyncio.CancelledError:
+            except CancelledError:
                 break
             except Exception as e:
                 logger.error(
@@ -294,20 +310,18 @@ class PermissionService:
             )
         )
 
-    async def subscribe_to_events(self) -> asyncio.Queue[dict[str, Any]]:
+    async def subscribe_to_events(self) -> Queue[dict[str, Any]]:
         """Subscribe to permission events.
 
         Returns:
             An async queue that will receive events
         """
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        queue: Queue[dict[str, Any]] = cast(Queue[dict[str, Any]], create_queue())
         async with self._lock:
             self._event_queues.append(queue)
         return queue
 
-    async def unsubscribe_from_events(
-        self, queue: asyncio.Queue[dict[str, Any]]
-    ) -> None:
+    async def unsubscribe_from_events(self, queue: Queue[dict[str, Any]]) -> None:
         """Unsubscribe from permission events.
 
         Args:
@@ -330,7 +344,7 @@ class PermissionService:
             return
 
         for queue in queues:
-            with contextlib.suppress(asyncio.QueueFull):
+            with contextlib.suppress(QueueFull):
                 queue.put_nowait(event)
 
     async def get_pending_requests(self) -> list[PermissionRequest]:
@@ -365,7 +379,7 @@ class PermissionService:
             The final status of the permission request
 
         Raises:
-            asyncio.TimeoutError: If timeout is reached before resolution
+            TimeoutError: If timeout is reached before resolution
             PermissionNotFoundError: If request ID is not found
         """
         async with self._lock:
@@ -381,7 +395,7 @@ class PermissionService:
 
         try:
             # Efficiently wait for the event to be set
-            await asyncio.wait_for(
+            await runtime_wait_for(
                 request._resolved_event.wait(), timeout=timeout_seconds
             )
         except TimeoutError as e:

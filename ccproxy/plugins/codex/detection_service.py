@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import socket
@@ -15,6 +14,24 @@ from fastapi import FastAPI, Request, Response
 
 from ccproxy.config.settings import Settings
 from ccproxy.config.utils import get_ccproxy_cache_dir
+from ccproxy.core.async_runtime import (
+    FIRST_COMPLETED,
+    PIPE,
+    CancelledError,
+    create_event,
+)
+from ccproxy.core.async_runtime import (
+    create_subprocess_exec as runtime_create_subprocess_exec,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+from ccproxy.core.async_runtime import (
+    wait as runtime_wait,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.models.detection import DetectedHeaders, DetectedPrompts
 from ccproxy.services.cli_detection import CLIDetectionService
@@ -313,7 +330,7 @@ class CodexDetectionService:
         config = Config(temp_app, host="127.0.0.1", port=port, log_level="error")
         server = Server(config)
 
-        server_ready = asyncio.Event()
+        server_ready = create_event()
 
         @temp_app.on_event("startup")
         async def signal_server_ready() -> None:
@@ -322,14 +339,14 @@ class CodexDetectionService:
             server_ready.set()
 
         logger.debug("start", category="plugin")
-        server_task = asyncio.create_task(server.serve())
-        ready_task = asyncio.create_task(server_ready.wait())
+        server_task = runtime_create_task(server.serve())
+        ready_task = runtime_create_task(server_ready.wait())
 
         try:
-            done, _pending = await asyncio.wait(
+            done, _pending = await runtime_wait(
                 {ready_task, server_task},
                 timeout=5,
-                return_when=asyncio.FIRST_COMPLETED,
+                return_when=FIRST_COMPLETED,
             )
             if ready_task in done:
                 await ready_task
@@ -389,15 +406,15 @@ class CodexDetectionService:
                     "test",
                 ]
 
-                process = await asyncio.create_subprocess_exec(
+                process = await runtime_create_subprocess_exec(
                     *cmd,
                     env=env,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                    stdout=PIPE,
+                    stderr=PIPE,
                 )
                 # Wait for process with timeout
                 try:
-                    await asyncio.wait_for(process.wait(), timeout=300)
+                    await runtime_wait_for(process.wait(), timeout=300)
                 except TimeoutError:
                     process.kill()
                     await process.wait()
@@ -413,7 +430,7 @@ class CodexDetectionService:
         finally:
             if not ready_task.done():
                 ready_task.cancel()
-                with suppress(asyncio.CancelledError):
+                with suppress(CancelledError):
                     await ready_task
 
             server.should_exit = True

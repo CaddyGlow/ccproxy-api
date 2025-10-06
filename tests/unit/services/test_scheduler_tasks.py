@@ -477,9 +477,11 @@ class TestVersionUpdateCheckTask:
                 new_callable=AsyncMock,
             ) as mock_fetch,
             patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
         ):
             mock_load.return_value = recent_state
             mock_path.return_value = "/tmp/version_check.json"
+            mock_current.return_value = "1.0.0"
 
             task = VersionUpdateCheckTask(
                 name="version_skip_test",

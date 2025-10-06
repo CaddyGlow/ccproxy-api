@@ -1,9 +1,22 @@
 """Core scheduler for managing periodic tasks."""
 
-import asyncio
 from typing import Any
 
 import structlog
+
+from ccproxy.core.async_runtime import (
+    Semaphore,
+    create_semaphore,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    gather as runtime_gather,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 
 from .errors import (
     SchedulerError,
@@ -49,7 +62,7 @@ class Scheduler:
 
         self._running = False
         self._tasks: dict[str, BaseScheduledTask] = {}
-        self._semaphore: asyncio.Semaphore | None = None
+        self._semaphore: Semaphore | None = None
 
     async def start(self) -> None:
         """Start the scheduler and all enabled tasks."""
@@ -58,7 +71,7 @@ class Scheduler:
             return
 
         self._running = True
-        self._semaphore = asyncio.Semaphore(self.max_concurrent_tasks)
+        self._semaphore = create_semaphore(self.max_concurrent_tasks)
 
         logger.debug(
             "scheduler_starting",
@@ -103,12 +116,15 @@ class Scheduler:
         if stop_tasks:
             try:
                 # Wait for all tasks to stop gracefully
-                await asyncio.wait_for(
-                    asyncio.gather(*stop_tasks, return_exceptions=True),
+                await runtime_wait_for(
+                    runtime_gather(
+                        *stop_tasks,
+                        return_exceptions=True,
+                    ),
                     timeout=self.graceful_shutdown_timeout,
                 )
                 logger.debug("scheduler_stopped_gracefully")
-            except TimeoutError:
+            except RuntimeTimeoutError:
                 logger.warning(
                     "scheduler_shutdown_timeout",
                     timeout=self.graceful_shutdown_timeout,

@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    create_lock,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.logging import get_plugin_logger
 
@@ -60,7 +68,7 @@ class StreamHandle:
 
         # Worker management
         self._worker: StreamWorker | None = None
-        self._worker_lock = asyncio.Lock()
+        self._worker_lock = create_lock()
         self._listeners: dict[str, QueueListener] = {}
         self._created_at = time.time()
         self._first_listener_at: float | None = None
@@ -74,49 +82,67 @@ class StreamHandle:
     async def create_listener(self) -> AsyncIterator[Any]:
         """Create a new listener for this stream.
 
-        This method starts the worker on first listener and returns
-        an async iterator for consuming messages.
-
-        Yields:
-            Messages from the stream
+        Ensures the worker exists, registers the listener before the worker
+        begins consuming messages, and then yields messages as they arrive.
         """
-        # Start worker if needed
-        await self._ensure_worker_started()
+        async with self._worker_lock:
+            worker_was_created = False
 
-        if not self._worker:
-            raise RuntimeError("Failed to start stream worker")
+            if self._worker is None:
+                worker_id = f"{self.handle_id}-worker"
+                self._worker = StreamWorker(
+                    worker_id=worker_id,
+                    message_iterator=self._message_iterator,
+                    session_id=self.session_id,
+                    request_id=self.request_id,
+                    session_client=self._session_client,
+                    stream_handle=self,
+                )
+                worker_was_created = True
 
-        # Create listener
-        queue = self._worker.get_message_queue()
-        listener = await queue.create_listener()
-        self._listeners[listener.listener_id] = listener
+            worker = self._worker
+            if worker is None:
+                raise RuntimeError("Failed to initialize stream worker")
 
-        if self._first_listener_at is None:
-            self._first_listener_at = time.time()
+            queue = worker.get_message_queue()
+            listener = await queue.create_listener()
+            self._listeners[listener.listener_id] = listener
+
+            if self._first_listener_at is None:
+                self._first_listener_at = time.time()
+
+            start_worker = worker.status == WorkerStatus.IDLE
+
+        if worker_was_created:
+            logger.debug(
+                "stream_handle_worker_created",
+                handle_id=self.handle_id,
+                worker_id=worker.worker_id,
+                session_id=self.session_id,
+                category="streaming",
+            )
+
+        if start_worker:
+            await worker.start()
 
         logger.debug(
             "stream_handle_listener_created",
             handle_id=self.handle_id,
             listener_id=listener.listener_id,
             total_listeners=len(self._listeners),
-            worker_status=self._worker.status.value,
+            worker_status=worker.status.value,
             category="streaming",
         )
 
         try:
-            # Yield messages from listener
             async for message in listener:
                 yield message
-
         except GeneratorExit:
-            # Client disconnected
             logger.debug(
                 "stream_handle_listener_disconnected",
                 handle_id=self.handle_id,
                 listener_id=listener.listener_id,
             )
-
-            # Check if this will be the last listener after removal
             remaining_listeners = len(self._listeners) - 1
             if remaining_listeners == 0 and self._session_client:
                 logger.debug(
@@ -125,41 +151,9 @@ class StreamHandle:
                     listener_id=listener.listener_id,
                     message="Last listener disconnected, will trigger SDK interrupt in cleanup",
                 )
-
-            raise
-
         finally:
-            # Remove listener
             await self._remove_listener(listener.listener_id)
-
-            # Check if we should trigger cleanup
             await self._check_cleanup()
-
-    async def _ensure_worker_started(self) -> None:
-        """Ensure the worker is started, creating it if needed."""
-        async with self._worker_lock:
-            if self._worker is None:
-                # Create worker
-                worker_id = f"{self.handle_id}-worker"
-                self._worker = StreamWorker(
-                    worker_id=worker_id,
-                    message_iterator=self._message_iterator,
-                    session_id=self.session_id,
-                    request_id=self.request_id,
-                    session_client=self._session_client,
-                    stream_handle=self,  # Pass self for message tracking
-                )
-
-                # Start worker
-                await self._worker.start()
-
-                logger.debug(
-                    "stream_handle_worker_created",
-                    handle_id=self.handle_id,
-                    worker_id=worker_id,
-                    session_id=self.session_id,
-                    category="streaming",
-                )
 
     async def _remove_listener(self, listener_id: str) -> None:
         """Remove a listener and clean it up.
@@ -291,7 +285,7 @@ class StreamHandle:
                 message="Calling SDK interrupt to gracefully stop stream",
             )
 
-            await asyncio.wait_for(
+            await runtime_wait_for(
                 self._session_client.interrupt(),
                 timeout=self._interrupt_timeout,  # Configurable timeout for stream handle initiated interrupts
             )
@@ -318,7 +312,7 @@ class StreamHandle:
                         message="Worker stop failed but continuing",
                     )
 
-        except TimeoutError:
+        except RuntimeTimeoutError:
             logger.warning(
                 "stream_handle_interrupt_timeout",
                 handle_id=self.handle_id,

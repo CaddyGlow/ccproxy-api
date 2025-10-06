@@ -19,7 +19,6 @@ dependencies = [
   "packaging>=25.0",
   "sortedcontainers>=2.4.0",
   "pyjwt>=2.10.1",
-  "dummy",
 ]
 
 [build-system]
@@ -47,22 +46,25 @@ all = [
   "sqlmodel>=0.0.24",
   "SQLAlchemy>=2.0.0",
   "duckdb-engine>=0.17.0",
-  "duckdb>=1.1.0",
+  "duckdb>=1.1.0,<1.4.0",
   "fastapi-mcp>=0.3.7",
   "textual>=3.7.1",
   "aioconsole>=0.8.1",
   "prometheus-client>=0.22.1",
-  "claude-agent-sdk>=0.1.0",
   "sse-starlette>=3.0.2",
+  "claude-agent-sdk>=0.1.0",
 ]
 
-plugins-claude = ["claude-agent-sdk>=0.0.19", "qrcode>=8.2"]
+plugins-claude = [
+ "claude-agent-sdk>=0.1.0",
+ "qrcode>=8.2",
+]
 plugins-codex = ["qrcode>=8.2", "pyjwt>=2.10.1"]
 plugins-storage = [
   "sqlmodel>=0.0.24",
   "SQLAlchemy>=2.0.0",
   "duckdb-engine>=0.17.0",
-  "duckdb>=1.1.0",
+  "duckdb>=1.1.0,<1.4.0",
 ]
 plugins-mcp = ["fastapi-mcp>=0.3.7"]
 plugins-tui = ["textual>=3.7.1", "aioconsole>=0.8.1"]
@@ -363,10 +365,6 @@ legacy_tox_ini = """
 
 [tool.uv]
 package = true
-
-[tool.uv.sources]
-claude-agent-sdk = { git = "https://github.com/anthropics/claude-agent-sdk-python.git" }
-dummy = { path = "../../.config/ccproxy/plugins/dummy.ccproxy" }
 
 
 [tool.pyright]

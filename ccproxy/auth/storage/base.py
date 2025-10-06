@@ -1,6 +1,5 @@
 """Abstract base class for token storage."""
 
-import asyncio
 import contextlib
 import json
 import shutil
@@ -11,6 +10,7 @@ from typing import Any, Generic, TypeVar
 
 from ccproxy.auth.exceptions import CredentialsInvalidError, CredentialsStorageError
 from ccproxy.auth.models.credentials import BaseCredentials
+from ccproxy.core.async_runtime import to_thread as runtime_to_thread
 from ccproxy.core.logging import get_logger
 
 
@@ -113,7 +113,7 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
                 with self.file_path.open("r") as f:
                     return json.load(f)  # type: ignore[no-any-return]
 
-            data = await asyncio.to_thread(read_file)
+            data = await runtime_to_thread(read_file)
             return data
 
         except json.JSONDecodeError as e:
@@ -166,7 +166,7 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
             backup_path = self.file_path.parent / backup_name
 
             # Copy file to backup location
-            await asyncio.to_thread(shutil.copy2, self.file_path, backup_path)
+            await runtime_to_thread(shutil.copy2, self.file_path, backup_path)
 
             logger.info(
                 "backup_created",
@@ -207,7 +207,7 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
 
         try:
             # Ensure parent directory exists
-            await asyncio.to_thread(
+            await runtime_to_thread(
                 self.file_path.parent.mkdir,
                 parents=True,
                 exist_ok=True,
@@ -225,7 +225,7 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
                 # Atomic rename
                 temp_path.replace(self.file_path)
 
-            await asyncio.to_thread(write_file)
+            await runtime_to_thread(write_file)
 
             logger.debug(
                 "json_write_success",
@@ -273,7 +273,7 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
             True if file exists, False otherwise
         """
         # Run file system check in thread pool for consistency
-        file_exists = await asyncio.to_thread(
+        file_exists = await runtime_to_thread(
             lambda: self.file_path.exists() and self.file_path.is_file()
         )
 
@@ -297,7 +297,7 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
         """
         try:
             if await self.exists():
-                await asyncio.to_thread(self.file_path.unlink)
+                await runtime_to_thread(self.file_path.unlink)
                 logger.debug("file_deleted", path=str(self.file_path))
                 return True
             return False

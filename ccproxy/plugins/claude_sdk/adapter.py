@@ -1,6 +1,5 @@
 """Claude SDK adapter implementation using delegation pattern."""
 
-import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator
@@ -12,6 +11,7 @@ from starlette.requests import Request as StarletteRequest
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.config.utils import OPENAI_CHAT_COMPLETIONS_PATH
+from ccproxy.core.async_runtime import CancelledError
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.request_context import RequestContext
 from ccproxy.llms.streaming import OpenAIStreamProcessor
@@ -377,7 +377,7 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
                                 request_context=request_context,
                             ):
                                 yield sse_chunk
-                        except asyncio.CancelledError as exc:
+                        except CancelledError as exc:
                             logger.warning(
                                 "streaming_cancelled",
                                 error=str(exc),
@@ -482,7 +482,7 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
                                     yield chunk
                                 else:
                                     yield str(chunk).encode()
-                    except asyncio.CancelledError as exc:
+                    except CancelledError as exc:
                         logger.warning(
                             "streaming_cancelled",
                             error=str(exc),
@@ -599,7 +599,7 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
                 category="http",
             )
             raise HTTPException(status_code=502, detail=f"HTTP error: {e}") from e
-        except asyncio.CancelledError as e:
+        except CancelledError as e:
             logger.warning(
                 "request_cancelled",
                 error=str(e),

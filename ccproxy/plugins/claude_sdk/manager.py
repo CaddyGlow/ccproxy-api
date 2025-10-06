@@ -7,7 +7,6 @@ management using dependency injection patterns without any global state.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 
 # Type alias for metrics factory function
@@ -15,6 +14,7 @@ from typing import Any, TypeAlias
 
 from claude_agent_sdk import ClaudeAgentOptions
 
+from ccproxy.core.async_runtime import Lock, create_lock
 from ccproxy.core.errors import ClaudeProxyError
 from ccproxy.core.logging import get_plugin_logger
 
@@ -47,7 +47,7 @@ class SessionManager:
 
         self.config = config
         self._session_pool: SessionPool | None = None
-        self._lock = asyncio.Lock()
+        self._lock: Lock = create_lock()
         self._metrics_factory = metrics_factory
 
         # Initialize session pool if enabled

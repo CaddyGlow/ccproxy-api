@@ -1,11 +1,11 @@
 """Base OAuth client with common PKCE flow implementation."""
 
-import asyncio
 import base64
 import hashlib
 import secrets
 import urllib.parse
 from abc import ABC, abstractmethod
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import Any, Generic, TypeVar
 
@@ -18,6 +18,15 @@ from ccproxy.auth.exceptions import (
 from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.config.settings import Settings
+from ccproxy.core.async_runtime import (
+    Task,
+)
+from ccproxy.core.async_runtime import (
+    create_event as runtime_create_event,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
 from ccproxy.core.logging import get_logger
 from ccproxy.http.client import HTTPClientFactory
 
@@ -89,8 +98,8 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
                 hook_manager_id=id(hook_manager) if hook_manager else None,
             )
 
-        self._callback_server: asyncio.Task[None] | None = None
-        self._auth_complete = asyncio.Event()
+        self._callback_server: Task[None] | None = None
+        self._auth_complete = runtime_create_event()
         self._auth_result: Any | None = None
         self._auth_error: str | None = None
 
@@ -106,13 +115,8 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             and self.http_client
             and not self.http_client.is_closed
         ):
-            try:
-                # Try to get the current event loop
-                loop = asyncio.get_running_loop()
-                loop.create_task(self.http_client.aclose())
-            except RuntimeError:
-                # No running event loop, can't clean up async resources
-                pass
+            with suppress(RuntimeError):
+                runtime_create_task(self.http_client.aclose())
 
     def _generate_pkce_pair(self) -> tuple[str, str]:
         """Generate PKCE code verifier and challenge.

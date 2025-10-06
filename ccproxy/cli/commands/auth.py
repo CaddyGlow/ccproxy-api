@@ -1,6 +1,5 @@
 """Authentication and credential management commands."""
 
-import asyncio
 import contextlib
 import inspect
 import logging
@@ -28,6 +27,7 @@ from ccproxy.auth.oauth.flows import BrowserFlow, DeviceCodeFlow, ManualCodeFlow
 from ccproxy.auth.oauth.registry import FlowType, OAuthRegistry
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import Settings
+from ccproxy.core.async_runtime import run as runtime_run
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
 from ccproxy.core.plugins import load_cli_plugins
 from ccproxy.core.plugins.hooks.manager import HookManager
@@ -482,7 +482,7 @@ def _provider_plugin_name(provider: str) -> str | None:
 def _await_if_needed(value: Any) -> Any:
     """Await coroutine values in synchronous CLI context."""
     if inspect.isawaitable(value):
-        return asyncio.run(cast(Coroutine[Any, Any, Any], value))
+        return runtime_run(cast(Coroutine[Any, Any, Any], value))
     return value
 
 
@@ -523,7 +523,7 @@ def _resolve_token_manager_from_registry(
 
     for candidate in candidates:
         try:
-            manager = asyncio.run(registry.get(candidate))
+            manager = runtime_run(registry.get(candidate))
         except Exception as exc:  # pragma: no cover - defensive
             logger.debug(
                 "auth_manager_registry_get_failed", name=candidate, error=str(exc)
@@ -617,13 +617,8 @@ async def _lazy_register_oauth_provider(
 
     try:
         # Initialize all plugins; auth providers will register to oauth_registry
-        import asyncio as _asyncio
-
-        if _asyncio.get_event_loop().is_running():
-            # In practice, we're already in async context; just await directly
-            await plugin_registry.initialize_all(container)
-        else:  # pragma: no cover - defensive path
-            _asyncio.run(plugin_registry.initialize_all(container))
+        # We're already in an async context, so initialize directly.
+        await plugin_registry.initialize_all(container)
     except Exception as e:
         logger.debug(
             "plugin_initialization_failed_cli",
@@ -676,7 +671,7 @@ async def discover_oauth_providers(
 def get_oauth_provider_choices() -> list[str]:
     """Get list of available OAuth provider names for CLI choices."""
     container = _get_service_container()
-    providers = asyncio.run(discover_oauth_providers(container))
+    providers = runtime_run(discover_oauth_providers(container))
     return list(providers.keys())
 
 
@@ -768,7 +763,7 @@ def list_providers() -> None:
 
     try:
         container = _get_service_container()
-        providers = asyncio.run(discover_oauth_providers(container))
+        providers = runtime_run(discover_oauth_providers(container))
 
         if not providers:
             toolkit.print("No OAuth providers found", tag="warning")
@@ -896,12 +891,12 @@ def login_command(
     try:
         container = _get_service_container()
         registry = container.get_oauth_registry()
-        oauth_provider = asyncio.run(
+        oauth_provider = runtime_run(
             get_oauth_provider_for_name(provider, registry, container)
         )
 
         if not oauth_provider:
-            providers = asyncio.run(discover_oauth_providers(container))
+            providers = runtime_run(discover_oauth_providers(container))
             available = ", ".join(providers.keys()) if providers else "none"
             toolkit.print(
                 f"Provider '{provider}' not found. Available: {available}",
@@ -925,7 +920,7 @@ def login_command(
                             f"Provider '{provider}' doesn't support manual code entry"
                         )
                     flow_engine = ManualCodeFlow()
-                    success = asyncio.run(
+                    success = runtime_run(
                         flow_engine.run(oauth_provider, save_path=custom_path_str)
                     )
 
@@ -935,14 +930,14 @@ def login_command(
                 ):
                     # Device flow preferred and supported
                     flow_engine = DeviceCodeFlow()
-                    success = asyncio.run(
+                    success = runtime_run(
                         flow_engine.run(oauth_provider, save_path=custom_path_str)
                     )
 
                 else:
                     # Browser flow (default)
                     flow_engine = BrowserFlow()
-                    success = asyncio.run(
+                    success = runtime_run(
                         flow_engine.run(
                             oauth_provider,
                             no_browser=no_browser,
@@ -960,7 +955,7 @@ def login_command(
                     oauth_provider, disable=custom_path is not None
                 ):
                     flow_engine = ManualCodeFlow()
-                    success = asyncio.run(
+                    success = runtime_run(
                         flow_engine.run(oauth_provider, save_path=custom_path_str)
                     )
             else:
@@ -1034,12 +1029,12 @@ def _refresh_provider_tokens(provider: str, custom_path: Path | None = None) -> 
     try:
         container = _get_service_container()
         registry = container.get_oauth_registry()
-        oauth_provider = asyncio.run(
+        oauth_provider = runtime_run(
             get_oauth_provider_for_name(provider_key, registry, container)
         )
 
         if not oauth_provider:
-            providers = asyncio.run(discover_oauth_providers(container))
+            providers = runtime_run(discover_oauth_providers(container))
             available = ", ".join(providers.keys()) if providers else "none"
             toolkit.print(
                 f"Provider '{provider_key}' not found. Available: {available}",
@@ -1054,7 +1049,7 @@ def _refresh_provider_tokens(provider: str, custom_path: Path | None = None) -> 
             )
             raise typer.Exit(1)
 
-        credentials = asyncio.run(oauth_provider.load_credentials(**load_kwargs))
+        credentials = runtime_run(oauth_provider.load_credentials(**load_kwargs))
         if not credentials:
             toolkit.print(
                 (
@@ -1079,7 +1074,7 @@ def _refresh_provider_tokens(provider: str, custom_path: Path | None = None) -> 
                 and manager
                 and hasattr(manager, "refresh_token")
             ):
-                refreshed_credentials = asyncio.run(manager.refresh_token())
+                refreshed_credentials = runtime_run(manager.refresh_token())
             else:
                 refresh_token = snapshot.refresh_token if snapshot else None
                 if not refresh_token:
@@ -1093,11 +1088,11 @@ def _refresh_provider_tokens(provider: str, custom_path: Path | None = None) -> 
                 with _temporary_disable_provider_storage(
                     oauth_provider, disable=credential_path is not None
                 ):
-                    refreshed_credentials = asyncio.run(
+                    refreshed_credentials = runtime_run(
                         oauth_provider.refresh_access_token(refresh_token)
                     )
                 if credential_path and refreshed_credentials:
-                    saved = asyncio.run(
+                    saved = runtime_run(
                         oauth_provider.save_credentials(
                             refreshed_credentials, **save_kwargs
                         )
@@ -1119,7 +1114,7 @@ def _refresh_provider_tokens(provider: str, custom_path: Path | None = None) -> 
 
         if refreshed_credentials is None:
             with contextlib.suppress(Exception):
-                refreshed_credentials = asyncio.run(
+                refreshed_credentials = runtime_run(
                     oauth_provider.load_credentials(**load_kwargs)
                 )
             if (
@@ -1128,7 +1123,7 @@ def _refresh_provider_tokens(provider: str, custom_path: Path | None = None) -> 
                 and hasattr(manager, "load_credentials")
             ):
                 with contextlib.suppress(Exception):
-                    refreshed_credentials = asyncio.run(manager.load_credentials())
+                    refreshed_credentials = runtime_run(manager.load_credentials())
 
         refreshed_snapshot = None
         if refreshed_credentials:
@@ -1271,11 +1266,11 @@ def status_command(
     try:
         container = _get_service_container()
         registry = container.get_oauth_registry()
-        oauth_provider = asyncio.run(
+        oauth_provider = runtime_run(
             get_oauth_provider_for_name(provider, registry, container)
         )
         if not oauth_provider:
-            providers = asyncio.run(discover_oauth_providers(container))
+            providers = runtime_run(discover_oauth_providers(container))
             available = ", ".join(providers.keys()) if providers else "none"
             expected = _expected_plugin_class_name(provider)
             toolkit.print(
@@ -1291,7 +1286,7 @@ def status_command(
         if oauth_provider:
             try:
                 # Delegate to provider; providers may internally use their managers
-                credentials = asyncio.run(
+                credentials = runtime_run(
                     oauth_provider.load_credentials(**load_kwargs)
                 )
 
@@ -1306,12 +1301,12 @@ def status_command(
                 if credential_path is None:
                     try:
                         if hasattr(oauth_provider, "create_token_manager"):
-                            manager = asyncio.run(oauth_provider.create_token_manager())
+                            manager = runtime_run(oauth_provider.create_token_manager())
                         elif hasattr(oauth_provider, "get_token_manager"):
                             mgr = oauth_provider.get_token_manager()  # may be sync
                             # If coroutine, run it; else use directly
                             if hasattr(mgr, "__await__"):
-                                manager = asyncio.run(mgr)
+                                manager = runtime_run(mgr)
                             else:
                                 manager = mgr
                     except Exception as e:
@@ -1320,8 +1315,8 @@ def status_command(
                 if manager and hasattr(manager, "get_token_snapshot"):
                     with contextlib.suppress(Exception):
                         result = manager.get_token_snapshot()
-                        if asyncio.iscoroutine(result):
-                            snapshot = asyncio.run(result)
+                        if inspect.isawaitable(result):
+                            snapshot = runtime_run(result)
                         else:
                             snapshot = cast(TokenSnapshot | None, result)
 
@@ -1333,7 +1328,7 @@ def status_command(
                         standard_profile = None
                         if hasattr(oauth_provider, "get_standard_profile"):
                             with contextlib.suppress(Exception):
-                                standard_profile = asyncio.run(
+                                standard_profile = runtime_run(
                                     oauth_provider.get_standard_profile(credentials)
                                 )
                         if not standard_profile and hasattr(
@@ -1365,7 +1360,7 @@ def status_command(
                             oauth_provider, "get_unified_profile_quick"
                         ):
                             with contextlib.suppress(Exception):
-                                quick = asyncio.run(
+                                quick = runtime_run(
                                     oauth_provider.get_unified_profile_quick()
                                 )
                         if (
@@ -1374,7 +1369,7 @@ def status_command(
                             and hasattr(oauth_provider, "get_unified_profile")
                         ):
                             with contextlib.suppress(Exception):
-                                quick = asyncio.run(
+                                quick = runtime_run(
                                     oauth_provider.get_unified_profile()
                                 )
                         if quick and isinstance(quick, dict) and quick != {}:
@@ -1438,7 +1433,7 @@ def status_command(
                             standard_profile = None
                             if hasattr(oauth_provider, "get_standard_profile"):
                                 with contextlib.suppress(Exception):
-                                    standard_profile = asyncio.run(
+                                    standard_profile = runtime_run(
                                         oauth_provider.get_standard_profile(credentials)
                                     )
                             if standard_profile is not None:
@@ -1605,12 +1600,12 @@ def logout_command(
     try:
         container = _get_service_container()
         registry = container.get_oauth_registry()
-        oauth_provider = asyncio.run(
+        oauth_provider = runtime_run(
             get_oauth_provider_for_name(provider, registry, container)
         )
 
         if not oauth_provider:
-            providers = asyncio.run(discover_oauth_providers(container))
+            providers = runtime_run(discover_oauth_providers(container))
             available = ", ".join(providers.keys()) if providers else "none"
             expected = _expected_plugin_class_name(provider)
             toolkit.print(
@@ -1621,7 +1616,7 @@ def logout_command(
 
         existing_creds = None
         with contextlib.suppress(Exception):
-            existing_creds = asyncio.run(oauth_provider.load_credentials())
+            existing_creds = runtime_run(oauth_provider.load_credentials())
 
         if not existing_creds:
             console.print("[yellow]No credentials found. Already logged out.[/yellow]")
@@ -1638,11 +1633,11 @@ def logout_command(
         try:
             storage = oauth_provider.get_storage()
             if storage and hasattr(storage, "delete"):
-                success = asyncio.run(storage.delete())
+                success = runtime_run(storage.delete())
             elif storage and hasattr(storage, "clear"):
-                success = asyncio.run(storage.clear())
+                success = runtime_run(storage.clear())
             else:
-                success = asyncio.run(oauth_provider.save_credentials(None))
+                success = runtime_run(oauth_provider.save_credentials(None))
         except Exception as e:
             logger.debug("logout_error", error=str(e), exc_info=e)
 

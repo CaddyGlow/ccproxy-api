@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 from uuid import uuid4
 
+from ccproxy.core.async_runtime import create_task
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.request_context import RequestContext
 
@@ -305,9 +306,7 @@ class ClaudeStreamProcessor:
                     }
 
                     # Emit the hook asynchronously
-                    import asyncio
-
-                    asyncio.create_task(
+                    create_task(
                         self.streaming_hook.emit_stream_end(
                             request_id=str(request_id or ""),
                             usage_metrics=usage_metrics,

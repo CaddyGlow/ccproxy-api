@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import time
 from enum import Enum
 from typing import Any
@@ -10,6 +9,23 @@ from typing import Any
 from claude_agent_sdk import ClaudeAgentOptions
 from pydantic import BaseModel
 
+from ccproxy.core.async_runtime import (
+    CancelledError as RuntimeCancelledError,
+)
+from ccproxy.core.async_runtime import (
+    Task,
+    create_event,
+    create_lock,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    loop_time as runtime_loop_time,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.logging import get_plugin_logger
@@ -73,7 +89,7 @@ class SessionClient:
 
         # Session management
         self.status = SessionStatus.IDLE
-        self.lock = asyncio.Lock()  # Prevent concurrent access
+        self.lock = create_lock()  # Prevent concurrent access
         self.metrics = SessionMetrics(created_at=time.time(), last_used=time.time())
 
         # Error handling
@@ -82,17 +98,17 @@ class SessionClient:
         self.max_connection_attempts = 3
 
         # Background connection task
-        self._connection_task: asyncio.Task[bool] | None = None
+        self._connection_task: Task[bool] | None = None
 
         # Active stream tracking
-        self.active_stream_task: asyncio.Task[None] | None = None
+        self.active_stream_task: Task[None] | None = None
         self.has_active_stream: bool = False
         self.active_stream_handle: Any = (
             None  # StreamHandle when using queue-based approach
         )
 
         # Interrupt synchronization
-        self._interrupt_complete_event = asyncio.Event()
+        self._interrupt_complete_event = create_event()
         self._interrupt_complete_event.set()  # Initially set (not interrupting)
 
         # Session reuse tracking
@@ -142,7 +158,7 @@ class SessionClient:
                     error=str(e),
                     exc_info=e,
                 )
-            except TimeoutError as e:
+            except RuntimeTimeoutError as e:
                 self.status = SessionStatus.ERROR
                 self.last_error = e
                 self.metrics.error_count += 1
@@ -188,7 +204,7 @@ class SessionClient:
             # This should never be reached, but mypy needs it
             return False
 
-    async def connect_background(self) -> asyncio.Task[bool]:
+    async def connect_background(self) -> Task[bool]:
         """Start connection in background without blocking.
 
         Returns:
@@ -233,7 +249,7 @@ class SessionClient:
                 try:
                     await self.claude_client.disconnect()
                     logger.debug("session_disconnected", session_id=self.session_id)
-                except TimeoutError as e:
+                except RuntimeTimeoutError as e:
                     logger.warning(
                         "session_disconnect_timeout",
                         session_id=self.session_id,
@@ -282,7 +298,7 @@ class SessionClient:
         )
 
         # Set up a hard timeout for the entire interrupt operation
-        start_time = asyncio.get_event_loop().time()
+        start_time = runtime_loop_time()
         max_interrupt_time = 15.0  # Maximum 15 seconds for entire interrupt
 
         try:
@@ -306,7 +322,7 @@ class SessionClient:
                         )
                         # Clear the handle reference
                         self.active_stream_handle = None
-                except asyncio.CancelledError as e:
+                except RuntimeCancelledError as e:
                     logger.warning(
                         "session_stream_handle_interrupt_cancelled",
                         session_id=self.session_id,
@@ -314,7 +330,7 @@ class SessionClient:
                         exc_info=e,
                         message="Stream handle interrupt was cancelled, continuing with SDK interrupt",
                     )
-                except TimeoutError as e:
+                except RuntimeTimeoutError as e:
                     logger.warning(
                         "session_stream_handle_interrupt_timeout",
                         session_id=self.session_id,
@@ -340,23 +356,23 @@ class SessionClient:
 
             try:
                 # Call interrupt directly with timeout - avoid creating separate tasks
-                await asyncio.wait_for(self.claude_client.interrupt(), timeout=30.0)
+                await runtime_wait_for(self.claude_client.interrupt(), timeout=30.0)
                 logger.debug(
                     "session_interrupted_gracefully", session_id=self.session_id
                 )
                 # Reset status after successful interrupt
                 self.status = SessionStatus.DISCONNECTED
 
-            except TimeoutError:
+            except RuntimeTimeoutError:
                 # Interrupt timed out
                 logger.warning(
                     "session_interrupt_sdk_timeout",
                     session_id=self.session_id,
                     message="SDK interrupt timed out after 30 seconds",
                 )
-                raise TimeoutError("Interrupt timed out") from None
+                raise RuntimeTimeoutError("Interrupt timed out") from None
 
-        except TimeoutError:
+        except RuntimeTimeoutError:
             logger.warning(
                 "session_interrupt_timeout",
                 session_id=self.session_id,
@@ -366,7 +382,7 @@ class SessionClient:
             # Force disconnect if interrupt hangs
             await self._force_disconnect()
 
-        except asyncio.CancelledError as e:
+        except RuntimeCancelledError as e:
             logger.warning(
                 "session_interrupt_cancelled",
                 session_id=self.session_id,
@@ -411,7 +427,7 @@ class SessionClient:
                 )
         finally:
             # Final safety check - ensure we don't hang forever
-            total_elapsed = asyncio.get_event_loop().time() - start_time
+            total_elapsed = runtime_loop_time() - start_time
             if total_elapsed > max_interrupt_time:
                 logger.error(
                     "session_interrupt_max_time_exceeded",
@@ -443,11 +459,11 @@ class SessionClient:
 
         # Try to drain any active stream first with timeout
         try:
-            await asyncio.wait_for(
+            await runtime_wait_for(
                 self.drain_active_stream(),
                 timeout=5.0,  # 5 second timeout for draining in force disconnect
             )
-        except TimeoutError:
+        except RuntimeTimeoutError:
             logger.warning(
                 "session_force_drain_timeout",
                 session_id=self.session_id,
@@ -457,11 +473,11 @@ class SessionClient:
         try:
             if self.claude_client:
                 # Try to disconnect with timeout
-                await asyncio.wait_for(
+                await runtime_wait_for(
                     self.claude_client.disconnect(),
                     timeout=3.0,  # 3 second timeout for disconnect
                 )
-        except TimeoutError as e:
+        except RuntimeTimeoutError as e:
             logger.warning(
                 "session_force_disconnect_timeout",
                 session_id=self.session_id,
@@ -531,7 +547,7 @@ class SessionClient:
                         handle_id=self.active_stream_handle.handle_id,
                         message="Stream drain timed out after 30 seconds",
                     )
-            except TimeoutError as e:
+            except RuntimeTimeoutError as e:
                 logger.error(
                     "session_stream_drain_timeout_via_handle",
                     session_id=self.session_id,
@@ -539,7 +555,7 @@ class SessionClient:
                     error=str(e),
                     exc_info=e,
                 )
-            except asyncio.CancelledError as e:
+            except RuntimeCancelledError as e:
                 logger.warning(
                     "session_stream_drain_cancelled_via_handle",
                     session_id=self.session_id,
@@ -581,7 +597,7 @@ class SessionClient:
             True if interrupt completed within timeout, False if timed out
         """
         try:
-            await asyncio.wait_for(
+            await runtime_wait_for(
                 self._interrupt_complete_event.wait(), timeout=timeout
             )
             logger.debug(
@@ -590,7 +606,7 @@ class SessionClient:
                 message="Interrupt completion event signaled",
             )
             return True
-        except TimeoutError:
+        except RuntimeTimeoutError:
             logger.warning(
                 "session_interrupt_wait_timeout",
                 session_id=self.session_id,

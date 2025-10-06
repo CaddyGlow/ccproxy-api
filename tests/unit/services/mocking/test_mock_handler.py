@@ -49,7 +49,9 @@ async def test_generate_standard_response_success(
     async def fast_sleep(_: float) -> None:
         return None
 
-    monkeypatch.setattr(asyncio, "sleep", fast_sleep)
+    monkeypatch.setattr(
+        "ccproxy.services.mocking.mock_handler.runtime_sleep", fast_sleep
+    )
 
     mock_logger = MagicMock()
     ctx = RequestContext(request_id="req", start_time=0, logger=mock_logger)  # type: ignore[arg-type]
@@ -75,7 +77,9 @@ async def test_generate_standard_response_error(
     async def fast_sleep(_: float) -> None:
         return None
 
-    monkeypatch.setattr(asyncio, "sleep", fast_sleep)
+    monkeypatch.setattr(
+        "ccproxy.services.mocking.mock_handler.runtime_sleep", fast_sleep
+    )
 
     mock_logger = MagicMock()
     mock_ctx = RequestContext(request_id="req", start_time=0, logger=mock_logger)  # type: ignore[arg-type]

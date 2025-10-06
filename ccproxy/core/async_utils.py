@@ -1,12 +1,29 @@
 """Async utilities for the CCProxy API."""
 
-import asyncio
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
+from inspect import isawaitable
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
+from ccproxy.core.async_runtime import (
+    CancelledError,
+    create_semaphore,
+    loop_time,
+)
+from ccproxy.core.async_runtime import (
+    gather as runtime_gather,
+)
+from ccproxy.core.async_runtime import (
+    run_in_executor as runtime_run_in_executor,
+)
+from ccproxy.core.async_runtime import (
+    sleep as runtime_sleep,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.logging import get_logger
 
 
@@ -81,15 +98,7 @@ async def run_in_executor(func: Callable[..., T], *args: Any, **kwargs: Any) -> 
     Returns:
         The result of the function call
     """
-    loop = asyncio.get_event_loop()
-
-    # Create a partial function if we have kwargs
-    if kwargs:
-        from functools import partial
-
-        func = partial(func, **kwargs)
-
-    return await loop.run_in_executor(None, func, *args)
+    return await runtime_run_in_executor(func, *args, **kwargs)
 
 
 async def safe_await(awaitable: Awaitable[T], timeout: float | None = None) -> T | None:
@@ -104,11 +113,11 @@ async def safe_await(awaitable: Awaitable[T], timeout: float | None = None) -> T
     """
     try:
         if timeout is not None:
-            return await asyncio.wait_for(awaitable, timeout=timeout)
+            return await runtime_wait_for(awaitable, timeout)
         return await awaitable
     except TimeoutError:
         return None
-    except asyncio.CancelledError:
+    except CancelledError:
         return None
     except Exception as e:
         logger = get_logger(__name__)
@@ -129,7 +138,7 @@ async def gather_with_concurrency(
     Returns:
         List of results from the awaitables
     """
-    semaphore = asyncio.Semaphore(limit)
+    semaphore = create_semaphore(limit)
 
     async def _limited_awaitable(awaitable: Awaitable[T]) -> T:
         async with semaphore:
@@ -137,9 +146,9 @@ async def gather_with_concurrency(
 
     limited_awaitables = [_limited_awaitable(aw) for aw in awaitables]
     if return_exceptions:
-        return await asyncio.gather(*limited_awaitables, return_exceptions=True)
+        return await runtime_gather(*limited_awaitables, return_exceptions=True)
     else:
-        return await asyncio.gather(*limited_awaitables)
+        return await runtime_gather(*limited_awaitables)
 
 
 @asynccontextmanager
@@ -194,7 +203,7 @@ async def retry_async(
         except exceptions as e:
             last_exception = e
             if attempt < max_retries:
-                await asyncio.sleep(current_delay)
+                await runtime_sleep(current_delay)
                 current_delay *= backoff
             else:
                 raise
@@ -218,26 +227,26 @@ async def wait_for_condition(
     Returns:
         True if condition was met, False if timeout occurred
     """
-    start_time = asyncio.get_event_loop().time()
+    start_time = loop_time()
 
     while True:
         try:
             result = condition()
-            if asyncio.iscoroutine(result):
+            if isawaitable(result):
                 result = await result
             if result:
                 return True
-        except (asyncio.CancelledError, KeyboardInterrupt):
+        except (CancelledError, KeyboardInterrupt):
             return False
         except Exception as e:
             logger = get_logger(__name__)
             logger.debug("condition_check_error", error=str(e), exc_info=e)
             pass
 
-        if asyncio.get_event_loop().time() - start_time > timeout:
+        if loop_time() - start_time > timeout:
             return False
 
-        await asyncio.sleep(interval)
+        await runtime_sleep(interval)
 
 
 _cache: dict[str, tuple[float, Any]] = {}

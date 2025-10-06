@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import logging
 import sys
 
 import structlog
+
+from ccproxy.core.async_runtime import run as runtime_run
 
 from .config import list_available_tests
 from .console import colored_header, colored_info
@@ -191,7 +192,7 @@ Feature-specific test patterns:
             print(colored_info("→ Structured output mode enabled"))
 
     try:
-        summary = asyncio.run(
+        summary = runtime_run(
             run_endpoint_tests_async(base_url=args.base, tests=args.tests)
         )
     except ValueError as exc:

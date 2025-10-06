@@ -5,7 +5,9 @@ for various events in the system. It ensures proper error isolation and supports
 both async and sync hooks.
 """
 
-import asyncio
+from __future__ import annotations
+
+import inspect
 from datetime import datetime
 from typing import Any
 
@@ -68,8 +70,7 @@ class HookManager:
         )
 
         if fire_and_forget and self._background_manager:
-            # Execute in background thread - non-blocking
-            self._background_manager.emit_async(context, self._registry)
+            await self._background_manager.emit_async(context, self._registry)
             return
         elif fire_and_forget and not self._background_manager:
             # No background manager available, log warning and fall back to sync
@@ -119,8 +120,7 @@ class HookManager:
             fire_and_forget: If True, execute hooks in background thread (default)
         """
         if fire_and_forget and self._background_manager:
-            # Execute in background thread - non-blocking
-            self._background_manager.emit_async(context, self._registry)
+            await self._background_manager.emit_async(context, self._registry)
             return
         elif fire_and_forget and not self._background_manager:
             # No background manager available, log warning and fall back to sync
@@ -172,15 +172,15 @@ class HookManager:
             context: The context to pass to the hook
         """
         result = hook(context)
-        if asyncio.iscoroutine(result):
+        if inspect.isawaitable(result):
             await result
         # If result is None, it was a sync hook and we're done
 
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Shutdown the background hook processing.
 
         This method should be called during application shutdown to ensure
         proper cleanup of the background thread.
         """
         if self._background_manager:
-            self._background_manager.stop()
+            await self._background_manager.shutdown()

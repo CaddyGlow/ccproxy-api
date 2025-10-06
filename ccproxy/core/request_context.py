@@ -15,7 +15,6 @@ Key features:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import uuid
@@ -28,6 +27,7 @@ from typing import Any
 
 import structlog
 
+from ccproxy.core.async_runtime import create_lock
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 
@@ -401,7 +401,7 @@ class ContextTracker:
 
     def __init__(self) -> None:
         self._active_contexts: dict[str, RequestContext] = {}
-        self._lock = asyncio.Lock()
+        self._lock = create_lock()
 
     async def add_context(self, context: RequestContext) -> None:
         """Add an active request context."""

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import asyncio
 import copy
 import json
 import re
@@ -13,6 +12,8 @@ from typing import Any, Literal, overload
 import httpx
 import structlog
 
+from ccproxy.core.async_runtime import current_task
+from ccproxy.core.async_runtime import run as runtime_run
 from ccproxy.llms.models.openai import ResponseMessage, ResponseObject
 from ccproxy.llms.streaming.accumulators import StreamAccumulator
 
@@ -1879,18 +1880,13 @@ def run_endpoint_tests(
 ) -> EndpointTestRunSummary:
     """Convenience wrapper to run endpoint tests from synchronous code."""
 
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-
-    if loop and loop.is_running():
+    if current_task() is not None:
         raise RuntimeError(
             "run_endpoint_tests() cannot be called while an event loop is running; "
             "use await run_endpoint_tests_async(...) instead"
         )
 
-    return asyncio.run(run_endpoint_tests_async(base_url=base_url, tests=tests))
+    return runtime_run(run_endpoint_tests_async(base_url=base_url, tests=tests))
 
 
 __all__ = [

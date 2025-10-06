@@ -1,6 +1,5 @@
 """OAuth flow engines for CLI authentication."""
 
-import asyncio
 import base64
 import secrets
 import sys
@@ -13,6 +12,25 @@ from rich.console import Console
 
 from ccproxy.auth.oauth.cli_errors import AuthProviderError, PortBindError
 from ccproxy.auth.oauth.registry import OAuthProviderProtocol
+from ccproxy.core.async_runtime import (
+    Future,
+    Task,
+)
+from ccproxy.core.async_runtime import (
+    TimeoutError as RuntimeTimeoutError,
+)
+from ccproxy.core.async_runtime import (
+    create_future as runtime_create_future,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+from ccproxy.core.async_runtime import (
+    sleep as runtime_sleep,
+)
+from ccproxy.core.async_runtime import (
+    wait_for as runtime_wait_for,
+)
 from ccproxy.core.logging import get_logger
 
 
@@ -33,10 +51,10 @@ class CLICallbackServer:
         self.port = port
         self.callback_path = callback_path
         self.server: Any = None
-        self._server_task: asyncio.Task[Any] | None = None
+        self._server_task: Task[Any] | None = None
         self.callback_received = False
         self.callback_data: dict[str, Any] = {}
-        self.callback_future: asyncio.Future[dict[str, Any]] | None = None
+        self.callback_future: Future[dict[str, Any]] | None = None
 
     async def start(self) -> None:
         """Start the callback server."""
@@ -92,10 +110,10 @@ class CLICallbackServer:
                         f"Failed to start callback server on port {self.port}: {e}"
                     ) from e
 
-        self._server_task = asyncio.create_task(_serve_with_error_handling())
+        self._server_task = runtime_create_task(_serve_with_error_handling())
 
         # Wait briefly and check if server started successfully
-        await asyncio.sleep(0.1)
+        await runtime_sleep(0.1)
         if self._server_task.done():
             # Server failed to start, re-raise the exception
             await self._server_task
@@ -110,8 +128,8 @@ class CLICallbackServer:
             self.server.should_exit = True
             if hasattr(self, "_server_task") and self._server_task is not None:
                 try:
-                    await asyncio.wait_for(self._server_task, timeout=2.0)
-                except TimeoutError:
+                    await runtime_wait_for(self._server_task, timeout=2.0)
+                except RuntimeTimeoutError:
                     self._server_task.cancel()
             self.server = None
             logger.debug("cli_callback_server_stopped", port=self.port)
@@ -182,14 +200,14 @@ class CLICallbackServer:
             Callback data dictionary
 
         Raises:
-            asyncio.TimeoutError: If callback is not received within timeout
+            RuntimeTimeoutError: If callback is not received within timeout
             ValueError: If state validation fails
         """
-        self.callback_future = asyncio.Future()
+        self.callback_future = runtime_create_future()
 
         try:
             # Wait for callback with timeout
-            callback_data = await asyncio.wait_for(
+            callback_data = await runtime_wait_for(
                 self.callback_future, timeout=timeout
             )
 
@@ -215,9 +233,11 @@ class CLICallbackServer:
 
             return callback_data
 
-        except TimeoutError:
+        except RuntimeTimeoutError:
             logger.error("cli_callback_timeout", timeout=timeout, port=self.port)
-            raise TimeoutError(f"No OAuth callback received within {timeout} seconds")
+            raise RuntimeTimeoutError(
+                f"No OAuth callback received within {timeout} seconds"
+            )
 
 
 def render_qr_code(url: str) -> None:
@@ -311,7 +331,7 @@ class BrowserFlow:
                     callback_data["code"], state, code_verifier, redirect_uri
                 )
                 return await provider.save_credentials(credentials, save_path)
-            except TimeoutError:
+            except RuntimeTimeoutError:
                 # Fallback to manual code entry if callback times out
                 console.print(
                     "[yellow]Callback timed out. You can enter the code manually.[/yellow]"

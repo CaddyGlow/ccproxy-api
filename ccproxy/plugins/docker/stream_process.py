@@ -22,9 +22,29 @@ Example:
     ```
 """
 
-import asyncio
 import shlex
-from typing import Any, Generic, TypeAlias, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeAlias, TypeVar, cast
+
+from ccproxy.core.async_runtime import (
+    PIPE,
+)
+from ccproxy.core.async_runtime import (
+    create_subprocess_exec as runtime_create_subprocess_exec,
+)
+from ccproxy.core.async_runtime import (
+    create_task as runtime_create_task,
+)
+
+
+if TYPE_CHECKING:
+
+    class _ReadableStream(Protocol):
+        async def readline(self) -> bytes:
+            """Read a single line of bytes from the stream."""
+
+    StreamReader = _ReadableStream
+else:  # pragma: no cover - runtime uses concrete implementation from backend
+    StreamReader = Any
 
 
 T = TypeVar("T")  # Type of processed output
@@ -220,13 +240,13 @@ async def run_command(
         cmd = shlex.split(cmd)
 
     # Start the async process with pipes for stdout and stderr
-    process = await asyncio.create_subprocess_exec(
+    process = await runtime_create_subprocess_exec(
         *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        stdout=PIPE,
+        stderr=PIPE,
     )
 
-    async def stream_output(stream: asyncio.StreamReader, stream_type: str) -> list[T]:
+    async def stream_output(stream: "StreamReader", stream_type: str) -> list[T]:
         """Process output from a stream and capture results.
 
         Args:
@@ -253,8 +273,8 @@ async def run_command(
     if process.stdout is None or process.stderr is None:
         raise RuntimeError("Process stdout or stderr is None")
 
-    stdout_task = asyncio.create_task(stream_output(process.stdout, "stdout"))
-    stderr_task = asyncio.create_task(stream_output(process.stderr, "stderr"))
+    stdout_task = runtime_create_task(stream_output(process.stdout, "stdout"))
+    stderr_task = runtime_create_task(stream_output(process.stderr, "stderr"))
 
     # Wait for process to complete and collect output
     return_code = await process.wait()

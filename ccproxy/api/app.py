@@ -175,7 +175,7 @@ async def shutdown_hook_system(app: FastAPI) -> None:
         # Get hook manager from app state - it will shutdown its own background manager
         hook_manager = getattr(app.state, "hook_manager", None)
         if hook_manager:
-            hook_manager.shutdown()
+            await hook_manager.shutdown()
 
         logger.debug("hook_system_shutdown_completed", category="lifecycle")
     except Exception as e:

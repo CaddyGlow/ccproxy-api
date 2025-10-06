@@ -111,8 +111,10 @@ class ProviderAdapter(BaseAdapter):
 ## 8. Asynchronous Programming
 
 * **`async`/`await`:** Use consistently for all I/O operations
-* **Libraries:** Prefer `httpx` for HTTP, `asyncio` for concurrency
-* **No Blocking Code:** Never use blocking I/O in async functions
+* **Runtime Facade:** Import concurrency primitives from `ccproxy.core.async_runtime` (e.g., `create_task`, `sleep`, `create_lock`) instead of touching `asyncio` or `anyio` directly. This keeps the codebase portable as we evolve the underlying async backend.
+* **Direct `asyncio` Usage:** Only interact with `asyncio` for functionality not yet exposed via the runtime (e.g., low-level loop or subprocess APIs). When that happens, contain it behind small helpers and add a TODO to fold it into the facade.
+* **HTTP Clients:** Continue using `httpx` for network I/O.
+* **No Blocking Code:** Never use blocking I/O in async functions; push work into `runtime.to_thread` when necessary.
 
 ## 9. Testing
 
