@@ -6,7 +6,6 @@ Implements modern health check patterns following 2024 best practices:
 - /health: Detailed diagnostics (comprehensive status)
 
 Follows IETF Health Check Response Format draft standard.
-TODO: health endpoint Content-Type header to only return application/health+json per IETF spec
 """
 
 from datetime import UTC, datetime

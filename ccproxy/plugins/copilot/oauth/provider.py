@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ccproxy.auth.managers.token_snapshot import TokenSnapshot
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import CliAuthConfig, FlowType, OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
@@ -311,13 +312,61 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
         with contextlib.suppress(Exception):
             profile = await self.get_user_profile()
 
+        copilot_access = False
+        if profile is not None:
+            features = getattr(profile, "features", {}) or {}
+            copilot_access = bool(features.get("copilot_access"))
+            if not copilot_access and getattr(profile, "subscription_type", None):
+                copilot_access = True
+
+        if not copilot_access and credentials.copilot_token is not None:
+            token = credentials.copilot_token
+            indicative_flags = [
+                getattr(token, "chat_enabled", None),
+                getattr(token, "annotations_enabled", None),
+                getattr(token, "individual", None),
+            ]
+            if any(flag is True for flag in indicative_flags if flag is not None):
+                copilot_access = True
+            else:
+                copilot_access = (
+                    True  # Possession of a copilot token implies active access
+                )
+
+        if not copilot_access:
+            copilot_access = credentials.copilot_token is not None
+
         return CopilotTokenInfo(
             provider="copilot",
             oauth_expires_at=oauth_expires_at,
             copilot_expires_at=copilot_expires_at,
             account_type=credentials.account_type,
-            copilot_access=False,  # TODO: Get from profile or credentials
+            copilot_access=copilot_access,
         )
+
+    async def get_token_snapshot(self) -> TokenSnapshot | None:
+        """Return a token snapshot built from stored credentials."""
+
+        try:
+            manager = await self.create_token_manager(storage=self.storage)
+            snapshot = await manager.get_token_snapshot()
+            if snapshot:
+                return snapshot
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug("copilot_snapshot_via_manager_failed", error=str(exc))
+
+        try:
+            credentials = await self.storage.load_credentials()
+            if not credentials:
+                return None
+
+            from ..manager import CopilotTokenManager
+
+            temp_manager = CopilotTokenManager(storage=self.storage)
+            return temp_manager._build_token_snapshot(credentials)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug("copilot_snapshot_from_credentials_failed", error=str(exc))
+            return None
 
     async def is_authenticated(self) -> bool:
         """Check if user is authenticated with valid tokens.

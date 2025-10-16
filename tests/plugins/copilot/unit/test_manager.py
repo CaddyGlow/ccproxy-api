@@ -14,7 +14,7 @@ from ccproxy.plugins.copilot.oauth.models import (
 from ccproxy.plugins.copilot.oauth.storage import CopilotOAuthStorage
 
 
-def _build_oauth_token(now: datetime) -> CopilotOAuthToken:
+def _build_oauth_token(now: datetime, with_refresh: bool = True) -> CopilotOAuthToken:
     """Helper to create a valid OAuth token scoped for tests."""
 
     return CopilotOAuthToken(
@@ -23,6 +23,7 @@ def _build_oauth_token(now: datetime) -> CopilotOAuthToken:
         scope="read:user",
         created_at=int(now.timestamp()),
         expires_in=3600,
+        refresh_token=SecretStr("refresh-token") if with_refresh else None,
     )
 
 
@@ -48,6 +49,24 @@ def _build_credentials(
         created_at=updated_at,
         updated_at=updated_at,
     )
+
+
+def test_token_snapshot_flags(tmp_path: Path) -> None:
+    """Token snapshot should flag refresh/id token presence."""
+
+    storage = CopilotOAuthStorage(credentials_path=tmp_path / "credentials.json")
+    manager = CopilotTokenManager(storage=storage)
+
+    now = datetime.now(UTC)
+    credentials = _build_credentials(
+        now=now,
+        refresh_in=1200,
+        updated_offset=timedelta(seconds=30),
+    )
+
+    snapshot = manager._build_token_snapshot(credentials)
+
+    assert snapshot.has_refresh_token() is True
 
 
 def test_is_expired_uses_refresh_window(tmp_path: Path) -> None:

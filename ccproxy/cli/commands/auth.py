@@ -258,7 +258,7 @@ def _extract_token_snapshot_duck_typing(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_at=expires_at,
-        extras=extras,
+        extras={},
     )
 
 
@@ -386,6 +386,11 @@ def _build_token_snapshot_from_dict(
                 expires_in, int | float
             ):
                 expires_at = _coerce_datetime(created_at + expires_in)
+
+    if provider_normalized == "copilot":
+        if "refresh_token_present" not in extras:
+            extras["refresh_token_present"] = bool(refresh_token)
+        extras.setdefault("id_token_present", bool(extras.get("has_copilot_token")))
 
     return TokenSnapshot(
         provider=provider_normalized,

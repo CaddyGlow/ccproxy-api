@@ -71,26 +71,23 @@ class CopilotTokenManager(BaseTokenManager[CopilotCredentials]):
     def _build_token_snapshot(self, credentials: CopilotCredentials) -> TokenSnapshot:
         """Construct a token snapshot for Copilot credentials."""
         access_token: str | None = None
-        if credentials.copilot_token and credentials.copilot_token.token:
-            access_token = credentials.copilot_token.token.get_secret_value()
-        elif credentials.oauth_token.access_token:
-            access_token = credentials.oauth_token.access_token.get_secret_value()
+        copilot_token = credentials.copilot_token
+        if copilot_token and copilot_token.token:
+            access_token = copilot_token.token.get_secret_value()
 
         refresh_token: str | None = None
-        if credentials.oauth_token.refresh_token:
-            refresh_token = credentials.oauth_token.refresh_token.get_secret_value()
+        oauth_token = credentials.oauth_token
+        if oauth_token.refresh_token:
+            refresh_token = oauth_token.refresh_token.get_secret_value()
 
         expires_at = None
-        if credentials.copilot_token and credentials.copilot_token.expires_at:
-            expires_at = credentials.copilot_token.expires_at
+        if copilot_token and copilot_token.expires_at:
+            expires_at = copilot_token.expires_at
         else:
-            if (
-                credentials.oauth_token.expires_in
-                and credentials.oauth_token.created_at
-            ):
-                expires_at = credentials.oauth_token.expires_at_datetime
+            if oauth_token.expires_in and oauth_token.created_at:
+                expires_at = oauth_token.expires_at_datetime
 
-        scope_value = credentials.oauth_token.scope or ""
+        scope_value = oauth_token.scope or ""
         scopes = tuple(
             scope
             for scope in (item.strip() for item in scope_value.split(" "))
@@ -102,6 +99,14 @@ class CopilotTokenManager(BaseTokenManager[CopilotCredentials]):
             "has_copilot_token": bool(credentials.copilot_token),
         }
 
+        logger.debug(
+            "copilot_token_snapshot",
+            scopes=scopes,
+            expires_at=expires_at,
+            credentials=credentials,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
         return TokenSnapshot(
             provider="copilot",
             access_token=access_token,

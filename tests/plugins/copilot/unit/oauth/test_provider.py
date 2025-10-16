@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from ccproxy.auth.managers.token_snapshot import TokenSnapshot
 from ccproxy.auth.oauth.protocol import StandardProfileFields
 from ccproxy.plugins.copilot.config import CopilotOAuthConfig
 from ccproxy.plugins.copilot.oauth.models import (
@@ -87,6 +88,7 @@ class TestCopilotOAuthProvider:
         return CopilotOAuthToken(
             access_token=SecretStr("gho_test_token"),
             token_type="bearer",
+            refresh_token=SecretStr("gho_refresh_token"),
             expires_in=28800,  # 8 hours
             created_at=now,
             scope="read:user",
@@ -285,6 +287,7 @@ class TestCopilotOAuthProvider:
             provider_type="copilot",
             email="test@example.com",
             display_name="Test User",
+            features={"copilot_access": True},
         )
 
         with patch.object(
@@ -367,6 +370,25 @@ class TestCopilotOAuthProvider:
             assert result.account_type == "individual"
             assert result.oauth_expires_at is not None
             assert result.copilot_expires_at is not None
+            assert result.copilot_access is True
+
+    async def test_get_token_info_falls_back_to_credentials(
+        self,
+        oauth_provider: CopilotOAuthProvider,
+        mock_credentials: CopilotCredentials,
+    ) -> None:
+        """copilot_access derived from credentials when profile unavailable."""
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
+
+        with patch.object(
+            oauth_provider, "get_user_profile", new_callable=AsyncMock
+        ) as mock_get_profile:
+            mock_get_profile.side_effect = RuntimeError("profile not available")
+
+            result = await oauth_provider.get_token_info()
+
+            assert isinstance(result, CopilotTokenInfo)
+            assert result.copilot_access is True
 
     async def test_get_token_info_no_credentials(
         self, oauth_provider: CopilotOAuthProvider
@@ -377,6 +399,40 @@ class TestCopilotOAuthProvider:
         result = await oauth_provider.get_token_info()
 
         assert result is None
+
+    async def test_get_token_snapshot_uses_manager(
+        self, oauth_provider: CopilotOAuthProvider
+    ) -> None:
+        manager = AsyncMock()
+        manager.get_token_snapshot.return_value = TokenSnapshot(provider="copilot")  # type: ignore[attr-defined]
+
+        with patch.object(
+            oauth_provider, "create_token_manager", AsyncMock(return_value=manager)
+        ) as mock_create:
+            snapshot = await oauth_provider.get_token_snapshot()
+
+        assert isinstance(snapshot, TokenSnapshot)
+        assert snapshot.provider == "copilot"
+        mock_create.assert_awaited_once()
+        manager.get_token_snapshot.assert_awaited_once()
+
+    async def test_get_token_snapshot_fallback_to_credentials(
+        self,
+        oauth_provider: CopilotOAuthProvider,
+        mock_credentials: CopilotCredentials,
+    ) -> None:
+        oauth_provider.storage.load_credentials.return_value = mock_credentials  # type: ignore[attr-defined]
+
+        with patch.object(
+            oauth_provider,
+            "create_token_manager",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        ):
+            snapshot = await oauth_provider.get_token_snapshot()
+
+        assert isinstance(snapshot, TokenSnapshot)
+        assert snapshot.provider == "copilot"
+        assert snapshot.has_refresh_token() is True
 
     async def test_is_authenticated_with_valid_tokens(
         self,
