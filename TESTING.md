@@ -12,7 +12,7 @@ After aggressive refactoring and architecture realignment, our testing philosoph
 
 ```bash
 # Run all tests
-make test
+./Taskfile test
 
 # Run specific test categories
 pytest tests/unit/auth/          # Authentication tests
@@ -23,11 +23,11 @@ pytest tests/plugins/metrics     # Single plugin tests
 pytest tests/performance/        # Performance benchmarks
 
 # Run with coverage
-make test-coverage
+./Taskfile test-coverage
 
 # Type checking and quality (now sub-second)
-make typecheck
-make pre-commit
+./Taskfile typecheck
+./Taskfile pre-commit
 ```
 
 ## Streamlined Test Structure
@@ -405,17 +405,17 @@ def test_config_loading(tmp_path: Path) -> None:
 
 ```bash
 # Type checking (MUST pass) - now sub-second
-make typecheck
+./Taskfile typecheck
 uv run mypy tests/
 
 # Linting and formatting (MUST pass)
-make lint
-make format
+./Taskfile lint
+./Taskfile format
 uv run ruff check tests/
 uv run ruff format tests/
 
 # Run all quality checks
-make pre-commit
+./Taskfile pre-commit
 ```
 
 ## Dev Scripts (Optional Helpers)
@@ -432,15 +432,14 @@ These are optional helpers for dev workflows; standard Make targets and pytest r
 
 ## Running Tests
 
-### Make Commands
+### Taskfile Commands
 
 ```bash
-make test                 # Run all tests with coverage
-make test-unit            # Fast unit tests only
-make test-integration     # Integration tests (core + plugins)
-make test-integration-plugin PLUGIN=metrics  # Single plugin integration
-make test-plugins         # Only plugin tests
-make test-coverage        # With coverage report
+./Taskfile test                 # Run all tests with coverage
+./Taskfile test-unit            # Fast unit tests only
+./Taskfile test-integration     # Integration tests (core + plugins)
+./Taskfile test-plugins         # Only plugin tests
+./Taskfile test-coverage        # With coverage report
 ```
 
 ### Direct pytest
@@ -456,13 +455,13 @@ pytest -m integration              # Integration tests only
 pytest tests/plugins               # All plugin tests
 pytest tests/plugins/metrics -m unit  # Single plugin unit tests
 
-Note: tests run with `--import-mode=importlib` via Makefile to avoid module name clashes.
+Note: tests run with `--import-mode=importlib` via Taskfile to avoid module name clashes.
 ```
 
 ## For New Developers
 
 1. **Start here**: Read this file and `tests/fixtures/integration.py`
-2. **Run tests**: `make test` to ensure everything works (606 optimized tests)
+2. **Run tests**: `./Taskfile test` to ensure everything works (606 optimized tests)
 3. **Choose pattern**:
    - Session-scoped fixtures for plugin tests (`metrics_integration_client`)
    - Factory patterns for dynamic configs (`integration_client_factory`)

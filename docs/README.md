@@ -13,10 +13,10 @@ This directory contains the source files for the CCProxy API documentation, buil
 
 ```bash
 # Install documentation dependencies
-make docs-install
+./Taskfile docs-install
 
 # Serve documentation with live reload
-make docs-serve
+./Taskfile docs-serve
 ```
 
 The documentation will be available at `http://127.0.0.1:8080`.
@@ -25,10 +25,10 @@ The documentation will be available at `http://127.0.0.1:8080`.
 
 ```bash
 # Build static documentation
-make docs-build
+./Taskfile docs-build
 
 # Clean build artifacts
-make docs-clean
+./Taskfile docs-clean
 ```
 
 ## Documentation Structure
@@ -142,14 +142,14 @@ This workflow:
 
 ## Commands Reference
 
-### Make Commands
+### Taskfile Commands
 
 ```bash
-make docs-install   # Install documentation dependencies
-make docs-serve     # Start development server
-make docs-build     # Build static documentation
-make docs-clean     # Clean build artifacts
-make docs-deploy    # Deploy documentation (GitHub Pages)
+./Taskfile docs-install   # Install documentation dependencies
+./Taskfile docs-serve     # Start development server
+./Taskfile docs-build     # Build static documentation
+./Taskfile docs-clean     # Clean build artifacts
+./Taskfile docs-deploy    # Deploy documentation (GitHub Pages)
 ```
 
 ### Direct MkDocs Commands
@@ -175,7 +175,7 @@ mkdocs gh-deploy
 1. Create a new Markdown file in the appropriate directory
 2. Add the page to the navigation in `mkdocs.yml`
 3. Follow the existing styling conventions
-4. Test locally with `make docs-serve`
+4. Test locally with `./Taskfile docs-serve`
 
 ### Updating API Documentation
 
@@ -197,7 +197,7 @@ API documentation is automatically generated from source code. To update:
 
 ### Common Issues
 
-1. **Build errors**: Check that all dependencies are installed with `make docs-install`
+1. **Build errors**: Check that all dependencies are installed with `./Taskfile docs-install`
 2. **Missing pages**: Ensure new pages are added to the navigation in `mkdocs.yml`
 3. **Broken links**: Use relative paths and check link targets exist
 4. **Styling issues**: Check custom CSS in `docs/assets/extra.css`

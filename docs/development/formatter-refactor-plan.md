@@ -58,4 +58,4 @@
 
 6. **Documentation & Validation**
    - Produce contributor-facing documentation (e.g., `docs/development/formatter-guide.md`) summarizing the new structure, helper catalog, and extension guidance; confirm agent-facing behavior remains compliant with `CLAUDE.md`.
-   - Run `make check` and `make test-unit` after each milestone; schedule targeted integration runs (`make test-integration PLUGIN=<name>`) before merging structural changes.
+   - Run `./Taskfile check` and `./Taskfile test-unit` after each milestone; schedule targeted integration runs (`./Taskfile test-integration tests/plugins/<name>`) before merging structural changes.

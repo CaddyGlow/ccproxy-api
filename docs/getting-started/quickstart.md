@@ -29,7 +29,7 @@ pipx install ccproxy-api
 # Clone and setup
 git clone https://github.com/CaddyGlow/ccproxy-api.git
 cd ccproxy-api
-make setup  # Installs dependencies and dev environment
+./Taskfile setup  # Installs dependencies and dev environment
 ```
 
 ## Authentication Setup

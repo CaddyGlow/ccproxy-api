@@ -43,7 +43,7 @@ ccproxy/plugins/<provider>/
 ## Testing Checklist
 - Unit-test storage migrations to ensure existing users keep working after upgrades.
 - Mock OAuth endpoints with `pytest-httpx` and cover success, refresh, and error paths.
-- Run `make test-plugins` with the plugin enabled to verify end-to-end behaviour.
+- Run `./Taskfile test-plugins` with the plugin enabled to verify end-to-end behaviour.
 - Exercise CLI flows manually using sandbox credentials before releasing a new provider version.
 
 ## Troubleshooting

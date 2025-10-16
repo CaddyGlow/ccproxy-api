@@ -110,8 +110,8 @@ During development, server logs stream to `/tmp/ccproxy/ccproxy.log` when runnin
 ## Testing
 
 - Unit tests: `tests/plugins/credential_balancer/unit/`
-- Run fast tests: `make test-unit`
-- Full suite: `make test`
+- Run fast tests: `./Taskfile test-unit`
+- Full suite: `./Taskfile test`
 
 Follow the project’s testing markers and async patterns as described in `TESTING.md`.
 

@@ -147,7 +147,7 @@ class ProviderAdapter(BaseAdapter):
 
 Core tools enforced via pre-commit and CI:
 
-* **Package Manager:** `uv` (via Makefile only)
+* **Package Manager:** `uv` (via Taskfile)
 * **Formatter:** `ruff format`
 * **Linter:** `ruff check`
 * **Type Checker:** `mypy`
@@ -158,29 +158,28 @@ Core tools enforced via pre-commit and CI:
 
 ### Required Before Commits
 ```bash
-make pre-commit  # Comprehensive checks + auto-fixes
-make test        # Run tests with coverage
+./Taskfile pre-commit  # Comprehensive checks + auto-fixes
+./Taskfile test        # Run tests with coverage
 ```
 
-### Key Makefile Targets
+### Key Taskfile Tasks
 
 | Category | Target | Description |
 |----------|--------|-------------|
-| **Setup** | `make setup` | Complete dev environment setup |
-| **Quality** | `make pre-commit` | All checks with auto-fixes |
-| | `make check` | Lint + typecheck + format check |
-| | `make format` | Format code |
-| | `make lint` | Linting only |
-| | `make typecheck` | Type checking |
-| **Testing** | `make test` | Full test suite with coverage |
-| | `make test-unit` | Fast unit tests only |
-| | `make test-integration` | Integration tests (core + plugins) |
-| | `make test-integration-plugin PLUGIN=<name>` | Single plugin integration |
-| | `make test-plugins` | Only plugin tests |
-| **CI** | `make ci` | Full CI pipeline |
-| **Build** | `make build` | Build Python package |
-| | `make docker-build` | Build Docker image |
-| **Dev** | `make dev` | Start dev server with debug logging |
+| **Setup** | `./Taskfile setup` | Complete dev environment setup |
+| **Quality** | `./Taskfile pre-commit` | All checks with auto-fixes |
+| | `./Taskfile check` | Lint + typecheck + format check |
+| | `./Taskfile format` | Format code |
+| | `./Taskfile lint` | Linting only |
+| | `./Taskfile typecheck` | Type checking |
+| **Testing** | `./Taskfile test` | Full test suite with coverage |
+| | `./Taskfile test-unit` | Fast unit tests only |
+| | `./Taskfile test-integration [path]` | Integration tests (core + plugins) |
+| | `./Taskfile test-plugins [path]` | Only plugin tests |
+| **CI** | `./Taskfile ci` | Full CI pipeline |
+| **Build** | `./Taskfile build` | Build Python package |
+| | `./Taskfile docker-build` | Build Docker image |
+| **Dev** | `./Taskfile dev` | Start dev server with debug logging |
 
 ## 14. Documentation
 

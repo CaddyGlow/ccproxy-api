@@ -17,10 +17,10 @@ Thank you for your interest in contributing to CCProxy API! This guide will help
    ```bash
    git clone https://github.com/CaddyGlow/ccproxy-api.git
    cd ccproxy-api
-   make setup  # Installs dependencies and sets up dev environment
+   ./Taskfile setup  # Installs dependencies and sets up dev environment
    ```
 
-   > **Note**: Pre-commit hooks are automatically installed with `make setup`
+   > **Note**: Pre-commit hooks are automatically installed with `./Taskfile setup`
 
 ## Development Workflow
 
@@ -40,13 +40,13 @@ git checkout -b feature/your-feature-name
 
 ```bash
 # Recommended: Run comprehensive checks with auto-fixes
-make pre-commit
+./Taskfile pre-commit
 
 # Alternative: Run individual checks
-make format      # Format code
-make lint        # Check linting
-make typecheck   # Check types
-make test-unit   # Run fast tests
+./Taskfile format      # Format code
+./Taskfile lint        # Check linting
+./Taskfile typecheck   # Check types
+./Taskfile test-unit   # Run fast tests
 ```
 
 ### 4. Commit Your Changes
@@ -65,7 +65,7 @@ git commit -m "feat: add new feature"
 
 Before pushing:
 ```bash
-make ci  # Runs full CI pipeline locally (pre-commit + tests)
+./Taskfile ci  # Runs full CI pipeline locally (pre-commit + tests)
 ```
 
 ### 6. Push and Create PR
@@ -83,11 +83,11 @@ All code must pass these checks before merging:
 
 | Check | Command | Purpose | Auto-fix |
 |-------|---------|---------|----------|
-| **Formatting** | `make format` | Code style consistency | ✅ |
-| **Linting** | `make lint` | Error detection | Partial (`make lint-fix`) |
-| **Type Checking** | `make typecheck` | Type safety | ❌ |
-| **Tests** | `make test` | Functionality | ❌ |
-| **Pre-commit** | `make pre-commit` | All checks combined | ✅ |
+| **Formatting** | `./Taskfile format` | Code style consistency | ✅ |
+| **Linting** | `./Taskfile lint` | Error detection | Partial (`./Taskfile lint-fix`) |
+| **Type Checking** | `./Taskfile typecheck` | Type safety | ❌ |
+| **Tests** | `./Taskfile test` | Functionality | ❌ |
+| **Pre-commit** | `./Taskfile pre-commit` | All checks combined | ✅ |
 
 ## Architecture: DI & Services
 
@@ -160,27 +160,23 @@ The CCProxy test suite uses a streamlined architecture with 606 focused tests or
 
 ```bash
 # All tests with coverage (recommended)
-make test
+./Taskfile test
 
 # Fast unit tests only - isolated components, service boundary mocking
-make test-unit
+./Taskfile test-unit
 
 # Integration tests - cross-component behavior, minimal mocking  
-make test-integration
+./Taskfile test-integration
 
 # Plugin tests - centralized plugin testing
-make test-plugins
-
-# Performance tests - benchmarks and load testing
-make test-performance
+./Taskfile test-plugins
 
 # Coverage report with HTML output
-make test-coverage
+./Taskfile test-coverage
 
 # Specific patterns
-make test-file FILE=unit/auth/test_auth.py
-make test-match MATCH="authentication"
-make test-watch  # Auto-run on file changes
+./Taskfile test-file tests/unit/auth/test_auth.py
+./Taskfile test-match authentication
 ```
 
 #### Test Organization
@@ -271,14 +267,14 @@ chore: update dependencies
 
 Test the full CI pipeline locally:
 ```bash
-make ci  # Same as GitHub Actions CI workflow
+./Taskfile ci  # Same as GitHub Actions CI workflow
 ```
 
 ## Common Development Tasks
 
 ### Running the Dev Server
 ```bash
-make dev  # Starts with debug logging and auto-reload
+./Taskfile dev  # Starts with debug logging and auto-reload
 ```
 
 ### Debugging Requests
@@ -286,7 +282,7 @@ make dev  # Starts with debug logging and auto-reload
 # Enable verbose logging
 CCPROXY_VERBOSE_API=true \
 CCPROXY_REQUEST_LOG_DIR=/tmp/ccproxy/request \
-make dev
+./Taskfile dev
 
 # View last request
 scripts/show_request.sh
@@ -294,33 +290,33 @@ scripts/show_request.sh
 
 ### Building and Testing Docker
 ```bash
-make docker-build
-make docker-run
+./Taskfile docker-build
+./Taskfile docker-run
 ```
 
 ### Documentation
 ```bash
-make docs-build  # Build docs
-make docs-serve  # Serve locally at http://localhost:8000
+./Taskfile docs-build  # Build docs
+./Taskfile docs-serve  # Serve locally at http://localhost:8000
 ```
 
 ## Troubleshooting
 
 ### Type Errors
 ```bash
-make typecheck
+./Taskfile typecheck
 # Or for detailed output:
 uv run mypy . --show-error-codes
 ```
 
 ### Formatting Issues
 ```bash
-make format  # Auto-fixes most issues
+./Taskfile format  # Auto-fixes most issues
 ```
 
 ### Linting Errors
 ```bash
-make lint-fix  # Auto-fix what's possible
+./Taskfile lint-fix  # Auto-fix what's possible
 # Manual fix required for remaining issues
 ```
 
@@ -336,7 +332,7 @@ uv run pytest tests/test_file.py -s
 ### Pre-commit Hook Failures
 ```bash
 # Run manually to see all issues
-make pre-commit
+./Taskfile pre-commit
 
 # Skip hooks temporarily (not recommended)
 git commit --no-verify -m "WIP: debugging"

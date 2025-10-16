@@ -26,5 +26,5 @@
 
 ## Suggested Next Steps
 1. Clean up packaging (drop `dummy`, update lockfile, verify wheels build).
-2. Repair documentation sources and navigation, then run `uv run mkdocs build` and `make ci`.
+2. Repair documentation sources and navigation, then run `uv run mkdocs build` and `./Taskfile ci`.
 3. Finalize release metadata: set the changelog date, regenerate `_version.py`, tag `v0.2.0`, and rebuild artefacts.
