@@ -33,7 +33,7 @@
           version = "0.2.0";
           pyproject = true;
 
-          src = ./.;
+          src = ../.;
 
           build-system = with pkgs.python3Packages; [
             hatchling
