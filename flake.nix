@@ -129,6 +129,7 @@
               duckdb
               chromium
               udev
+              cacert
             ]
             ++ allLibs;
 
@@ -137,6 +138,9 @@
             export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath allLibs}:$LD_LIBRARY_PATH"
             # Optional: Set up uv if you want it to manage Python versions
             # export UV_PYTHON_PREFERENCE=system
+            # Ensure HTTPS clients (e.g., mkdocs) can validate certificates
+            export SSL_CERT_FILE="${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            export REQUESTS_CA_BUNDLE="$SSL_CERT_FILE"
 
           '';
 
