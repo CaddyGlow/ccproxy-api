@@ -51,10 +51,10 @@ help:
 
 # Installation targets
 install:
-	$(UV) sync --no-dev
+	$(UV) sync --no-dev --group=all
 
 dev-install:
-	$(UV) sync --all-extras --all-groups --dev
+	$(UV) sync --dev
 	$(PRE_COMMIT) install
 
 # Cleanup
