@@ -33,20 +33,6 @@ services:
     depends_on:
       - victoria-metrics
 
-  # Your application with metrics endpoint
-  # ccproxy:
-  #   build: .
-  #   container_name: ccproxy
-  #   ports:
-  #     - "8000:8000"
-  #   environment:
-  #     - PORT=8000
-  #     - HOST=0.0.0.0
-  #     - LOG_LEVEL=INFO
-  #   networks:
-  #     - monitoring
-  #   restart: unless-stopped
-
 volumes:
   victoria-metrics-data:
   grafana-data:
