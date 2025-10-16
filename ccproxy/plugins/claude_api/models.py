@@ -170,13 +170,10 @@ class ClaudeCacheData(BaseModel):
         dict[str, str] | None,
         Field(description="Captured query parameters", default=None),
     ] = None
-    cached_at: Annotated[
-        datetime,
-        Field(
-            description="Cache timestamp",
-            default_factory=lambda: datetime.now(UTC),
-        ),
-    ] = None  # type: ignore # Pydantic handles this via default_factory
+    cached_at: datetime = Field(
+        description="Cache timestamp",
+        default_factory=lambda: datetime.now(UTC),
+    )
 
     model_config = ConfigDict(extra="forbid")
 
