@@ -30,7 +30,9 @@ function task:dev_install {
 }
 
 function task:clean {
-  rm -rf dist build *.egg-info node_modules
+  rm -rf dist build *.egg-info node_modules \
+    .venv htmlcov .uv-cache .ruff_cache .mypy_cache \
+    .pytest_cache .direnv
   find . -type d -name __pycache__ -exec rm -rf {} +
   find . -type f -name "*.pyc" -delete
   rm -f .coverage coverage.xml pnpm-lock.yaml
@@ -58,37 +60,37 @@ function task:fix {
 }
 
 function task:test {
-    echo "Running all tests with coverage..."
-    if [[ ! -d tests ]]; then
-        echo "Error: tests/ directory not found. Create tests/ directory and add test files."
-        exit 1
-    fi
-    ${PYTEST} -v --cov=ccproxy --cov-report=term "$@"
+  echo "Running all tests with coverage..."
+  if [[ ! -d tests ]]; then
+    echo "Error: tests/ directory not found. Create tests/ directory and add test files."
+    exit 1
+  fi
+  ${PYTEST} -v --cov=ccproxy --cov-report=term "$@"
 }
 
 function task:test_unit {
-    echo "Running fast unit tests (excluding real API calls and integration tests)..."
-    ${PYTEST} -v -m "not integration" --tb=short "$@"
+  echo "Running fast unit tests (excluding real API calls and integration tests)..."
+  ${PYTEST} -v -m "not integration" --tb=short "$@"
 }
 
 function task:test_integration {
-    echo "Running integration tests across all plugins..."
-    local target="tests/"
-    if [[ $# -gt 0 && "$1" != -* ]]; then
-        target="$1"
-        shift
-    fi
-    ${PYTEST} -v -m "integration and not slow and not real_api" --tb=short -n auto "${target}" "$@"
+  echo "Running integration tests across all plugins..."
+  local target="tests/"
+  if [[ $# -gt 0 && "$1" != -* ]]; then
+    target="$1"
+    shift
+  fi
+  ${PYTEST} -v -m "integration and not slow and not real_api" --tb=short -n auto "${target}" "$@"
 }
 
 function task:test_plugins {
-    echo "Running plugin tests under tests/plugins..."
-    local target="tests/plugins"
-    if [[ $# -gt 0 && "$1" != -* ]]; then
-        target="$1"
-        shift
-    fi
-    ${PYTEST} -v --tb=short --no-cov "${target}" "$@"
+  echo "Running plugin tests under tests/plugins..."
+  local target="tests/plugins"
+  if [[ $# -gt 0 && "$1" != -* ]]; then
+    target="$1"
+    shift
+  fi
+  ${PYTEST} -v --tb=short --no-cov "${target}" "$@"
 }
 
 function task:test_file {
@@ -139,9 +141,9 @@ function task:check {
 }
 
 function task:test_coverage {
-    task:check
-    echo "Running tests with detailed coverage report..."
-    ${PYTEST} -v --cov=ccproxy --cov-report=term-missing --cov-report=html -m "not slow and not real_api" "$@"
+  task:check
+  echo "Running tests with detailed coverage report..."
+  ${PYTEST} -v --cov=ccproxy --cov-report=term-missing --cov-report=html -m "not slow and not real_api" "$@"
   echo "HTML coverage report generated in htmlcov/"
 }
 
