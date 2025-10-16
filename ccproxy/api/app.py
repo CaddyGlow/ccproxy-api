@@ -11,6 +11,7 @@ from fastapi.routing import APIRouter
 from typing_extensions import TypedDict
 
 from ccproxy.api.bootstrap import create_service_container
+from ccproxy.api.format_validation import validate_route_format_chains
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.health import router as health_router
@@ -28,10 +29,6 @@ from ccproxy.core.plugins import (
 )
 from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.core.plugins.hooks.events import HookEvent
-from ccproxy.services.adapters.chain_validation import (
-    validate_chains,
-    validate_stream_pairs,
-)
 from ccproxy.services.container import ServiceContainer
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
@@ -543,36 +540,13 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
-    # TODO: middleware should be in the middleware_manager
-    # in ccproxy/core/middleware.py
-    # Format chain is applied via decorators; middleware removed.
-
-    # TODO: This should not be here
-    # Validate route chains (core converters already registered during service container creation)
+    # Validate format adapters once routes are registered
     try:
         registry = service_container.get_format_registry()
-
-        # Collect declared chains from routes for validation
-        declared_chains: list[list[str]] = []
-        for route in app.router.routes:
-            endpoint = getattr(route, "endpoint", None)
-            chain = getattr(endpoint, "__format_chain__", None)
-            if chain:
-                declared_chains.append(chain)
-
-        missing = validate_chains(registry=registry, chains=declared_chains)
-        missing_stream = validate_stream_pairs(
-            registry=registry, chains=declared_chains
-        )
-        if missing or missing_stream:
-            logger.error(
-                "format_chain_validation_failed",
-                missing_adapters=missing,
-                missing_stream_adapters=missing_stream,
-            )
-    except Exception as _e:
-        # Best‑effort registration/validation; do not block app startup
-        logger.warning("format_registry_setup_skipped", error=str(_e))
+        validate_route_format_chains(app=app, registry=registry, logger=logger)
+    except Exception as exc:
+        # Best-effort registration/validation; do not block app startup
+        logger.warning("format_registry_setup_skipped", error=str(exc))
 
     setup_default_middleware(middleware_manager)
 

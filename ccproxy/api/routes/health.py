@@ -13,18 +13,36 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Response, status
+from fastapi.responses import JSONResponse
 
 from ccproxy.core import __version__
 from ccproxy.core.logging import get_logger
 
 
-router = APIRouter()
+class HealthJSONResponse(JSONResponse):
+    media_type = "application/health+json"
+
+
+def _health_responses(description: str) -> dict[int | str, dict[str, Any]]:
+    return {
+        200: {
+            "description": description,
+            "content": {"application/health+json": {"schema": {"type": "object"}}},
+        }
+    }
+
+
+router = APIRouter(default_response_class=HealthJSONResponse)
 logger = get_logger(__name__)
 
 # Authentication and CLI health are managed by provider plugins; no core CLI checks
 
 
-@router.get("/health/live")
+@router.get(
+    "/health/live",
+    response_class=HealthJSONResponse,
+    responses=_health_responses("Liveness probe result"),
+)
 async def liveness_probe(response: Response) -> dict[str, Any]:
     """Liveness probe for Kubernetes.
 
@@ -46,7 +64,11 @@ async def liveness_probe(response: Response) -> dict[str, Any]:
     }
 
 
-@router.get("/health/ready")
+@router.get(
+    "/health/ready",
+    response_class=HealthJSONResponse,
+    responses=_health_responses("Readiness probe result"),
+)
 async def readiness_probe(response: Response) -> dict[str, Any]:
     """Readiness probe for Kubernetes.
 
@@ -69,7 +91,11 @@ async def readiness_probe(response: Response) -> dict[str, Any]:
     }
 
 
-@router.get("/health")
+@router.get(
+    "/health",
+    response_class=HealthJSONResponse,
+    responses=_health_responses("Detailed health diagnostics"),
+)
 async def detailed_health_check(response: Response) -> dict[str, Any]:
     """Comprehensive health check for diagnostics and monitoring.
 
