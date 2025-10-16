@@ -572,9 +572,8 @@ class BaseHTTPAdapter(BaseAdapter):
         self, response: StreamingResponse, format_chain: list[str], ctx: Any
     ) -> StreamingResponse:
         """Convert streaming response through reverse format chain."""
-        # For now, disable reverse format chain for streaming responses
-        # This complex conversion should be handled by the existing format adapter system
-        # TODO: Implement proper streaming format conversion
+        # Streaming responses are already converted inside DeferredStreaming
+        # via the configured format adapters; no additional work required here.
         logger.debug(
             "reverse_streaming_format_chain_disabled",
             reason="complex_sse_parsing_disabled",
