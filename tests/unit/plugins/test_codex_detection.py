@@ -22,19 +22,29 @@ async def test_codex_detection_falls_back_when_cli_missing(tmp_path: Path) -> No
     service = CodexDetectionService(settings=settings, cli_service=cli_service)
     service.cache_dir = tmp_path
 
+    expected_fallback = service._get_fallback_data()
+
     with (
         patch.object(
             service,
-            "_get_codex_version",
-            AsyncMock(side_effect=FileNotFoundError("missing cli")),
+            "_get_fallback_data",
+            MagicMock(return_value=expected_fallback),
         ),
         patch.object(
             service,
             "_detect_codex_headers",
-            AsyncMock(side_effect=RuntimeError("should not run")),
-        ),
+            AsyncMock(
+                side_effect=FileNotFoundError(
+                    "Codex CLI not found for header detection"
+                )
+            ),
+        ) as mock_detect,
+        patch.object(service, "_save_to_cache", MagicMock()) as mock_save,
     ):
         result = await service.initialize_detection()
 
-    assert result == service._get_fallback_data()
-    assert service.get_cached_data() == result
+    assert cli_service.detect_cli.await_count == 1
+    mock_detect.assert_awaited_once_with("unknown")
+    mock_save.assert_not_called()
+    assert result is expected_fallback
+    assert service.get_cached_data() is expected_fallback

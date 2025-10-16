@@ -633,13 +633,8 @@ def generate_json_schema() -> dict[str, Any]:
     Returns:
         JSON Schema dictionary
 
-    Raises:
-        ImportError: If required dependencies are not available
     """
-    try:
-        from ccproxy.config.settings import Settings
-    except ImportError as e:
-        raise ImportError(f"Required dependencies not available: {e}") from e
+    from ccproxy.config.settings import Settings
 
     schema = Settings.model_json_schema()
 

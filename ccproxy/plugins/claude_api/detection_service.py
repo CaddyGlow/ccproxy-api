@@ -102,7 +102,6 @@ class ClaudeAPIDetectionService:
                 cached=cached,
             )
 
-            # TODO: add proper testing without claude cli installed
             if detected_data is None:
                 raise ValueError("Claude detection failed")
             return detected_data

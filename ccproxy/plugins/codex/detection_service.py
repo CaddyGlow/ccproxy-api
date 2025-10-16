@@ -109,7 +109,6 @@ class CodexDetectionService:
                 cached=cached,
             )
 
-            # TODO: add proper testing without codex cli installed
             if detected_data is None:
                 raise ValueError("Codex detection failed")
             return detected_data
