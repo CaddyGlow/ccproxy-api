@@ -75,14 +75,18 @@ nav:
   - Examples: examples.md
   - Contributing: contributing.md
   - Code Reference:
-    - Overview: reference/ccproxy/
-    - API Modules: reference/ccproxy/routers/
-    - Services: reference/ccproxy/services/
-    - Models: reference/ccproxy/models/
-    - Configuration: reference/ccproxy/config/
-    - CLI: reference/ccproxy/cli/
-    - Utilities: reference/ccproxy/utils/
-    - Docker: reference/ccproxy/docker/
+    - API: reference/ccproxy/api/index.md
+    - Auth: reference/ccproxy/auth/index.md
+    - Core: reference/ccproxy/core/index.md
+    - HTTP: reference/ccproxy/http/index.md
+    - CLI: reference/ccproxy/cli/index.md
+    - Configuration: reference/ccproxy/config/index.md
+    - Models: reference/ccproxy/models/index.md
+    - Scheduler: reference/ccproxy/scheduler/index.md
+    - Services: reference/ccproxy/services/index.md
+    - Streaming: reference/ccproxy/streaming/index.md
+    - Templates: reference/ccproxy/templates/index.md
+    - Utilities: reference/ccproxy/utils/index.md
 
 # Plugins
 plugins:

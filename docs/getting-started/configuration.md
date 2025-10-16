@@ -13,7 +13,7 @@ The server supports multiple configuration methods with the following priority o
 
 ## Environment Variables
 
-The proxy supports both flat and nested environment variable syntax. For a comprehensive reference, see [CLAUDE.md](/CLAUDE.md).
+The proxy supports both flat and nested environment variable syntax. For a comprehensive reference, see [CLAUDE.md](https://github.com/CaddyGlow/ccproxy-api/blob/main/CLAUDE.md).
 
 ### Environment Variable Syntax
 

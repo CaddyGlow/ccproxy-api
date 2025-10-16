@@ -197,7 +197,7 @@ RestartSec=5
 WantedBy=default.target
 ```
 
-For a complete list of environment variables, see [CLAUDE.md](/CLAUDE.md).
+For a complete list of environment variables, see [CLAUDE.md](https://github.com/CaddyGlow/ccproxy-api/blob/main/CLAUDE.md).
 
 ## Troubleshooting
 
