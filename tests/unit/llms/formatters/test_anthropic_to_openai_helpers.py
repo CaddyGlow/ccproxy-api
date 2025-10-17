@@ -162,14 +162,14 @@ async def test_convert__anthropic_message_to_openai_responses__stream_with_think
                 thinking="", signature="sig-123"
             ),
         )
-        yield {
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "thinking_delta",
-                "thinking": "Analyzing request",
-            },
-        }
+        yield anthropic_models.ContentBlockDeltaEvent(
+            type="content_block_delta",
+            index=0,
+            delta=anthropic_models.ThinkingDelta(
+                type="thinking_delta",
+                thinking="Analyzing request",
+            ),
+        )
         yield anthropic_models.ContentBlockStopEvent(type="content_block_stop", index=0)
         yield anthropic_models.ContentBlockStartEvent(
             type="content_block_start",
@@ -180,22 +180,22 @@ async def test_convert__anthropic_message_to_openai_responses__stream_with_think
                 input={},
             ),
         )
-        yield {
-            "type": "content_block_delta",
-            "index": 1,
-            "delta": {
-                "type": "input_json_delta",
-                "partial_json": '{"location":"seattle',
-            },
-        }
-        yield {
-            "type": "content_block_delta",
-            "index": 1,
-            "delta": {
-                "type": "input_json_delta",
-                "partial_json": '","units":"metric"}',
-            },
-        }
+        yield anthropic_models.ContentBlockDeltaEvent(
+            type="content_block_delta",
+            index=1,
+            delta=anthropic_models.InputJsonDelta(
+                type="input_json_delta",
+                partial_json='{"location":"seattle',
+            ),
+        )
+        yield anthropic_models.ContentBlockDeltaEvent(
+            type="content_block_delta",
+            index=1,
+            delta=anthropic_models.InputJsonDelta(
+                type="input_json_delta",
+                partial_json='","units":"metric"}',
+            ),
+        )
         yield anthropic_models.ContentBlockStopEvent(type="content_block_stop", index=1)
         yield anthropic_models.MessageDeltaEvent(
             type="message_delta",

@@ -107,7 +107,7 @@ class CopilotOAuthClient:
             device_code_data = response.json()
             device_code_response = DeviceCodeResponse.model_validate(device_code_data)
 
-            logger.info(
+            logger.debug(
                 "device_code_received",
                 user_code=device_code_response.user_code,
                 verification_uri=device_code_response.verification_uri,
@@ -149,7 +149,7 @@ class CopilotOAuthClient:
         start_time = time.time()
         current_interval = interval
 
-        logger.info(
+        logger.debug(
             "polling_for_token",
             interval=interval,
             expires_in=expires_in,
@@ -189,7 +189,7 @@ class CopilotOAuthClient:
                         expires_in=None,  # GitHub tokens don't typically expire
                     )
 
-                    logger.info(
+                    logger.debug(
                         "oauth_token_received",
                         token_type=oauth_token.token_type,
                         scope=oauth_token.scope,
@@ -267,7 +267,7 @@ class CopilotOAuthClient:
             copilot_data = response.json()
             copilot_token = CopilotTokenResponse.model_validate(copilot_data)
 
-            logger.info(
+            logger.debug(
                 "copilot_token_received",
                 expires_at=copilot_token.expires_at,
                 refresh_in=copilot_token.refresh_in,
@@ -356,7 +356,7 @@ class CopilotOAuthClient:
                 copilot_access=copilot_access,
             )
 
-            logger.info(
+            logger.debug(
                 "profile_retrieved",
                 login=profile.login,
                 user_name=profile.name,
@@ -450,7 +450,7 @@ class CopilotOAuthClient:
         # Store credentials
         await self.storage.store_credentials(credentials)
 
-        logger.info(
+        logger.debug(
             "authorization_completed",
             login=profile.login,
             account_type=account_type,
@@ -486,7 +486,7 @@ class CopilotOAuthClient:
         # Store updated credentials
         await self.storage.store_credentials(credentials)
 
-        logger.info(
+        logger.debug(
             "copilot_token_refreshed",
             account_type=credentials.account_type,
         )

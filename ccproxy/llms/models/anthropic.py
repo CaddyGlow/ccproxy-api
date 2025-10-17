@@ -188,6 +188,27 @@ class ThinkingBlock(ContentBlockBase):
     signature: str
 
 
+class ThinkingDelta(ContentBlockBase):
+    """Partial thinking content emitted during streaming."""
+
+    type: Literal["thinking_delta"] = Field(default="thinking_delta", alias="type")
+    thinking: str = ""
+
+
+class SignatureDelta(ContentBlockBase):
+    """Partial signature content for a thinking block."""
+
+    type: Literal["signature_delta"] = Field(default="signature_delta", alias="type")
+    signature: str = ""
+
+
+class InputJsonDelta(ContentBlockBase):
+    """Partial JSON payload for a tool use block."""
+
+    type: Literal["input_json_delta"] = Field(default="input_json_delta", alias="type")
+    partial_json: str = ""
+
+
 class RedactedThinkingBlock(ContentBlockBase):
     """A block specifying internal, redacted thinking by the model."""
 
@@ -534,7 +555,15 @@ class ContentBlockDeltaEvent(LlmBaseModel):
     index: int
     # Anthropic streams use delta.type == "text_delta" during streaming.
     # Accept both TextBlock (some SDKs may coerce) and TextDelta.
-    delta: Annotated[TextBlock | TextDelta, Field(discriminator="type")]
+    delta: Annotated[
+        TextBlock
+        | TextDelta
+        | ThinkingBlock
+        | ThinkingDelta
+        | SignatureDelta
+        | InputJsonDelta,
+        Field(discriminator="type"),
+    ]
 
 
 class ContentBlockStopEvent(LlmBaseModel):

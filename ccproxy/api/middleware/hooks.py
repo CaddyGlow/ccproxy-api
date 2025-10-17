@@ -306,7 +306,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 http_request_context["is_json"] = "application/json" in content_type
 
             preview, length, truncated = _stringify_raw_body(request_body)
-            logger.info(
+            logger.debug(
                 "client_http_request",
                 request_id=base_context.data.get("request_id"),
                 method=request.method,
@@ -362,7 +362,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 http_response_context["response_body"] = response_body
 
             preview, length, truncated = _stringify_raw_body(response_body)
-            logger.info(
+            logger.debug(
                 "client_http_response",
                 request_id=base_context.data.get("request_id"),
                 method=request.method,

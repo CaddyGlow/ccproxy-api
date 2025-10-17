@@ -305,7 +305,7 @@ def get_ssl_context() -> str | bool:
     ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
 
     if ca_bundle and Path(ca_bundle).exists():
-        logger.info(
+        logger.debug(
             "ssl_ca_bundle_configured",
             ca_bundle_path=ca_bundle,
             operation="get_ssl_context",

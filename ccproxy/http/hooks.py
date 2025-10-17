@@ -160,7 +160,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         else:
             preview, length, truncated = (None, 0, False)
 
-        logger.info(
+        logger.debug(
             "upstream_http_request",
             method=method,
             url=str(url),
@@ -239,7 +239,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                 preview, length, truncated = _stringify_body_for_logging(
                     response_context.get("response_body")
                 )
-                logger.info(
+                logger.debug(
                     "upstream_http_response",
                     url=str(url),
                     request_id=response_context.get("request_id"),
@@ -371,7 +371,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         preview, length, truncated = _stringify_body_for_logging(
             request_context.get("body")
         )
-        logger.info(
+        logger.debug(
             "upstream_http_request",
             method=method,
             url=str(url),
@@ -438,7 +438,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                         )
 
                 # Yield the original streaming response (no pre-buffering)
-                logger.info(
+                logger.debug(
                     "upstream_http_response",
                     url=str(url),
                     request_id=request_context.get("request_id"),

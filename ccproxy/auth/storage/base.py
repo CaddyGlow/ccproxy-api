@@ -168,7 +168,7 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
             # Copy file to backup location
             await asyncio.to_thread(shutil.copy2, self.file_path, backup_path)
 
-            logger.info(
+            logger.debug(
                 "backup_created",
                 original=str(self.file_path),
                 backup=str(backup_path),

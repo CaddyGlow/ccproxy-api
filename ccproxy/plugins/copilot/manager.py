@@ -195,7 +195,7 @@ class CopilotTokenManager(BaseTokenManager[CopilotCredentials]):
             raise ValueError("OAuth token expired; re-authentication required")
 
         if not credentials.copilot_token or credentials.copilot_token.is_expired:
-            logger.info("copilot_token_refresh_needed", category="auth")
+            logger.debug("copilot_token_refresh_needed", category="auth")
             credentials = await self._client.refresh_copilot_token(credentials)
             self._credentials_cache = credentials
             self._credentials_loaded_at = time()
