@@ -6,6 +6,7 @@ REQUEST_COMPLETED hook event when the stream actually completes.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import AsyncGenerator, AsyncIterator
@@ -14,14 +15,16 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi.responses import StreamingResponse
 
+from ccproxy.core.logging import get_logger
 from ccproxy.core.plugins.hooks import HookContext, HookEvent
-from ccproxy.utils.headers import (
-    extract_response_headers,
-)
+from ccproxy.utils.headers import extract_response_headers
 
 
 if TYPE_CHECKING:
     from ccproxy.core.plugins.hooks import HookManager
+
+
+logger = get_logger(__name__)
 
 
 class StreamingResponseWithHooks(StreamingResponse):
@@ -40,6 +43,8 @@ class StreamingResponseWithHooks(StreamingResponse):
         start_time: float,
         status_code: int = 200,
         request_metadata: dict[str, Any] | None = None,
+        origin: str = "client",
+        is_sse: bool = False,
         **kwargs: Any,
     ) -> None:
         """Initialize streaming response with hook emission.
@@ -59,6 +64,8 @@ class StreamingResponseWithHooks(StreamingResponse):
         self.request_data = request_data
         self.request_metadata = request_metadata or {}
         self.start_time = start_time
+        self.origin = origin
+        self.is_sse = is_sse
 
         # Wrap the content generator to add hook emission
         wrapped_content = self._wrap_with_hooks(content, status_code)
@@ -79,10 +86,13 @@ class StreamingResponseWithHooks(StreamingResponse):
         Yields:
             bytes: Content chunks from the original generator
         """
-        error_occurred = None
+        error_occurred: str | None = None
+        error_type_name: str | None = None
         final_status = status_code
         # Collect chunks for HTTP_RESPONSE hook
         collected_chunks: list[bytes] = []
+
+        closed_by: str | None = None
 
         try:
             # Stream all content from the original generator
@@ -93,21 +103,31 @@ class StreamingResponseWithHooks(StreamingResponse):
         except GeneratorExit:
             # Client disconnected - still emit completion hook
             error_occurred = "client_disconnected"
-            raise
+            error_type_name = "GeneratorExit"
+            closed_by = "client"
+            return
+
+        except asyncio.CancelledError as e:
+            error_occurred = "client_cancelled"
+            error_type_name = type(e).__name__
+            closed_by = "client"
+            return
 
         except Exception as e:
             # Error during streaming
             error_occurred = str(e)
+            error_type_name = type(e).__name__
             final_status = 500
+            closed_by = "server_error"
             raise
 
         finally:
+            end_time = time.time()
+            duration = end_time - self.start_time
+
             # Emit HTTP_RESPONSE hook first with collected body, then REQUEST_COMPLETED
             if self.hook_manager:
                 try:
-                    end_time = time.time()
-                    duration = end_time - self.start_time
-
                     # First emit HTTP_RESPONSE hook with collected streaming body
                     await self._emit_http_response_hook(
                         collected_chunks, final_status, end_time
@@ -154,6 +174,45 @@ class StreamingResponseWithHooks(StreamingResponse):
                 except Exception:
                     # Silently ignore hook emission errors to avoid breaking the stream
                     pass
+
+            success = error_occurred is None
+            body_size = sum(len(chunk) for chunk in collected_chunks)
+            log_fields: dict[str, Any] = {
+                "request_id": self.request_id,
+                "method": self.request_data.get("method"),
+                "url": self.request_data.get("url"),
+                "origin": self.origin,
+                "status_code": final_status,
+                "duration_ms": round(duration * 1000, 3),
+                "streaming": True,
+                "success": success,
+                "category": "http",
+                "has_body": body_size > 0,
+                "body_size": body_size,
+            }
+            if not success and error_type_name:
+                log_fields["error_type"] = error_type_name
+            if not closed_by:
+                closed_by = "server"
+            log_fields["closed_by"] = closed_by
+            if not success and error_occurred:
+                log_fields["error_reason"] = error_occurred
+
+            # Propagate metadata for downstream consumers (e.g., upstream logging)
+            try:
+                self.request_metadata["stream_closed_by"] = closed_by
+                if not success and error_occurred:
+                    self.request_metadata["stream_error_reason"] = error_occurred
+                    if error_type_name:
+                        self.request_metadata["stream_error_type"] = error_type_name
+            except Exception:
+                # Metadata propagation is best-effort
+                pass
+
+            if self.is_sse:
+                logger.info("sse_connection_ended", **log_fields)
+            else:
+                logger.info("request_completed", **log_fields)
 
     async def _emit_http_response_hook(
         self, collected_chunks: list[bytes], status_code: int, end_time: float

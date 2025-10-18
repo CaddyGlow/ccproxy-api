@@ -122,7 +122,28 @@ class HooksMiddleware(BaseHTTPMiddleware):
             await hook_manager.emit_with_context(hook_context)
 
             # Capture and emit HTTP_REQUEST hook with body
-            await self._emit_http_request_hook(hook_manager, request, hook_context)
+            (
+                body_preview,
+                body_size,
+                body_truncated,
+                body_is_json,
+            ) = await self._emit_http_request_hook(hook_manager, request, hook_context)
+
+            accept_header = request.headers.get("accept", "").lower()
+            if "text/event-stream" not in accept_header:
+                logger.info(
+                    "request_started",
+                    request_id=request_id,
+                    method=request.method,
+                    url=str(request.url),
+                    has_body=body_preview is not None,
+                    body_size=body_size,
+                    body_truncated=body_truncated,
+                    is_json=body_is_json,
+                    origin="client",
+                    streaming=False,
+                    category="http",
+                )
 
             # Process the request
             response = cast(Response, await call_next(request))
@@ -188,6 +209,22 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     request_metadata = getattr(request_context, "metadata", {})
 
                 response_stream = cast(StreamingResponse, response)
+                is_sse = self._is_sse_response(response_stream)
+
+                if is_sse:
+                    logger.info(
+                        "sse_connection_started",
+                        request_id=request_id,
+                        method=request.method,
+                        url=str(request.url),
+                        origin="client",
+                        streaming=True,
+                        has_body=body_preview is not None,
+                        body_size=body_size,
+                        body_truncated=body_truncated,
+                        is_json=body_is_json,
+                        category="http",
+                    )
 
                 # Coerce body iterator to AsyncGenerator[bytes]
                 async def _coerce_bytes() -> Any:
@@ -207,6 +244,8 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     request_metadata=request_metadata,
                     start_time=start_time,
                     status_code=response_stream.status_code,
+                    origin="client",
+                    is_sse=is_sse,
                     headers=dict(response_stream.headers),
                     media_type=response_stream.media_type,
                 )
@@ -218,6 +257,20 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     hook_manager, request, response, hook_context
                 )
                 await hook_manager.emit_with_context(response_hook_context)
+
+                duration_ms = round((end_time - start_time) * 1000, 3)
+                logger.info(
+                    "request_completed",
+                    request_id=request_id,
+                    method=request.method,
+                    url=str(request.url),
+                    status_code=getattr(response, "status_code", 200),
+                    duration_ms=duration_ms,
+                    origin="client",
+                    streaming=False,
+                    success=True,
+                    category="http",
+                )
 
                 logger.debug(
                     "hooks_middleware_request_completed",
@@ -272,12 +325,28 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 category="hooks",
             )
 
+            duration_ms = round((end_time - start_time) * 1000, 3)
+            status_code = getattr(e, "status_code", None)
+            logger.info(
+                "request_completed",
+                request_id=request_id,
+                method=request.method,
+                url=str(request.url),
+                status_code=status_code,
+                duration_ms=duration_ms,
+                origin="client",
+                streaming=False,
+                success=False,
+                error_type=type(e).__name__,
+                category="http",
+            )
+
             # Re-raise the original exception
             raise
 
     async def _emit_http_request_hook(
         self, hook_manager: HookManager, request: Request, base_context: HookContext
-    ) -> None:
+    ) -> tuple[str | None, int, bool, bool]:
         """Emit HTTP_REQUEST hook with request body capture.
 
         Args:
@@ -320,6 +389,13 @@ class HooksMiddleware(BaseHTTPMiddleware):
             # Emit HTTP_REQUEST hook
             await hook_manager.emit(HookEvent.HTTP_REQUEST, http_request_context)
 
+            return (
+                preview,
+                length,
+                truncated,
+                bool(http_request_context.get("is_json", False)),
+            )
+
         except Exception as e:
             logger.debug(
                 "http_request_hook_emission_failed",
@@ -328,6 +404,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 method=request.method,
                 category="hooks",
             )
+            return (None, 0, False, False)
 
     async def _emit_http_response_hook(
         self,
@@ -456,6 +533,15 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 status_code=getattr(response, "status_code", 200),
             )
             return None
+
+    @staticmethod
+    def _is_sse_response(response: StreamingResponse) -> bool:
+        """Determine whether a streaming response is Server-Sent Events."""
+        media_type = (response.media_type or "").lower() if response.media_type else ""
+        if "text/event-stream" in media_type:
+            return True
+        content_type = response.headers.get("content-type", "")
+        return "text/event-stream" in content_type.lower()
 
 
 def create_hooks_middleware(

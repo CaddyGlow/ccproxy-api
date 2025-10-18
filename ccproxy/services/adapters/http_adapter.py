@@ -519,7 +519,7 @@ class BaseHTTPAdapter(BaseAdapter):
             )
 
         if composed_adapter is not None and ctx.format_chain:
-            logger.info(
+            logger.debug(
                 "streaming_format_adapter_selected",
                 endpoint=endpoint,
                 chain=ctx.format_chain,

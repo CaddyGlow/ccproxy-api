@@ -1,7 +1,9 @@
 """HTTP client with hook support for request/response interception."""
 
+import asyncio
 import contextlib
 import json as jsonlib
+import time
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
@@ -160,6 +162,22 @@ class HookableHTTPClient(httpx.AsyncClient):
         else:
             preview, length, truncated = (None, 0, False)
 
+        start_time = time.perf_counter()
+
+        logger.info(
+            "request_started",
+            method=method,
+            url=str(url),
+            request_id=request_context.get("request_id"),
+            origin=request_context.get("origin"),
+            has_body=preview is not None,
+            body_size=length,
+            body_truncated=truncated,
+            is_json=request_context.get("is_json", False),
+            streaming=False,
+            category="http",
+        )
+
         logger.debug(
             "upstream_http_request",
             method=method,
@@ -187,8 +205,9 @@ class HookableHTTPClient(httpx.AsyncClient):
                     url=str(url),
                 )
 
+        final_response: httpx.Response | None = None
+
         try:
-            # Make the actual request
             response = await super().request(
                 method,
                 url,
@@ -200,14 +219,14 @@ class HookableHTTPClient(httpx.AsyncClient):
                 headers=headers,
                 **kwargs,
             )
+            final_response = response
 
-            # Emit post-response hook
             if self.hook_manager:
                 # Read response content FIRST before any other processing
                 response_content = response.content
 
                 response_context = {
-                    **request_context,  # Include request info
+                    **request_context,
                     "status_code": response.status_code,
                     "response_headers": extract_response_headers(response),
                     "is_provider_response": True,
@@ -269,15 +288,33 @@ class HookableHTTPClient(httpx.AsyncClient):
                         content=response_content,
                         request=response.request,
                     )
-                    return recreated_response
+                    final_response = recreated_response
                 except Exception:
                     # If recreation fails, return original (may have empty body)
                     logger.debug("response_recreation_failed")
-                    return response
+                    final_response = response
 
-            return response
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 3)
+
+            logger.info(
+                "request_completed",
+                method=method,
+                url=str(url),
+                request_id=request_context.get("request_id"),
+                origin=request_context.get("origin"),
+                status_code=final_response.status_code if final_response else None,
+                duration_ms=duration_ms,
+                streaming=False,
+                success=True,
+                category="http",
+            )
+
+            assert final_response is not None
+            return final_response
 
         except Exception as error:
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 3)
+
             # Emit error hook
             if self.hook_manager:
                 error_context = {
@@ -302,6 +339,22 @@ class HookableHTTPClient(httpx.AsyncClient):
                         error=str(e),
                         original_error=str(error),
                     )
+
+            status_code = getattr(getattr(error, "response", None), "status_code", None)
+
+            logger.info(
+                "request_completed",
+                method=method,
+                url=str(url),
+                request_id=request_context.get("request_id"),
+                origin=request_context.get("origin"),
+                status_code=status_code,
+                duration_ms=duration_ms,
+                streaming=False,
+                success=False,
+                error_type=type(error).__name__,
+                category="http",
+            )
 
             logger.error(
                 "upstream_http_error",
@@ -371,6 +424,22 @@ class HookableHTTPClient(httpx.AsyncClient):
         preview, length, truncated = _stringify_body_for_logging(
             request_context.get("body")
         )
+        start_time = time.perf_counter()
+
+        logger.info(
+            "sse_connection_started",
+            method=method,
+            url=str(url),
+            request_id=request_context.get("request_id"),
+            origin=request_context.get("origin"),
+            has_body=preview is not None,
+            body_size=length,
+            body_truncated=truncated,
+            is_json=request_context.get("is_json", False),
+            streaming=True,
+            category="http",
+        )
+
         logger.debug(
             "upstream_http_request",
             method=method,
@@ -399,8 +468,12 @@ class HookableHTTPClient(httpx.AsyncClient):
                     url=str(url),
                 )
 
+        request_error: BaseException | None = None
+        status_code: int | None = None
+        connection_started = False
+        closed_by: str = "server"
+
         try:
-            # Start the streaming request
             async with super().stream(
                 method=method,
                 url=url,
@@ -412,10 +485,9 @@ class HookableHTTPClient(httpx.AsyncClient):
                 json=json,
                 **kwargs,
             ) as response:
-                # True streaming mode: do NOT pre-consume the upstream stream.
-                # Emit a lightweight HTTP_RESPONSE hook with headers/status only,
-                # then yield the original streaming response so downstream can
-                # process bytes incrementally (no buffering).
+                status_code = response.status_code
+                connection_started = True
+
                 if self.hook_manager:
                     try:
                         response_context = {
@@ -423,7 +495,6 @@ class HookableHTTPClient(httpx.AsyncClient):
                             "status_code": response.status_code,
                             "response_headers": extract_response_headers(response),
                             "is_provider_response": True,
-                            # Indicate streaming; omit body to avoid buffering
                             "streaming": True,
                         }
                         await self.hook_manager.emit(
@@ -437,7 +508,6 @@ class HookableHTTPClient(httpx.AsyncClient):
                             status_code=response.status_code,
                         )
 
-                # Yield the original streaming response (no pre-buffering)
                 logger.debug(
                     "upstream_http_response",
                     url=str(url),
@@ -451,7 +521,10 @@ class HookableHTTPClient(httpx.AsyncClient):
                 )
                 yield response
 
-        except Exception as error:
+        except asyncio.CancelledError as error:
+            request_error = error
+            closed_by = "client"
+
             # Emit error hook
             if self.hook_manager:
                 error_context = {
@@ -460,7 +533,41 @@ class HookableHTTPClient(httpx.AsyncClient):
                     "error_type": type(error).__name__,
                 }
 
-                # Add response info if it's an HTTPStatusError
+                try:
+                    await self.hook_manager.emit(
+                        HookEvent.HTTP_ERROR,
+                        error_context,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "http_error_hook_error",
+                        error=str(e),
+                        original_error=str(error),
+                    )
+
+            logger.debug(
+                "upstream_http_cancelled",
+                url=str(url),
+                request_id=request_context.get("request_id"),
+                error_type=type(error).__name__,
+                streaming=True,
+                category="http",
+            )
+
+            raise
+
+        except Exception as error:
+            request_error = error
+            closed_by = "server_error"
+
+            # Emit error hook
+            if self.hook_manager:
+                error_context = {
+                    **request_context,
+                    "error": error,
+                    "error_type": type(error).__name__,
+                }
+
                 if isinstance(error, httpx.HTTPStatusError):
                     error_context["status_code"] = error.response.status_code
                     error_context["response_body"] = error.response.text
@@ -477,15 +584,59 @@ class HookableHTTPClient(httpx.AsyncClient):
                         original_error=str(error),
                     )
 
-            logger.error(
-                "upstream_http_error",
-                url=str(url),
-                request_id=request_context.get("request_id"),
-                error_type=type(error).__name__,
-                error_detail=str(error),
-                streaming=True,
-                category="http",
+            if not isinstance(error, asyncio.CancelledError):
+                logger.error(
+                    "upstream_http_error",
+                    url=str(url),
+                    request_id=request_context.get("request_id"),
+                    error_type=type(error).__name__,
+                    error_detail=str(error),
+                    streaming=True,
+                    category="http",
+                )
+
+            raise
+
+        finally:
+            duration_ms = round((time.perf_counter() - start_time) * 1000, 3)
+            log_fields: dict[str, Any] = {
+                "method": method,
+                "url": str(url),
+                "request_id": request_context.get("request_id"),
+                "origin": request_context.get("origin"),
+                "status_code": status_code,
+                "duration_ms": duration_ms,
+                "streaming": True,
+                "success": request_error is None and connection_started,
+                "closed_by": closed_by if request_error is not None else "server",
+                "category": "http",
+            }
+            stream_metadata = getattr(request_context, "metadata", {})
+            closed_override = (
+                stream_metadata.get("stream_closed_by") if stream_metadata else None
+            )
+            if closed_override:
+                log_fields["closed_by"] = closed_override
+                if closed_override != "server":
+                    log_fields["success"] = False
+            error_reason_override = (
+                stream_metadata.get("stream_error_reason") if stream_metadata else None
+            )
+            error_type_override = (
+                stream_metadata.get("stream_error_type") if stream_metadata else None
             )
 
-            # Re-raise the original error
-            raise
+            if request_error is not None:
+                log_fields["error_type"] = type(request_error).__name__
+                error_str = str(request_error)
+                if error_str:
+                    log_fields["error_reason"] = error_str
+            elif error_type_override:
+                log_fields["error_type"] = error_type_override
+                if error_reason_override:
+                    log_fields["error_reason"] = error_reason_override
+
+            if error_reason_override and "error_reason" not in log_fields:
+                log_fields["error_reason"] = error_reason_override
+
+            logger.info("sse_connection_ended", **log_fields)
