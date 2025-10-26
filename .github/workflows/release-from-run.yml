@@ -1,0 +1,59 @@
+name: Create Release from Workflow Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'Workflow run ID to get artifacts from (check Actions tab)'
+        required: true
+        type: string
+      tag:
+        description: 'Tag name for the release (e.g., v0.1.3)'
+        required: true
+        type: string
+      draft:
+        description: 'Create as draft release'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts from run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Downloading artifacts from run ${{ inputs.run_id }}..."
+          gh run download ${{ inputs.run_id }} --repo ${{ github.repository }} --dir artifacts
+
+          echo "Downloaded artifacts:"
+          ls -R artifacts/
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: artifacts/**/*
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          make_latest: true
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "Release created/updated for tag: ${{ inputs.tag }}"
+          echo "Artifacts from run: ${{ inputs.run_id }}"
+          echo "View release: https://github.com/${{ github.repository }}/releases/tag/${{ inputs.tag }}"
