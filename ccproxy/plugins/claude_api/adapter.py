@@ -53,6 +53,11 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Parse body
         body_data = json.loads(body.decode()) if body else {}
 
+        # Anthropic API constraint: cannot accept both temperature and top_p
+        # Prioritize temperature over top_p when both are present
+        if "temperature" in body_data and "top_p" in body_data:
+            body_data.pop("top_p", None)
+
         if self._needs_anthropic_conversion(endpoint):
             body_data = self._convert_openai_to_anthropic(body_data)
 

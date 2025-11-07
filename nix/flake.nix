@@ -55,6 +55,7 @@
             packaging
             pyjwt
             sortedcontainers
+            nuitka
           ];
 
           optional-dependencies = with pkgs.python3Packages; {
