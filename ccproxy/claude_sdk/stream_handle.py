@@ -79,13 +79,16 @@ class StreamHandle:
         Yields:
             Messages from the stream
         """
-        # Start worker if needed
-        await self._ensure_worker_started()
+        # Fix for Bug #2: Create worker and pre-register listener BEFORE starting worker
+        # This ensures the listener is in place before worker's first message arrives
+
+        # Ensure worker exists (but don't start it yet)
+        await self._ensure_worker_created()
 
         if not self._worker:
-            raise RuntimeError("Failed to start stream worker")
+            raise RuntimeError("Failed to create stream worker")
 
-        # Create listener
+        # Pre-register listener BEFORE worker starts consuming
         queue = self._worker.get_message_queue()
         listener = await queue.create_listener()
         self._listeners[listener.listener_id] = listener
@@ -93,12 +96,17 @@ class StreamHandle:
         if self._first_listener_at is None:
             self._first_listener_at = time.time()
 
+        # Now start the worker (only if not already started)
+        is_first_listener = len(self._listeners) == 1
+        await self._ensure_worker_started()
+
         logger.debug(
             "stream_handle_listener_created",
             handle_id=self.handle_id,
             listener_id=listener.listener_id,
             total_listeners=len(self._listeners),
             worker_status=self._worker.status.value,
+            is_first_listener=is_first_listener,
         )
 
         try:
@@ -133,11 +141,11 @@ class StreamHandle:
             # Check if we should trigger cleanup
             await self._check_cleanup()
 
-    async def _ensure_worker_started(self) -> None:
-        """Ensure the worker is started, creating it if needed."""
+    async def _ensure_worker_created(self) -> None:
+        """Ensure the worker is created (but not started)."""
         async with self._worker_lock:
             if self._worker is None:
-                # Create worker
+                # Create worker (but don't start it yet)
                 worker_id = f"{self.handle_id}-worker"
                 self._worker = StreamWorker(
                     worker_id=worker_id,
@@ -148,13 +156,27 @@ class StreamHandle:
                     stream_handle=self,  # Pass self for message tracking
                 )
 
-                # Start worker
-                await self._worker.start()
-
                 logger.debug(
                     "stream_handle_worker_created",
                     handle_id=self.handle_id,
                     worker_id=worker_id,
+                    session_id=self.session_id,
+                )
+
+    async def _ensure_worker_started(self) -> None:
+        """Ensure the worker is started (assumes worker already created)."""
+        async with self._worker_lock:
+            if self._worker is None:
+                raise RuntimeError("Worker must be created before starting")
+
+            # Only start if not already started
+            if self._worker.status == WorkerStatus.IDLE:
+                await self._worker.start()
+
+                logger.debug(
+                    "stream_handle_worker_started",
+                    handle_id=self.handle_id,
+                    worker_id=self._worker.worker_id,
                     session_id=self.session_id,
                 )
 
@@ -194,6 +216,17 @@ class StreamHandle:
                         message="Worker already finished, no interrupt needed",
                     )
                     return
+
+                # Bug #4 fix: Wait for worker to drain messages before interrupt
+                logger.debug(
+                    "stream_handle_draining_worker_messages",
+                    handle_id=self.handle_id,
+                    message="Allowing worker to drain any in-flight messages",
+                )
+
+                # Give worker a brief moment to drain any messages already being processed
+                # This prevents losing messages that are in-flight between worker and listeners
+                await asyncio.sleep(0.1)  # 100ms grace period for message draining
 
                 # Send shutdown signal to any remaining queue listeners before interrupt
                 logger.debug(
@@ -242,21 +275,21 @@ class StreamHandle:
                             message="All listeners disconnected, triggering SDK interrupt",
                         )
 
-                        # Schedule interrupt using a background task with timeout control
+                        # Bug #4 fix: Await interrupt directly instead of fire-and-forget
+                        # This ensures proper coordination and prevents message loss
                         try:
-                            # Create a background task with proper timeout and error handling
-                            asyncio.create_task(self._safe_interrupt_with_timeout())
+                            await self._safe_interrupt_with_timeout()
                             logger.debug(
-                                "stream_handle_interrupt_scheduled",
+                                "stream_handle_interrupt_completed_sync",
                                 handle_id=self.handle_id,
-                                message="SDK interrupt scheduled with timeout control",
+                                message="SDK interrupt completed successfully in cleanup",
                             )
                         except Exception as e:
                             logger.error(
-                                "stream_handle_interrupt_schedule_error",
+                                "stream_handle_interrupt_error_sync",
                                 handle_id=self.handle_id,
                                 error=str(e),
-                                message="Failed to schedule SDK interrupt",
+                                message="Failed to complete SDK interrupt in cleanup",
                             )
                 else:
                     # No more listeners - worker continues but messages are discarded

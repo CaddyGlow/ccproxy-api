@@ -189,10 +189,13 @@ class StreamWorker:
                 self._total_messages += 1
                 self._last_message_time = time.time()
 
-                # Check if we have listeners
-                if await self._message_queue.has_listeners():
-                    # Broadcast to all listeners
-                    delivered_count = await self._message_queue.broadcast(message)
+                # Broadcast to all listeners (handles no-listener case atomically)
+                # Fix for Bug #1: Always call broadcast() instead of separate has_listeners() check
+                # to avoid race condition where listeners disconnect between check and broadcast
+                delivered_count = await self._message_queue.broadcast(message)
+
+                if delivered_count > 0:
+                    # Message was delivered to at least one listener
                     self._messages_delivered += delivered_count
 
                     logger.debug(
@@ -203,7 +206,7 @@ class StreamWorker:
                         total_messages=self._total_messages,
                     )
                 else:
-                    # No listeners - discard message
+                    # No listeners - message was discarded
                     self._messages_discarded += 1
 
                     logger.debug(
