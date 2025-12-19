@@ -96,8 +96,25 @@ class ClaudeStreamProcessor:
                         pretty_format=pretty_format,
                         xml_tag="system_message",
                     )
-                    for _, chunk in chunks:
-                        yield chunk
+                    # Bug #3 fix: Track chunk delivery with interruption handling
+                    chunks_list = list(chunks)
+                    total_chunks = len(chunks_list)
+                    chunks_sent = 0
+                    try:
+                        for _, chunk in chunks_list:
+                            yield chunk
+                            chunks_sent += 1
+                    except GeneratorExit:
+                        logger.warning(
+                            "sdk_system_message_block_interrupted",
+                            block_index=content_block_index,
+                            chunks_sent=chunks_sent,
+                            total_chunks=total_chunks,
+                            completion_ratio=f"{chunks_sent}/{total_chunks}",
+                            request_id=request_id,
+                            message="SystemMessage block interrupted during yield",
+                        )
+                        raise
                     content_block_index += 1
 
             elif isinstance(message, sdk_models.AssistantMessage):
@@ -158,8 +175,27 @@ class ClaudeStreamProcessor:
                                 sdk_block_converter=lambda obj: obj.to_sdk_block(),
                             )
                         )
-                        for _, chunk in chunks:
-                            yield chunk
+                        # Bug #3 fix: Track chunk delivery with interruption handling
+                        chunks_list = list(chunks)
+                        total_chunks = len(chunks_list)
+                        chunks_sent = 0
+                        try:
+                            for _, chunk in chunks_list:
+                                yield chunk
+                                chunks_sent += 1
+                        except GeneratorExit:
+                            logger.warning(
+                                "sdk_tool_use_block_interrupted",
+                                tool_id=block.id,
+                                tool_name=block.name,
+                                block_index=content_block_index,
+                                chunks_sent=chunks_sent,
+                                total_chunks=total_chunks,
+                                completion_ratio=f"{chunks_sent}/{total_chunks}",
+                                request_id=request_id,
+                                message="ToolUseBlock interrupted during yield",
+                            )
+                            raise
                         content_block_index += 1
                     elif isinstance(block, sdk_models.ToolResultBlock):
                         logger.debug(
@@ -200,8 +236,27 @@ class ClaudeStreamProcessor:
                                 sdk_block_converter=lambda obj: obj.to_sdk_block(),
                             )
                         )
-                        for _, chunk in chunks:
-                            yield chunk
+                        # Bug #3 fix: Track chunk delivery with interruption handling
+                        chunks_list = list(chunks)
+                        total_chunks = len(chunks_list)
+                        chunks_sent = 0
+                        try:
+                            for _, chunk in chunks_list:
+                                yield chunk
+                                chunks_sent += 1
+                        except GeneratorExit:
+                            logger.warning(
+                                "sdk_tool_result_block_interrupted",
+                                tool_use_id=block.tool_use_id,
+                                is_error=block.is_error,
+                                block_index=content_block_index,
+                                chunks_sent=chunks_sent,
+                                total_chunks=total_chunks,
+                                completion_ratio=f"{chunks_sent}/{total_chunks}",
+                                request_id=request_id,
+                                message="ToolResultBlock (AssistantMessage) interrupted during yield",
+                            )
+                            raise
                         content_block_index += 1
 
             elif isinstance(message, sdk_models.UserMessage):
@@ -237,8 +292,27 @@ class ClaudeStreamProcessor:
                                 sdk_block_converter=lambda obj: obj.to_sdk_block(),
                             )
                         )
-                        for _, chunk in chunks:
-                            yield chunk
+                        # Bug #3 fix: Track chunk delivery with interruption handling
+                        chunks_list = list(chunks)
+                        total_chunks = len(chunks_list)
+                        chunks_sent = 0
+                        try:
+                            for _, chunk in chunks_list:
+                                yield chunk
+                                chunks_sent += 1
+                        except GeneratorExit:
+                            logger.warning(
+                                "sdk_tool_result_block_interrupted",
+                                tool_use_id=block.tool_use_id,
+                                is_error=block.is_error,
+                                block_index=content_block_index,
+                                chunks_sent=chunks_sent,
+                                total_chunks=total_chunks,
+                                completion_ratio=f"{chunks_sent}/{total_chunks}",
+                                request_id=request_id,
+                                message="ToolResultBlock (UserMessage) interrupted during yield",
+                            )
+                            raise
                         content_block_index += 1
                     # Handle other UserMessage content types if needed in the future
                     else:
@@ -270,8 +344,25 @@ class ClaudeStreamProcessor:
                         pretty_format=pretty_format,
                         xml_tag="system_message",
                     )
-                    for _, chunk in chunks:
-                        yield chunk
+                    # Bug #3 fix: Track chunk delivery with interruption handling
+                    chunks_list = list(chunks)
+                    total_chunks = len(chunks_list)
+                    chunks_sent = 0
+                    try:
+                        for _, chunk in chunks_list:
+                            yield chunk
+                            chunks_sent += 1
+                    except GeneratorExit:
+                        logger.warning(
+                            "sdk_result_message_block_interrupted",
+                            block_index=content_block_index,
+                            chunks_sent=chunks_sent,
+                            total_chunks=total_chunks,
+                            completion_ratio=f"{chunks_sent}/{total_chunks}",
+                            request_id=request_id,
+                            message="ResultMessage block interrupted during yield",
+                        )
+                        raise
                     content_block_index += 1
 
                     if ctx:
