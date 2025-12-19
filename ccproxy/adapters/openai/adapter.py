@@ -619,7 +619,88 @@ class OpenAIAdapter(APIAdapter):
                         }
                     )
 
+        # Sanitize tool_result blocks to ensure they have matching tool_use blocks
+        messages = self._sanitize_tool_results(messages)
+
         return messages, system_prompt
+
+    def _sanitize_tool_results(
+        self, messages: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Remove orphaned tool_result blocks that don't have matching tool_use blocks.
+
+        The Anthropic API requires that each tool_result block must have a corresponding
+        tool_use block in the immediately preceding assistant message. This method removes
+        tool_result blocks that don't meet this requirement.
+
+        Args:
+            messages: List of Anthropic format messages
+
+        Returns:
+            Sanitized messages with orphaned tool_results removed or converted to text
+        """
+        if not messages:
+            return messages
+
+        sanitized = []
+        for i, msg in enumerate(messages):
+            if msg["role"] == "user" and isinstance(msg.get("content"), list):
+                # Find tool_use_ids from the immediately preceding assistant message
+                valid_tool_use_ids: set[str] = set()
+                if i > 0 and messages[i - 1]["role"] == "assistant":
+                    prev_content = messages[i - 1].get("content", [])
+                    if isinstance(prev_content, list):
+                        for block in prev_content:
+                            if isinstance(block, dict) and block.get("type") == "tool_use":
+                                tool_id = block.get("id")
+                                if tool_id:
+                                    valid_tool_use_ids.add(tool_id)
+
+                # Filter content blocks
+                new_content = []
+                orphaned_results = []
+                for block in msg["content"]:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        tool_use_id = block.get("tool_use_id")
+                        if tool_use_id in valid_tool_use_ids:
+                            new_content.append(block)
+                        else:
+                            # Convert orphaned tool_result to text to preserve information
+                            orphaned_results.append(block)
+                            logger.warning(
+                                "orphaned_tool_result_removed",
+                                tool_use_id=tool_use_id,
+                                valid_ids=list(valid_tool_use_ids),
+                                message_index=i,
+                            )
+                    else:
+                        new_content.append(block)
+
+                # If we have orphaned results, convert them to a text block
+                if orphaned_results:
+                    orphan_text = "[Previous tool results from compacted history]\n"
+                    for orphan in orphaned_results:
+                        content = orphan.get("content", "")
+                        if isinstance(content, list):
+                            # Handle content that's a list of blocks
+                            text_parts = []
+                            for c in content:
+                                if isinstance(c, dict) and c.get("type") == "text":
+                                    text_parts.append(c.get("text", ""))
+                            content = "\n".join(text_parts)
+                        orphan_text += f"- Tool {orphan.get('tool_use_id', 'unknown')}: {content[:500]}...\n" if len(str(content)) > 500 else f"- Tool {orphan.get('tool_use_id', 'unknown')}: {content}\n"
+
+                    # Add as text block at the beginning
+                    new_content.insert(0, {"type": "text", "text": orphan_text})
+
+                # Update message content (only if we have content left)
+                if new_content:
+                    sanitized.append({**msg, "content": new_content})
+                # If no content left, skip this message entirely
+            else:
+                sanitized.append(msg)
+
+        return sanitized
 
     def _convert_content_to_anthropic(
         self, content: str | list[Any] | None
