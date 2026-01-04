@@ -180,6 +180,25 @@ class TestClaudeAPIAdapter:
         assert "messages" in result_data or "model" in result_data
 
     @pytest.mark.asyncio
+    async def test_prepare_provider_request_drops_null_temperature(
+        self, adapter: ClaudeAPIAdapter
+    ) -> None:
+        """Ensure null temperatures are removed instead of sent upstream."""
+        body_dict = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "temperature": None,
+        }
+        body = json.dumps(body_dict).encode()
+        headers = {"content-type": "application/json"}
+
+        result_body, _ = await adapter.prepare_provider_request(
+            body, headers, "/v1/messages"
+        )
+        result_data = json.loads(result_body.decode())
+        assert "temperature" not in result_data
+
+    @pytest.mark.asyncio
     async def test_process_provider_response_basic(
         self, adapter: ClaudeAPIAdapter
     ) -> None:

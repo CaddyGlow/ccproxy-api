@@ -53,6 +53,10 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Parse body
         body_data = json.loads(body.decode()) if body else {}
 
+        # Anthropic API rejects null temperature fields, so strip them early
+        if body_data.get("temperature") is None:
+            body_data.pop("temperature", None)
+
         # Anthropic API constraint: cannot accept both temperature and top_p
         # Prioritize temperature over top_p when both are present
         if "temperature" in body_data and "top_p" in body_data:
