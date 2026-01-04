@@ -424,7 +424,7 @@ class OpenAIStreamProcessor:
             elif self.tool_calls and self.enable_tool_calls:
                 # Send completed tool calls for both SSE and dict formats
                 # Previous bug: Only sent for SSE format, causing dict format (SDK mode) to miss tool calls
-                logger.debug(
+                logger.trace(
                     "openai_stream_sending_tool_calls",
                     tool_count=len(self.tool_calls),
                     output_format=self.output_format,
@@ -434,7 +434,7 @@ class OpenAIStreamProcessor:
                 for tool_call_index, (tool_call_id, tool_call) in enumerate(
                     self.tool_calls.items()
                 ):
-                    logger.debug(
+                    logger.trace(
                         "openai_stream_tool_call_yielding",
                         tool_call_id=tool_call_id,
                         tool_name=tool_call["name"],
@@ -462,7 +462,7 @@ class OpenAIStreamProcessor:
                     )
 
                 # Clear tool_calls after yielding to prevent duplicates
-                logger.debug(
+                logger.trace(
                     "openai_stream_clearing_tool_calls",
                     cleared_count=len(self.tool_calls),
                     category="streaming_conversion",
