@@ -8,7 +8,7 @@ on:
       - "tests/**"
       - "pyproject.toml"
       - "uv.lock"
-      - "Makefile"
+      - "Taskfile"
       - ".github/workflows/backend.yml"
   pull_request:
     branches: [main, dev]
@@ -17,7 +17,7 @@ on:
       - "tests/**"
       - "pyproject.toml"
       - "uv.lock"
-      - "Makefile"
+      - "Taskfile"
       - ".github/workflows/backend.yml"
   workflow_dispatch:
 
@@ -39,7 +39,7 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
-        run: make dev-install
+        run: ./Taskfile dev-install
 
       - name: Cache mypy
         uses: actions/cache@v4
@@ -50,7 +50,7 @@ jobs:
             mypy-${{ runner.os }}-
 
       - name: Run quality checks
-        run: make check
+        run: ./Taskfile check
 
   tests:
     runs-on: ubuntu-latest
@@ -74,10 +74,10 @@ jobs:
         run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: make dev-install
+        run: ./Taskfile dev-install
 
       - name: Run unit tests
-        run: make test-unit
+        run: ./Taskfile test-unit
 
       - name: Upload coverage reports
         if: matrix.python-version == '3.11'
@@ -106,10 +106,10 @@ jobs:
         run: uv python install
 
       - name: Install dependencies
-        run: make dev-install
+        run: ./Taskfile dev-install
 
       - name: Test package build
-        run: make build-backend
+        run: ./Taskfile build-backend
 
       - name: Verify CLI installation
         run: |
