@@ -1,0 +1,41 @@
+{
+  "models": [
+    {
+      "id": "gpt-4",
+      "object": "model",
+      "created": 1687882411,
+      "owned_by": "github"
+    },
+    {
+      "id": "gpt-4-turbo",
+      "object": "model",
+      "created": 1687882411,
+      "owned_by": "github"
+    },
+    {
+      "id": "gpt-3.5-turbo",
+      "object": "model",
+      "created": 1687882411,
+      "owned_by": "github"
+    },
+    {
+      "id": "text-embedding-ada-002",
+      "object": "model",
+      "created": 1687882411,
+      "owned_by": "github"
+    }
+  ],
+  "base_urls": {
+    "individual": "https://api.githubcopilot.com",
+    "business": "https://api.business.githubcopilot.com",
+    "enterprise": "https://api.enterprise.githubcopilot.com"
+  },
+  "headers": {
+    "Content-Type": "application/json",
+    "Copilot-Integration-Id": "vscode-chat",
+    "Editor-Version": "vscode/1.85.0",
+    "Editor-Plugin-Version": "copilot-chat/0.26.7",
+    "User-Agent": "GitHubCopilotChat/0.26.7",
+    "X-GitHub-Api-Version": "2025-04-01"
+  }
+}

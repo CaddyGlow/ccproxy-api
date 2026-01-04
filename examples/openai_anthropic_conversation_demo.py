@@ -286,9 +286,9 @@ class ConversationManager:
 
                 content = response.choices[0].message.content or ""
 
-                logger.debug("openai_response_received", content_length=len(content))
+                logger.debug("openai_responses_received", content_length=len(content))
                 if self.debug:
-                    logger.debug("openai_response_content", content=content)
+                    logger.debug("openai_responses_content", content=content)
 
                 return content
 

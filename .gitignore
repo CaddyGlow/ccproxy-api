@@ -163,3 +163,8 @@ ccproxy/static/dashboard/
 
 *.wal
 *.duckdb
+.lazy.lua
+.ccproxy.toml
+
+make
+run

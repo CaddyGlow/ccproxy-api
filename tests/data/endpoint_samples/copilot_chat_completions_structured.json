@@ -1,0 +1,137 @@
+{
+  "endpoint": "/copilot/v1/chat/completions",
+  "metadata": {
+    "error": null,
+    "success": true
+  },
+  "model": "gpt-4o",
+  "name": "copilot_chat_completions_structured",
+  "request": {
+    "payload": {
+      "max_tokens": 100,
+      "messages": [
+        {
+          "content": "What is 2+2? Answer in one word.",
+          "role": "user"
+        }
+      ],
+      "model": "gpt-4o",
+      "response_format": {
+        "json_schema": {
+          "name": "structured_math_response",
+          "schema": {
+            "additionalProperties": false,
+            "properties": {
+              "answer": {
+                "description": "Single-word response to the math question.",
+                "type": "string"
+              },
+              "answer_type": {
+                "description": "Classification of the answer, e.g. number or word.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "answer",
+              "answer_type"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "json_schema"
+      },
+      "stream": false,
+      "temperature": 0.7
+    },
+    "request_key": "openai_structured_non_stream"
+  },
+  "response": {
+    "body": {
+      "choices": [
+        {
+          "content_filter_results": {
+            "hate": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "self_harm": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "sexual": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "violence": {
+              "filtered": false,
+              "severity": "safe"
+            }
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "{\"answer\":\"four\",\"answer_type\":\"word\"}",
+            "padding": "abcdefghijklmnopqrs",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 1758750894,
+      "id": "chatcmpl-CJRjp7oDh4Wy0XOhoncQmtIsckedV",
+      "model": "gpt-4o-2024-11-20",
+      "prompt_filter_results": [
+        {
+          "content_filter_results": {
+            "hate": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "self_harm": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "sexual": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "violence": {
+              "filtered": false,
+              "severity": "safe"
+            }
+          },
+          "prompt_index": 0
+        }
+      ],
+      "system_fingerprint": "fp_3eed281ddb",
+      "usage": {
+        "completion_tokens": 11,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 83,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 94
+      }
+    },
+    "headers": {
+      "content-security-policy": "default-src 'none'; sandbox",
+      "content-type": "application/json",
+      "date": "Wed, 24 Sep 2025 21:54:54 GMT",
+      "server": "ccproxy",
+      "strict-transport-security": "max-age=31536000",
+      "transfer-encoding": "chunked",
+      "x-github-backend": "Kubernetes",
+      "x-github-request-id": "B68A:27CA06:F5E01:132A0E:68D468AD",
+      "x-quota-snapshot-chat": "ent=-1&ov=0.0&ovPerm=false&rem=100.0&rst=2025-10-01T00%3A00%3A00Z",
+      "x-quota-snapshot-completions": "ent=-1&ov=0.0&ovPerm=false&rem=100.0&rst=2025-10-01T00%3A00%3A00Z",
+      "x-quota-snapshot-premium_interactions": "ent=300&ov=0.0&ovPerm=false&rem=88.4&rst=2025-10-01T00%3A00%3A00Z",
+      "x-request-id": "dad39c9a"
+    },
+    "mode": "json",
+    "status_code": 200
+  },
+  "stream": false
+}

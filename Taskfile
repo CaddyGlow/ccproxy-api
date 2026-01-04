@@ -1,0 +1,259 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+UV="${UV:-uv}"
+UV_RUN="${UV} run"
+PYTEST="${UV_RUN} pytest --import-mode=importlib"
+RUFF="${UV_RUN} ruff"
+MYPY="${UV_RUN} mypy"
+PRE_COMMIT="${UV_RUN} pre-commit"
+
+VERSION_DOCKER="$(git describe --tags --always --dirty=-dev 2>/dev/null || echo latest)"
+
+function task:help {
+  echo "$0 <task> <args>"
+  echo "Tasks:"
+  compgen -A function | sed -En 's/^task:(.*)/\1/p' | sed 's/_/-/g' | sort | cat -n
+}
+
+function task:default {
+  task:help
+}
+
+function task:install {
+  ${UV} sync --no-dev --group=all
+}
+
+function task:dev_install {
+  ${UV} sync --dev
+  ${PRE_COMMIT} install
+}
+
+function task:clean {
+  rm -rf dist build *.egg-info node_modules \
+    .venv htmlcov .uv-cache .ruff_cache .mypy_cache \
+    .pytest_cache .direnv
+  find . -type d -name __pycache__ -exec rm -rf {} +
+  find . -type f -name "*.pyc" -delete
+  rm -f .coverage coverage.xml pnpm-lock.yaml
+}
+
+function task:fix_hard {
+  ${RUFF} check . --fix --unsafe-fixes || true
+  ${RUFF} check . --select F401 --fix --unsafe-fixes || true
+  ${RUFF} check . --select I --fix --unsafe-fixes || true
+  ${RUFF} format . || true
+}
+
+function task:format {
+  ${RUFF} format .
+}
+
+function task:lint_fix {
+  ${RUFF} check . --fix
+}
+
+function task:fix {
+  task:format
+  task:lint_fix
+  ${RUFF} check . --fix --unsafe-fixes
+}
+
+function task:test {
+  echo "Running all tests with coverage..."
+  if [[ ! -d tests ]]; then
+    echo "Error: tests/ directory not found. Create tests/ directory and add test files."
+    exit 1
+  fi
+  ${PYTEST} -v --cov=ccproxy --cov-report=term "$@"
+}
+
+function task:test_unit {
+  echo "Running fast unit tests (excluding real API calls and integration tests)..."
+  ${PYTEST} -v -m "not integration" --tb=short "$@"
+}
+
+function task:test_integration {
+  echo "Running integration tests across all plugins..."
+  local target="tests/"
+  if [[ $# -gt 0 && "$1" != -* ]]; then
+    target="$1"
+    shift
+  fi
+  ${PYTEST} -v -m "integration and not slow and not real_api" --tb=short -n auto "${target}" "$@"
+}
+
+function task:test_plugins {
+  echo "Running plugin tests under tests/plugins..."
+  local target="tests/plugins"
+  if [[ $# -gt 0 && "$1" != -* ]]; then
+    target="$1"
+    shift
+  fi
+  ${PYTEST} -v --tb=short --no-cov "${target}" "$@"
+}
+
+function task:test_file {
+  if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 test-file <path/to/test_file.py>"
+    exit 1
+  fi
+  local file="$1"
+  shift
+  task:check
+  echo "Running specific test file: ${file}"
+  ${PYTEST} -v "${file}" "$@"
+}
+
+function task:test_match {
+  if [[ $# -lt 1 ]]; then
+    echo "Usage: $0 test-match <pattern>"
+    exit 1
+  fi
+  local pattern="$1"
+  shift
+  task:check
+  echo "Running tests matching pattern: ${pattern}"
+  ${PYTEST} -v -k "${pattern}" "$@"
+}
+
+function task:typecheck {
+  ${MYPY} .
+}
+
+function task:lint {
+  ${RUFF} check .
+}
+
+function task:format_check {
+  ${RUFF} format --check .
+}
+
+function task:check_boundaries {
+  ${UV_RUN} python scripts/check_import_boundaries.py
+}
+
+function task:check {
+  task:lint
+  task:typecheck
+  task:format_check
+  task:check_boundaries
+}
+
+function task:test_coverage {
+  task:check
+  echo "Running tests with detailed coverage report..."
+  ${PYTEST} -v --cov=ccproxy --cov-report=term-missing --cov-report=html -m "not slow and not real_api" "$@"
+  echo "HTML coverage report generated in htmlcov/"
+}
+
+function task:pre_commit {
+  ${PRE_COMMIT} run --all-files
+}
+
+function task:ci {
+  task:pre_commit
+  task:test
+}
+
+function task:build {
+  ${UV} build
+}
+
+function task:build_backend {
+  task:build
+}
+
+function task:build_dashboard {
+  make -C dashboard build
+}
+
+function task:dashboard {
+  echo "Dashboard commands:"
+  echo "Use 'make -C dashboard <target>' to run dashboard commands"
+  echo "Available dashboard targets:"
+  make -C dashboard help
+}
+
+function task:docker_build {
+  docker build -t "ghcr.io/caddyglow/ccproxy:${VERSION_DOCKER}" .
+}
+
+function task:docker_run {
+  docker run --rm -p 8000:8000 "ghcr.io/caddyglow/ccproxy:${VERSION_DOCKER}"
+}
+
+function task:docker_compose_up {
+  docker-compose up --build
+}
+
+function task:docker_compose_down {
+  docker-compose down
+}
+
+function task:dev {
+  LOGGING__LEVEL=trace \
+    LOGGING__FILE=/tmp/ccproxy/ccproxy.log \
+    LOGGING__VERBOSE_API=true \
+    LOGGING__PLUGIN_LOG_BASE_DIR=/tmp/ccproxy \
+    PLUGINS__REQUEST_TRACER__ENABLED=true \
+    PLUGINS__ACCESS_LOG__ENABLED=true \
+    PLUGINS__ACCESS_LOG__CLIENT_LOG_FILE=/tmp/ccproxy/combined_access.log \
+    PLUGINS__ACCESS_LOG__CLIENT_FORMAT=combined \
+    HTTP__COMPRESSION_ENABLED=false \
+    SERVER__RELOAD=true \
+    SERVER__WORKERS=1 \
+    ${UV_RUN} ccproxy-api serve
+}
+
+function task:prod {
+  ${UV_RUN} ccproxy serve
+}
+
+function task:docs_install {
+  ${UV} sync --all-groups
+}
+
+function task:docs_build {
+  task:docs_install
+  ${UV_RUN} mkdocs build
+}
+
+function task:docs_serve {
+  task:docs_install
+  ${UV_RUN} mkdocs serve
+}
+
+function task:docs_clean {
+  rm -rf site docs/.cache
+}
+
+function task:docs_deploy {
+  task:docs_build
+  echo "Documentation built and ready for deployment"
+  echo "Upload the 'site/' directory to your web server"
+}
+
+function task:setup {
+  task:dev_install
+  echo "Development environment ready!"
+  echo "Run './Taskfile dev' to start the server"
+}
+
+TIMEFORMAT="Task completed in %3lR"
+
+function __task_dispatch {
+  local task_name="${1:-default}"
+  shift || true
+  local task_func="task:${task_name//-/_}"
+
+  if ! declare -F "${task_func}" >/dev/null; then
+    echo "Unknown task: ${task_name}"
+    task:help
+    exit 1
+  fi
+
+  time "${task_func}" "$@"
+}
+
+__task_dispatch "$@"

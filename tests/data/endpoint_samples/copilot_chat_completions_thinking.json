@@ -1,0 +1,112 @@
+{
+  "endpoint": "/copilot/v1/chat/completions",
+  "metadata": {
+    "error": null,
+    "success": true
+  },
+  "model": "gpt-4o",
+  "name": "copilot_chat_completions_thinking",
+  "request": {
+    "payload": {
+      "messages": [
+        {
+          "content": "I need to calculate the factorial of 5. Can you help me think through this step by step?",
+          "role": "user"
+        }
+      ],
+      "model": "o3-mini",
+      "stream": false,
+      "temperature": 1.0
+    },
+    "request_key": "openai_thinking_non_stream"
+  },
+  "response": {
+    "body": {
+      "choices": [
+        {
+          "content_filter_results": {
+            "hate": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "self_harm": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "sexual": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "violence": {
+              "filtered": false,
+              "severity": "safe"
+            }
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "The factorial of a number n (written as n!) is the product of all positive integers from n down to 1. For 5!, here's the step-by-step process:\n\n1. Start with 5.\n2. Multiply by 4: 5 \u00d7 4 = 20.\n3. Multiply the result by 3: 20 \u00d7 3 = 60.\n4. Multiply that result by 2: 60 \u00d7 2 = 120.\n5. Finally, multiply by 1 (which doesn't change the value): 120 \u00d7 1 = 120.\n\nSo, 5! equals 120.",
+            "padding": "abcdefghijklm",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 1758750890,
+      "id": "chatcmpl-CJRjkBTqSsFkbUux8OjTjGcbncGAC",
+      "model": "o3-mini-2025-01-31",
+      "prompt_filter_results": [
+        {
+          "content_filter_results": {
+            "hate": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "self_harm": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "sexual": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "violence": {
+              "filtered": false,
+              "severity": "safe"
+            }
+          },
+          "prompt_index": 0
+        }
+      ],
+      "system_fingerprint": "fp_a2dc940e6b",
+      "usage": {
+        "completion_tokens": 331,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 27,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 358
+      }
+    },
+    "headers": {
+      "content-security-policy": "default-src 'none'; sandbox",
+      "content-type": "application/json",
+      "date": "Wed, 24 Sep 2025 21:54:50 GMT",
+      "server": "ccproxy",
+      "strict-transport-security": "max-age=31536000",
+      "transfer-encoding": "chunked",
+      "x-github-backend": "Kubernetes",
+      "x-github-request-id": "B68A:27CA06:F5262:131B2B:68D468A8",
+      "x-quota-snapshot-chat": "ent=-1&ov=0.0&ovPerm=false&rem=100.0&rst=2025-10-01T00%3A00%3A00Z",
+      "x-quota-snapshot-completions": "ent=-1&ov=0.0&ovPerm=false&rem=100.0&rst=2025-10-01T00%3A00%3A00Z",
+      "x-quota-snapshot-premium_interactions": "ent=300&ov=0.0&ovPerm=false&rem=88.4&rst=2025-10-01T00%3A00%3A00Z",
+      "x-request-id": "11923940"
+    },
+    "mode": "json",
+    "status_code": 200
+  },
+  "stream": false
+}

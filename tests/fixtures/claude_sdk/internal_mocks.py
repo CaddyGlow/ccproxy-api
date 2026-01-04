@@ -1,7 +1,7 @@
-"""Internal mocks for ClaudeSDKService.
+"""Internal mocks for Claude SDK components.
 
 These fixtures provide AsyncMock objects for dependency injection testing.
-They mock the ClaudeSDKService class directly for use with app.dependency_overrides.
+They mock Claude SDK components for use with app.dependency_overrides.
 """
 
 from collections.abc import AsyncGenerator
@@ -9,17 +9,16 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from claude_code_sdk import (
+from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
-    TextBlock,
     ToolResultBlock,
     ToolUseBlock,
 )
+from claude_agent_sdk.types import TextBlock as SDKTextBlock
 
 from ccproxy.core.errors import ClaudeProxyError
-from ccproxy.models.messages import MessageResponse, TextContentBlock
-from ccproxy.models.requests import Usage
+from ccproxy.llms.models.anthropic import MessageResponse, TextBlock, Usage
 
 
 @pytest.fixture
@@ -43,7 +42,7 @@ def mock_internal_claude_sdk_service() -> AsyncMock:
             )
 
         # Create content block
-        content_block = TextContentBlock(type="text", text="Hello! How can I help you?")
+        content_block = TextBlock(type="text", text="Hello! How can I help you?")
 
         # Create usage object
         usage = Usage(input_tokens=10, output_tokens=8)
@@ -159,9 +158,7 @@ def mock_internal_claude_sdk_service_streaming() -> AsyncMock:
             return mock_streaming_response()
         else:
             # Return proper MessageResponse object for non-streaming
-            content_block = TextContentBlock(
-                type="text", text="Hello! How can I help you?"
-            )
+            content_block = TextBlock(type="text", text="Hello! How can I help you?")
 
             usage = Usage(input_tokens=10, output_tokens=8)
 
@@ -204,43 +201,31 @@ def mock_claude_sdk_client_streaming() -> AsyncMock:
         *args: Any, **kwargs: Any
     ) -> AsyncGenerator[Any, None]:
         yield AssistantMessage(
-            content=[TextBlock(text="Hello")],
-            session_id="test_session",
-            stop_reason=None,
-            stop_sequences=None,
+            content=[SDKTextBlock(text="Hello")],
             model="claude-3-5-sonnet-20241022",
-            message_id="msg_123",
         )
         yield AssistantMessage(
-            content=[TextBlock(text=" world!")],
-            session_id="test_session",
-            stop_reason=None,
-            stop_sequences=None,
+            content=[SDKTextBlock(text=" world!")],
             model="claude-3-5-sonnet-20241022",
-            message_id="msg_123",
         )
         yield AssistantMessage(
             content=[
                 ToolUseBlock(id="tool_123", name="test_tool", input={"arg": "value"})
             ],
-            session_id="test_session",
-            stop_reason=None,
-            stop_sequences=None,
             model="claude-3-5-sonnet-20241022",
-            message_id="msg_123",
         )
         # Yield a tool result block
         yield AssistantMessage(
             content=[ToolResultBlock(tool_use_id="tool_123", content="tool output")],
-            session_id="test_session",
-            stop_reason=None,
-            stop_sequences=None,
             model="claude-3-5-sonnet-20241022",
-            message_id="msg_123",
         )
         yield ResultMessage(
             session_id="test_session",
-            stop_reason="end_turn",
+            subtype="",
+            duration_ms=0,
+            duration_api_ms=0,
+            is_error=False,
+            num_turns=1,
             total_cost_usd=0.001,
             usage={
                 "input_tokens": 10,

@@ -1,0 +1,171 @@
+"""Default model metadata and mapping rules for Claude providers."""
+
+from __future__ import annotations
+
+from ccproxy.models.provider import ModelCard, ModelMappingRule
+
+
+DEFAULT_CLAUDE_MODEL_CARDS: list[ModelCard] = [
+    ModelCard(
+        id="claude-sonnet-4-5-20250929",
+        created=1722816000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-sonnet-4-5-20250929",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-haiku-4-5-20251001",
+        created=1722816000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-haiku-4-5-20251001",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-opus-4-1-20250805",
+        created=1722816000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-opus-4-1-20250805",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-opus-4-20250514",
+        created=1716336000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-opus-4-20250514",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-sonnet-4-20250514",
+        created=1716336000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-sonnet-4-20250514",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-3-7-sonnet-20250219",
+        created=1708819200,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-3-7-sonnet-20250219",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-3-5-sonnet-20241022",
+        created=1696000000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-3-5-sonnet-20241022",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-3-5-haiku-20241022",
+        created=1696000000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-3-5-haiku-20241022",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-3-opus-20240229",
+        created=1696000000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-3-opus-20240229",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-3-sonnet-20240229",
+        created=1696000000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-3-sonnet-20240229",
+        parent=None,
+    ),
+    ModelCard(
+        id="claude-3-haiku-20240307",
+        created=1696000000,
+        owned_by="anthropic",
+        permission=[],
+        root="claude-3-haiku-20240307",
+        parent=None,
+    ),
+]
+
+
+DEFAULT_CLAUDE_MODEL_MAPPINGS: list[ModelMappingRule] = [
+    ModelMappingRule(
+        match="gpt-4o-mini",
+        target="claude-3-5-haiku-latest",
+        kind="prefix",
+    ),
+    ModelMappingRule(
+        match="gpt-4o",
+        target="claude-3-7-sonnet-20250219",
+        kind="prefix",
+    ),
+    ModelMappingRule(
+        match=r"^gpt-4(?!o)",
+        target="claude-3-5-sonnet-20241022",
+        kind="regex",
+    ),
+    ModelMappingRule(
+        match="gpt-3.5",
+        target="claude-3-5-haiku-20241022",
+        kind="prefix",
+    ),
+    ModelMappingRule(
+        match="text-davinci",
+        target="claude-3-5-sonnet-20241022",
+        kind="prefix",
+    ),
+    ModelMappingRule(
+        match="o1",
+        target="claude-opus-4-20250514",
+        kind="prefix",
+    ),
+    ModelMappingRule(
+        match="o3-mini",
+        target="claude-opus-4-20250514",
+        kind="exact",
+    ),
+    ModelMappingRule(
+        match="gpt-5",
+        target="claude-sonnet-4-20250514",
+        kind="prefix",
+    ),
+    ModelMappingRule(
+        match="claude-3-5-sonnet-latest",
+        target="claude-3-5-sonnet-20241022",
+    ),
+    ModelMappingRule(
+        match="claude-3-5-sonnet-20240620",
+        target="claude-3-5-sonnet-20240620",
+    ),
+    ModelMappingRule(
+        match="claude-3-5-haiku-latest",
+        target="claude-3-5-haiku-20241022",
+    ),
+    ModelMappingRule(
+        match="claude-3-opus",
+        target="claude-3-opus-20240229",
+    ),
+    ModelMappingRule(
+        match="claude-3-sonnet",
+        target="claude-3-sonnet-20240229",
+    ),
+    ModelMappingRule(
+        match="claude-3-haiku",
+        target="claude-3-haiku-20240307",
+    ),
+]
+
+
+__all__ = [
+    "DEFAULT_CLAUDE_MODEL_CARDS",
+    "DEFAULT_CLAUDE_MODEL_MAPPINGS",
+]

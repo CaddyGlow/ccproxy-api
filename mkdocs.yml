@@ -56,24 +56,29 @@ nav:
     - Quick Start: getting-started/quickstart.md
     - Installation: getting-started/installation.md
     - Configuration: getting-started/configuration.md
-  - User Guide:
-    - API Usage: user-guide/api-usage.md
-    - MCP Integration: user-guide/mcp-integration.md
-    - Authentication: user-guide/authentication.md
-    - Observability: observability.md
-  - API Reference: api-reference.md
+  - Plugin System:
+    - Overview: PLUGIN_SYSTEM_DOCUMENTATION.md
+    - Authoring Guide: PLUGIN_AUTHORING.md
+    - Credential Balancer: plugins/credential-balancer.md
+    - OAuth Integration: OAUTH_PLUGIN_ARCHITECTURE.md
+  - Migration:
+    - 0.2 Plugin‑First: migration/0.2-plugin-first.md
+  - User Guide: user-guide/
+  - Development:
+    - Documentation Guide: documentation-guide.md
+    - Auth Providers: development/auth-providers.md
+    - Debugging Guide: development/debugging-with-proxy.md
+    - Formatter Refactor Plan: development/formatter-refactor-plan.md
+    - Formatter Refactor Progress: development/formatter-refactor-progress.md
+  - Deployment:
+    - SystemD Setup: systemd-setup.md
+    - Metrics API: metrics-api.md
   - Examples: examples.md
   - Contributing: contributing.md
-  - Code Reference:
-    - Overview: reference/ccproxy/
-    - API Modules: reference/ccproxy/routers/
-    - Services: reference/ccproxy/services/
-    - Models: reference/ccproxy/models/
-    - Configuration: reference/ccproxy/config/
-    - CLI: reference/ccproxy/cli/
-    - Utilities: reference/ccproxy/utils/
-    - Docker: reference/ccproxy/docker/
-    - Middleware: reference/ccproxy/middleware/
+  - Release Prep:
+    - Release Status: release-v0.2-status.md
+    - Open Items: v0.2-release-open-items.md
+  - Code Reference: reference/
 
 # Plugins
 plugins:

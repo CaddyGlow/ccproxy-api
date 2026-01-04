@@ -73,8 +73,6 @@ RUN ln -s /usr/local/bin/bun /usr/local/bin/node && ln -s /usr/local/bin/bunx /u
 COPY --from=bun-deps /root/.bun/install/global /app/bun_global
 RUN ln -s /app/bun_global/node_modules/\@anthropic-ai/claude-code/cli.js /usr/local/bin/claude
 
-COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Copy Python application from builder
 COPY --from=builder /app /app
@@ -86,14 +84,13 @@ ENV PATH="/app/.venv/bin:/app/bun_global/bin:$PATH"
 ENV PYTHONPATH=/app
 ENV SERVER__HOST=0.0.0.0
 ENV SERVER__PORT=8000
+ENV LOGGING__LEVEL=INFO
+ENV LOGGING__FORMAT=json
 
 EXPOSE ${SERVER__PORT:-8000}
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:${SERVER__PORT:-8000}/health || exit 1
 
-# Entrypoint used to create user and set
-# user home folder
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-
+# Run the API server by default
 CMD ["ccproxy"]

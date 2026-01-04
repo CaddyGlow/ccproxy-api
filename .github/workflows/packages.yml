@@ -1,0 +1,68 @@
+name: Build Distribution Packages
+
+on:
+  # Trigger after Python CI workflow completes successfully and releases are created
+  workflow_run:
+    workflows: ["Python CI"]
+    types:
+      - completed
+    branches:
+      - main
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (without v prefix, e.g., 0.1.4)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # Build Alpine Linux packages (.apk for x86_64 and aarch64)
+  alpine:
+    # Only run if CI completed successfully and was triggered by a tag push
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    uses: CaddyGlow/homebrew-packages/.github/workflows/package-alpine.yml@main
+    permissions:
+      contents: write
+    with:
+      tool: ccproxy
+      version: ${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
+      repository: ${{ github.repository }}
+      release_tag: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.event.workflow_run.head_branch }}
+
+  # Build Debian/Ubuntu packages (.deb for amd64 and arm64)
+  debian:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    uses: CaddyGlow/homebrew-packages/.github/workflows/package-debian.yml@main
+    permissions:
+      contents: write
+    with:
+      tool: ccproxy
+      version: ${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
+      repository: ${{ github.repository }}
+      release_tag: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.event.workflow_run.head_branch }}
+
+  # Build Termux/Android packages (.deb for android-aarch64)
+  termux:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    uses: CaddyGlow/homebrew-packages/.github/workflows/package-termux.yml@main
+    permissions:
+      contents: write
+    with:
+      tool: ccproxy
+      version: ${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
+      repository: ${{ github.repository }}
+      release_tag: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.event.workflow_run.head_branch }}

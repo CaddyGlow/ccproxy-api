@@ -1,10 +1,8 @@
 """Configuration module for Claude Proxy API Server."""
 
-from .auth import AuthSettings, CredentialStorageSettings, OAuthSettings
-from .docker_settings import DockerSettings
-from .reverse_proxy import ReverseProxySettings
-from .settings import Settings, get_settings
-from .validators import (
+from .core import CORSSettings, HTTPSettings, LoggingSettings, ServerSettings
+from .settings import Settings
+from .utils import (
     ConfigValidationError,
     validate_config_dict,
     validate_cors_origins,
@@ -19,12 +17,6 @@ from .validators import (
 
 __all__ = [
     "Settings",
-    "get_settings",
-    "AuthSettings",
-    "OAuthSettings",
-    "CredentialStorageSettings",
-    "ReverseProxySettings",
-    "DockerSettings",
     "ConfigValidationError",
     "validate_config_dict",
     "validate_cors_origins",
@@ -34,4 +26,8 @@ __all__ = [
     "validate_port",
     "validate_timeout",
     "validate_url",
+    "ServerSettings",
+    "LoggingSettings",
+    "HTTPSettings",
+    "CORSSettings",
 ]

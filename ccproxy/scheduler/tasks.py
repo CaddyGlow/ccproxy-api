@@ -1,14 +1,31 @@
 """Base scheduled task classes and task implementations."""
 
 import asyncio
-import contextlib
 import random
 import time
 from abc import ABC, abstractmethod
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
+from packaging import version as pkg_version
+
+from ccproxy.core.async_task_manager import create_managed_task
+from ccproxy.scheduler.errors import SchedulerError
+from ccproxy.utils.version_checker import (
+    VersionCheckState,
+    commit_refs_match,
+    compare_versions,
+    extract_commit_from_version,
+    fetch_latest_branch_commit,
+    fetch_latest_github_version,
+    get_branch_override,
+    get_current_version,
+    get_version_check_state_path,
+    load_check_state,
+    resolve_branch_for_commit,
+    save_check_state,
+)
 
 
 logger = structlog.get_logger(__name__)
@@ -50,6 +67,7 @@ class BaseScheduledTask(ABC):
         self._last_run_time: float = 0
         self._running = False
         self._task: asyncio.Task[Any] | None = None
+        self._stop_complete: asyncio.Event | None = None
 
     @abstractmethod
     async def run(self) -> bool:
@@ -111,12 +129,27 @@ class BaseScheduledTask(ABC):
             return
 
         self._running = True
+        self._stop_complete = asyncio.Event()
         logger.debug("task_starting", task_name=self.name)
 
         try:
             await self.setup()
-            self._task = asyncio.create_task(self._run_loop())
+            self._task = await create_managed_task(
+                self._run_loop(),
+                name=f"scheduled_task_{self.name}",
+                creator="BaseScheduledTask",
+            )
             logger.debug("task_started", task_name=self.name)
+        except SchedulerError as e:
+            self._running = False
+            logger.error(
+                "task_start_scheduler_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
+            raise
         except Exception as e:
             self._running = False
             logger.error(
@@ -124,6 +157,7 @@ class BaseScheduledTask(ABC):
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise
 
@@ -135,21 +169,55 @@ class BaseScheduledTask(ABC):
         self._running = False
         logger.debug("task_stopping", task_name=self.name)
 
-        # Cancel the running task
+        # Cancel the running task and wait for it to complete
         if self._task and not self._task.done():
             self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
+                # Wait for the task to complete cancellation
                 await self._task
+            except asyncio.CancelledError:
+                # Expected when task is cancelled
+                pass
+            except Exception as e:
+                logger.warning(
+                    "task_stop_unexpected_error",
+                    task_name=self.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+
+        # Ensure the task reference is cleared
+        self._task = None
+
+        # Wait for the completion event to be signaled
+        if self._stop_complete is not None:
+            try:
+                await asyncio.wait_for(self._stop_complete.wait(), timeout=1.0)
+            except TimeoutError:
+                logger.warning(
+                    "task_stop_completion_timeout",
+                    task_name=self.name,
+                    message="Task stop completion event not signaled within timeout",
+                )
 
         try:
             await self.cleanup()
             logger.debug("task_stopped", task_name=self.name)
+        except SchedulerError as e:
+            logger.error(
+                "task_cleanup_scheduler_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
         except Exception as e:
             logger.error(
                 "task_cleanup_failed",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
 
     async def _run_loop(self) -> None:
@@ -199,6 +267,32 @@ class BaseScheduledTask(ABC):
             except asyncio.CancelledError:
                 logger.debug("task_cancelled", task_name=self.name)
                 break
+            except TimeoutError as e:
+                self._consecutive_failures += 1
+                logger.error(
+                    "task_execution_timeout_error",
+                    task_name=self.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
+                )
+                # Use backoff delay for exceptions too
+                backoff_delay = self.calculate_next_delay()
+                await asyncio.sleep(backoff_delay)
+            except SchedulerError as e:
+                self._consecutive_failures += 1
+                logger.error(
+                    "task_execution_scheduler_error",
+                    task_name=self.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
+                )
+                # Use backoff delay for exceptions too
+                backoff_delay = self.calculate_next_delay()
+                await asyncio.sleep(backoff_delay)
             except Exception as e:
                 self._consecutive_failures += 1
                 logger.error(
@@ -207,11 +301,15 @@ class BaseScheduledTask(ABC):
                     error=str(e),
                     error_type=type(e).__name__,
                     consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
                 )
-
                 # Use backoff delay for exceptions too
                 backoff_delay = self.calculate_next_delay()
                 await asyncio.sleep(backoff_delay)
+
+        # Signal that the task has completed
+        if self._stop_complete is not None:
+            self._stop_complete.set()
 
     @property
     def is_running(self) -> bool:
@@ -244,243 +342,6 @@ class BaseScheduledTask(ABC):
             "last_run_time": self.last_run_time,
             "next_delay": self.calculate_next_delay() if self.is_running else None,
         }
-
-
-class PushgatewayTask(BaseScheduledTask):
-    """Task for pushing metrics to Pushgateway periodically."""
-
-    def __init__(
-        self,
-        name: str,
-        interval_seconds: float,
-        enabled: bool = True,
-        max_backoff_seconds: float = 300.0,
-    ):
-        """
-        Initialize pushgateway task.
-
-        Args:
-            name: Task name
-            interval_seconds: Interval between pushgateway operations
-            enabled: Whether task is enabled
-            max_backoff_seconds: Maximum backoff delay for failures
-        """
-        super().__init__(
-            name=name,
-            interval_seconds=interval_seconds,
-            enabled=enabled,
-            max_backoff_seconds=max_backoff_seconds,
-        )
-        self._metrics_instance: Any | None = None
-
-    async def setup(self) -> None:
-        """Initialize metrics instance for pushgateway operations."""
-        try:
-            from ccproxy.observability.metrics import get_metrics
-
-            self._metrics_instance = get_metrics()
-            logger.debug("pushgateway_task_setup_complete", task_name=self.name)
-        except Exception as e:
-            logger.error(
-                "pushgateway_task_setup_failed",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise
-
-    async def run(self) -> bool:
-        """Execute pushgateway metrics push."""
-        try:
-            if not self._metrics_instance:
-                logger.warning("pushgateway_no_metrics_instance", task_name=self.name)
-                return False
-
-            if not self._metrics_instance.is_pushgateway_enabled():
-                logger.debug("pushgateway_disabled", task_name=self.name)
-                return True  # Not an error, just disabled
-
-            success = bool(self._metrics_instance.push_to_gateway())
-
-            if success:
-                logger.debug("pushgateway_push_success", task_name=self.name)
-            else:
-                logger.warning("pushgateway_push_failed", task_name=self.name)
-
-            return success
-
-        except Exception as e:
-            logger.error(
-                "pushgateway_task_error",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return False
-
-
-class StatsPrintingTask(BaseScheduledTask):
-    """Task for printing stats summary periodically."""
-
-    def __init__(
-        self,
-        name: str,
-        interval_seconds: float,
-        enabled: bool = True,
-    ):
-        """
-        Initialize stats printing task.
-
-        Args:
-            name: Task name
-            interval_seconds: Interval between stats printing
-            enabled: Whether task is enabled
-        """
-        super().__init__(
-            name=name,
-            interval_seconds=interval_seconds,
-            enabled=enabled,
-        )
-        self._stats_collector_instance: Any | None = None
-        self._metrics_instance: Any | None = None
-
-    async def setup(self) -> None:
-        """Initialize stats collector and metrics instances."""
-        try:
-            from ccproxy.config.settings import get_settings
-            from ccproxy.observability.metrics import get_metrics
-            from ccproxy.observability.stats_printer import get_stats_collector
-
-            self._metrics_instance = get_metrics()
-            settings = get_settings()
-            self._stats_collector_instance = get_stats_collector(
-                settings=settings.observability,
-                metrics_instance=self._metrics_instance,
-            )
-            logger.debug("stats_printing_task_setup_complete", task_name=self.name)
-        except Exception as e:
-            logger.error(
-                "stats_printing_task_setup_failed",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise
-
-    async def run(self) -> bool:
-        """Execute stats printing."""
-        try:
-            if not self._stats_collector_instance:
-                logger.warning("stats_printing_no_collector", task_name=self.name)
-                return False
-
-            await self._stats_collector_instance.print_stats()
-            logger.debug("stats_printing_success", task_name=self.name)
-            return True
-
-        except Exception as e:
-            logger.error(
-                "stats_printing_task_error",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return False
-
-
-class PricingCacheUpdateTask(BaseScheduledTask):
-    """Task for updating pricing cache periodically."""
-
-    def __init__(
-        self,
-        name: str,
-        interval_seconds: float,
-        enabled: bool = True,
-        force_refresh_on_startup: bool = False,
-        pricing_updater: Any | None = None,
-    ):
-        """
-        Initialize pricing cache update task.
-
-        Args:
-            name: Task name
-            interval_seconds: Interval between pricing updates
-            enabled: Whether task is enabled
-            force_refresh_on_startup: Whether to force refresh on first run
-            pricing_updater: Injected pricing updater instance
-        """
-        super().__init__(
-            name=name,
-            interval_seconds=interval_seconds,
-            enabled=enabled,
-        )
-        self.force_refresh_on_startup = force_refresh_on_startup
-        self._pricing_updater = pricing_updater
-        self._first_run = True
-
-    async def setup(self) -> None:
-        """Initialize pricing updater instance if not injected."""
-        if self._pricing_updater is None:
-            try:
-                from ccproxy.config.pricing import PricingSettings
-                from ccproxy.pricing.cache import PricingCache
-                from ccproxy.pricing.updater import PricingUpdater
-
-                # Create pricing components with dependency injection
-                settings = PricingSettings()
-                cache = PricingCache(settings)
-                self._pricing_updater = PricingUpdater(cache, settings)
-                logger.debug("pricing_update_task_setup_complete", task_name=self.name)
-            except Exception as e:
-                logger.error(
-                    "pricing_update_task_setup_failed",
-                    task_name=self.name,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-                raise
-        else:
-            logger.debug(
-                "pricing_update_task_using_injected_updater", task_name=self.name
-            )
-
-    async def run(self) -> bool:
-        """Execute pricing cache update."""
-        try:
-            if not self._pricing_updater:
-                logger.warning("pricing_update_no_updater", task_name=self.name)
-                return False
-
-            # Force refresh on first run if configured
-            force_refresh = self._first_run and self.force_refresh_on_startup
-            self._first_run = False
-
-            if force_refresh:
-                logger.info("pricing_update_force_refresh_startup", task_name=self.name)
-                refresh_result = await self._pricing_updater.force_refresh()
-                success = bool(refresh_result)
-            else:
-                # Regular update check
-                pricing_data = await self._pricing_updater.get_current_pricing(
-                    force_refresh=False
-                )
-                success = pricing_data is not None
-
-            if success:
-                logger.debug("pricing_update_success", task_name=self.name)
-            else:
-                logger.warning("pricing_update_failed", task_name=self.name)
-
-            return success
-
-        except Exception as e:
-            logger.error(
-                "pricing_update_task_error",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return False
 
 
 class PoolStatsTask(BaseScheduledTask):
@@ -601,6 +462,7 @@ class PoolStatsTask(BaseScheduledTask):
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 
@@ -647,8 +509,6 @@ class VersionUpdateCheckTask(BaseScheduledTask):
             current_version: Current version string
             latest_version: Latest version string
         """
-        from ccproxy.utils.version_checker import compare_versions
-
         if compare_versions(current_version, latest_version):
             logger.warning(
                 "version_update_available",
@@ -656,7 +516,7 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                 current_version=current_version,
                 latest_version=latest_version,
                 source=source,
-                message=(f"New version available: {latest_version}"),
+                description=(f"New version available: {latest_version}"),
             )
         else:
             logger.debug(
@@ -665,7 +525,7 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                 current_version=current_version,
                 latest_version=latest_version,
                 source=source,
-                message=(
+                description=(
                     f"No update: latest_version={latest_version} "
                     f"current_version={current_version}"
                 ),
@@ -679,17 +539,6 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                 task_name=self.name,
                 first_run=self._first_run,
             )
-            from datetime import datetime
-
-            from ccproxy.utils.version_checker import (
-                VersionCheckState,
-                fetch_latest_github_version,
-                get_current_version,
-                get_version_check_state_path,
-                load_check_state,
-                save_check_state,
-            )
-
             state_path = get_version_check_state_path()
             current_time = datetime.now(UTC)
 
@@ -709,7 +558,38 @@ class VersionUpdateCheckTask(BaseScheduledTask):
 
             # Load previous state if available
             prev_state: VersionCheckState | None = await load_check_state(state_path)
+
+            current_version = get_current_version()
+            current_commit = extract_commit_from_version(current_version)
+
+            if prev_state is not None:
+                invalidation_reason: str | None = None
+                if (
+                    prev_state.running_version is not None
+                    and prev_state.running_version != current_version
+                ):
+                    invalidation_reason = "version"
+                elif (
+                    prev_state.running_commit is not None
+                    and current_commit is not None
+                    and not commit_refs_match(prev_state.running_commit, current_commit)
+                ):
+                    invalidation_reason = "commit"
+
+                if invalidation_reason is not None:
+                    logger.debug(
+                        "version_check_cache_invalidated",
+                        task_name=self.name,
+                        reason=invalidation_reason,
+                        cached_running_version=prev_state.running_version,
+                        cached_running_commit=prev_state.running_commit,
+                        current_version=current_version,
+                        current_commit=current_commit,
+                    )
+                    prev_state = None
+
             latest_version: str | None = None
+            latest_branch_commit: str | None = None
             source: str | None = None
 
             # If we have a recent state within the freshness window, avoid network call
@@ -725,6 +605,7 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                         max_age_hours=max_age_hours,
                     )
                     latest_version = prev_state.latest_version_found
+                    latest_branch_commit = prev_state.latest_branch_commit
                     source = "cache"
                 else:
                     logger.debug(
@@ -734,26 +615,118 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                         max_age_hours=max_age_hours,
                     )
 
-            # Fetch only if we don't have a fresh cached version
-            if latest_version is None:
-                latest_version = await fetch_latest_github_version()
-                if latest_version is None:
-                    logger.warning("version_check_fetch_failed", task_name=self.name)
-                    return False
-                # Persist refreshed state
-                new_state = VersionCheckState(
-                    last_check_at=current_time,
-                    latest_version_found=latest_version,
-                )
-                await save_check_state(state_path, new_state)
-                source = "network"
-            else:
-                # Ensure state file at least exists; if it didn't, we wouldn't be here
-                pass
+            current_version_parsed = pkg_version.parse(current_version)
+            branch_name: str | None = None
 
-            # Compare versions and log result
-            current_version = get_current_version()
-            self._log_version_comparison(current_version, latest_version, source=source)
+            if current_version_parsed.is_devrelease and current_commit is not None:
+                branch_name = get_branch_override()
+                if branch_name is None and prev_state is not None:
+                    branch_name = prev_state.latest_branch_name
+                if branch_name is None:
+                    branch_name = await resolve_branch_for_commit(current_commit)
+
+            if branch_name is not None:
+                if source == "cache" and (
+                    prev_state is None
+                    or prev_state.latest_branch_name != branch_name
+                    or not prev_state.latest_branch_commit
+                ):
+                    latest_branch_commit = None
+                    source = None
+
+                if latest_branch_commit is None:
+                    latest_branch_commit = await fetch_latest_branch_commit(branch_name)
+                    if latest_branch_commit is None:
+                        logger.warning(
+                            "version_check_branch_fetch_failed",
+                            task_name=self.name,
+                            branch=branch_name,
+                        )
+                        return False
+
+                    await save_check_state(
+                        state_path,
+                        VersionCheckState(
+                            last_check_at=current_time,
+                            latest_version_found=(
+                                latest_version
+                                or (
+                                    prev_state.latest_version_found
+                                    if prev_state is not None
+                                    else None
+                                )
+                            ),
+                            latest_branch_name=branch_name,
+                            latest_branch_commit=latest_branch_commit,
+                            running_version=current_version,
+                            running_commit=current_commit,
+                        ),
+                    )
+                    source = "network"
+
+                if current_commit is None:
+                    logger.debug(
+                        "branch_revision_no_commit_to_compare",
+                        task_name=self.name,
+                        branch=branch_name,
+                        source=source,
+                    )
+                else:
+                    update_available = not commit_refs_match(
+                        current_commit, latest_branch_commit
+                    )
+                    if update_available:
+                        logger.warning(
+                            "branch_revision_update_available",
+                            task_name=self.name,
+                            branch=branch_name,
+                            current_commit=current_commit,
+                            latest_commit=latest_branch_commit,
+                            source=source,
+                            description=(
+                                "New commits available for branch "
+                                f"{branch_name}: {latest_branch_commit}"
+                            ),
+                        )
+                    else:
+                        logger.debug(
+                            "branch_revision_up_to_date",
+                            task_name=self.name,
+                            branch=branch_name,
+                            current_commit=current_commit,
+                            source=source,
+                        )
+            else:
+                if latest_version is None:
+                    latest_version = await fetch_latest_github_version()
+                    if latest_version is None:
+                        logger.warning(
+                            "version_check_fetch_failed", task_name=self.name
+                        )
+                        return False
+                    await save_check_state(
+                        state_path,
+                        VersionCheckState(
+                            last_check_at=current_time,
+                            latest_version_found=latest_version,
+                            latest_branch_name=(
+                                prev_state.latest_branch_name
+                                if prev_state is not None
+                                else None
+                            ),
+                            latest_branch_commit=(
+                                prev_state.latest_branch_commit
+                                if prev_state is not None
+                                else None
+                            ),
+                            running_version=current_version,
+                            running_commit=current_commit,
+                        ),
+                    )
+                    source = "network"
+                self._log_version_comparison(
+                    current_version, latest_version, source=source
+                )
 
             # Mark first run as complete
             if self._first_run:
@@ -761,11 +734,30 @@ class VersionUpdateCheckTask(BaseScheduledTask):
 
             return True
 
+        except ImportError as e:
+            logger.error(
+                "version_check_task_import_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
+            return False
+
         except Exception as e:
             logger.error(
                 "version_check_task_error",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
+
+
+# Test helper task exposed for tests that import from this module
+class MockScheduledTask(BaseScheduledTask):
+    """Minimal mock task used by tests for registration and lifecycle checks."""
+
+    async def run(self) -> bool:
+        return True

@@ -1,23 +1,38 @@
 """Unit tests for individual scheduler task implementations."""
 
 import asyncio
+from collections.abc import AsyncGenerator
 from datetime import UTC
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from ccproxy.api.bootstrap import create_service_container
+from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.scheduler.tasks import (
     BaseScheduledTask,
-    PricingCacheUpdateTask,
-    PushgatewayTask,
-    StatsPrintingTask,
+    # PushgatewayTask removed - functionality moved to metrics plugin
+    # StatsPrintingTask removed - functionality moved to metrics plugin
     VersionUpdateCheckTask,
 )
+from ccproxy.services.container import ServiceContainer
 
 
 class TestBaseScheduledTask:
     """Test the BaseScheduledTask abstract base class."""
+
+    @pytest.fixture
+    async def task_manager_lifecycle(self) -> AsyncGenerator[None, None]:
+        """Start and stop the task manager for tests that need it."""
+        container = ServiceContainer.get_current(strict=False)
+        if container is None:
+            container = create_service_container()
+        await start_task_manager(container=container)
+        try:
+            yield
+        finally:
+            await stop_task_manager(container=container)
 
     class ConcreteTask(BaseScheduledTask):
         """Concrete implementation for testing."""
@@ -43,7 +58,7 @@ class TestBaseScheduledTask:
             self.cleanup_called = True
 
     @pytest.mark.asyncio
-    async def test_task_lifecycle(self) -> None:
+    async def test_task_lifecycle(self, task_manager_lifecycle: None) -> None:
         """Test task start and stop lifecycle."""
         task = self.ConcreteTask(
             name="test_task",
@@ -60,11 +75,14 @@ class TestBaseScheduledTask:
         # Verify setup was called during start
         assert task.setup_called  # type: ignore[unreachable]
 
-        # Let it run a few times
-        await asyncio.sleep(0.25)
+        # Wait a short moment to let the task run at least once
+        # Since we have a very short interval (0.1s), the task should run immediately
+        while task.run_count == 0:
+            await asyncio.sleep(0.01)  # Very short sleep to yield control
+
         assert task.run_count > 0
 
-        # Stop the task
+        # Stop the task - now waits deterministically for completion
         await task.stop()
         assert not task.is_running
         assert task.cleanup_called
@@ -180,376 +198,121 @@ class TestBaseScheduledTask:
         assert delay >= task.interval_seconds  # Should be normal interval (+jitter)
 
 
-class TestPushgatewayTask:
-    """Test PushgatewayTask specific functionality."""
-
-    @pytest.mark.asyncio
-    async def test_pushgateway_task_setup(self) -> None:
-        """Test PushgatewayTask setup process."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            task = PushgatewayTask(
-                name="pg_setup_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            assert task._metrics_instance is not None
-            mock_get_metrics.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pushgateway_task_run_success(self) -> None:
-        """Test successful pushgateway task execution."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = True
-            mock_metrics.push_to_gateway.return_value = True
-            mock_get_metrics.return_value = mock_metrics
-
-            task = PushgatewayTask(
-                name="pg_success_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is True
-            mock_metrics.push_to_gateway.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pushgateway_task_disabled(self) -> None:
-        """Test pushgateway task when disabled."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = False
-            mock_get_metrics.return_value = mock_metrics
-
-            task = PushgatewayTask(
-                name="pg_disabled_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            # Should return True (not an error) but not call push_to_gateway
-            assert result is True
-            mock_metrics.push_to_gateway.assert_not_called()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pushgateway_task_error_handling(self) -> None:
-        """Test pushgateway task error handling."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = True
-            mock_metrics.push_to_gateway.side_effect = Exception("Network error")
-            mock_get_metrics.return_value = mock_metrics
-
-            task = PushgatewayTask(
-                name="pg_error_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is False
-            mock_metrics.push_to_gateway.assert_called_once()
-
-            await task.cleanup()
-
-
-class TestStatsPrintingTask:
-    """Test StatsPrintingTask specific functionality."""
-
-    @pytest.mark.asyncio
-    async def test_stats_printing_task_setup(self) -> None:
-        """Test StatsPrintingTask setup process."""
-        with (
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
-            patch(
-                "ccproxy.observability.stats_printer.get_stats_collector"
-            ) as mock_get_stats,
-        ):
-            # Setup mocks
-            mock_settings = MagicMock()
-            mock_settings.observability = MagicMock()
-            mock_get_settings.return_value = mock_settings
-
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            mock_stats_collector = AsyncMock()
-            mock_get_stats.return_value = mock_stats_collector
-
-            task = StatsPrintingTask(
-                name="stats_setup_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            assert task._stats_collector_instance is not None
-            assert task._metrics_instance is not None
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_stats_printing_task_run_success(self) -> None:
-        """Test successful stats printing task execution."""
-        with (
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
-            patch(
-                "ccproxy.observability.stats_printer.get_stats_collector"
-            ) as mock_get_stats,
-        ):
-            # Setup mocks
-            mock_settings = MagicMock()
-            mock_settings.observability = MagicMock()
-            mock_get_settings.return_value = mock_settings
-
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            mock_stats_collector = AsyncMock()
-            mock_get_stats.return_value = mock_stats_collector
-
-            task = StatsPrintingTask(
-                name="stats_success_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is True
-            mock_stats_collector.print_stats.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_stats_printing_task_error_handling(self) -> None:
-        """Test stats printing task error handling."""
-        with (
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
-            patch(
-                "ccproxy.observability.stats_printer.get_stats_collector"
-            ) as mock_get_stats,
-        ):
-            # Setup mocks
-            mock_settings = MagicMock()
-            mock_settings.observability = MagicMock()
-            mock_get_settings.return_value = mock_settings
-
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            mock_stats_collector = AsyncMock()
-            mock_stats_collector.print_stats.side_effect = Exception("Print error")
-            mock_get_stats.return_value = mock_stats_collector
-
-            task = StatsPrintingTask(
-                name="stats_error_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is False
-            mock_stats_collector.print_stats.assert_called_once()
-
-            await task.cleanup()
-
-
-class TestPricingCacheUpdateTask:
-    """Test PricingCacheUpdateTask specific functionality."""
-
-    @pytest.mark.asyncio
-    async def test_pricing_task_setup(self) -> None:
-        """Test PricingCacheUpdateTask setup process."""
-        with patch(
-            "ccproxy.pricing.updater.PricingUpdater"
-        ) as mock_pricing_updater_class:
-            mock_pricing_updater = AsyncMock()
-            mock_pricing_updater_class.return_value = mock_pricing_updater
-
-            task = PricingCacheUpdateTask(
-                name="pricing_setup_test",
-                interval_seconds=3600.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            assert task._pricing_updater is not None
-            mock_pricing_updater_class.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pricing_task_force_refresh_on_startup(self) -> None:
-        """Test pricing task force refresh on startup."""
-        with patch(
-            "ccproxy.pricing.updater.PricingUpdater"
-        ) as mock_pricing_updater_class:
-            mock_pricing_updater = AsyncMock()
-            mock_pricing_updater.force_refresh.return_value = True
-            mock_pricing_updater_class.return_value = mock_pricing_updater
-
-            task = PricingCacheUpdateTask(
-                name="pricing_force_test",
-                interval_seconds=3600.0,
-                enabled=True,
-                force_refresh_on_startup=True,
-            )
-
-            await task.setup()
-
-            # First run should force refresh
-            result = await task.run()
-            assert result is True
-            mock_pricing_updater.force_refresh.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pricing_task_regular_update(self) -> None:
-        """Test pricing task regular update behavior."""
-        with patch(
-            "ccproxy.pricing.updater.PricingUpdater"
-        ) as mock_pricing_updater_class:
-            mock_pricing_updater = AsyncMock()
-            mock_pricing_updater.get_current_pricing.return_value = {
-                "model": "claude-3"
-            }
-            mock_pricing_updater_class.return_value = mock_pricing_updater
-
-            task = PricingCacheUpdateTask(
-                name="pricing_regular_test",
-                interval_seconds=3600.0,
-                enabled=True,
-                force_refresh_on_startup=False,
-            )
-
-            await task.setup()
-
-            # Regular run should check current pricing
-            result = await task.run()
-            assert result is True
-            mock_pricing_updater.get_current_pricing.assert_called_once_with(
-                force_refresh=False
-            )
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pricing_task_startup_then_regular(self) -> None:
-        """Test pricing task startup behavior then regular behavior."""
-        with patch(
-            "ccproxy.pricing.updater.PricingUpdater"
-        ) as mock_pricing_updater_class:
-            mock_pricing_updater = AsyncMock()
-            mock_pricing_updater.force_refresh.return_value = True
-            mock_pricing_updater.get_current_pricing.return_value = {
-                "model": "claude-3"
-            }
-            mock_pricing_updater_class.return_value = mock_pricing_updater
-
-            task = PricingCacheUpdateTask(
-                name="pricing_transition_test",
-                interval_seconds=3600.0,
-                enabled=True,
-                force_refresh_on_startup=True,
-            )
-
-            await task.setup()
-
-            # First run should force refresh
-            result1 = await task.run()
-            assert result1 is True
-            mock_pricing_updater.force_refresh.assert_called_once()
-
-            # Second run should do regular update
-            result2 = await task.run()
-            assert result2 is True
-            mock_pricing_updater.get_current_pricing.assert_called_once_with(
-                force_refresh=False
-            )
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pricing_task_error_handling(self) -> None:
-        """Test pricing task error handling."""
-        with patch(
-            "ccproxy.pricing.updater.PricingUpdater"
-        ) as mock_pricing_updater_class:
-            mock_pricing_updater = AsyncMock()
-            mock_pricing_updater.get_current_pricing.side_effect = Exception(
-                "Update error"
-            )
-            mock_pricing_updater_class.return_value = mock_pricing_updater
-
-            task = PricingCacheUpdateTask(
-                name="pricing_error_test",
-                interval_seconds=3600.0,
-                enabled=True,
-                force_refresh_on_startup=False,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is False
-            mock_pricing_updater.get_current_pricing.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pricing_task_no_data_returned(self) -> None:
-        """Test pricing task when no data is returned."""
-        with patch(
-            "ccproxy.pricing.updater.PricingUpdater"
-        ) as mock_pricing_updater_class:
-            mock_pricing_updater = AsyncMock()
-            mock_pricing_updater.get_current_pricing.return_value = None
-            mock_pricing_updater_class.return_value = mock_pricing_updater
-
-            task = PricingCacheUpdateTask(
-                name="pricing_no_data_test",
-                interval_seconds=3600.0,
-                enabled=True,
-                force_refresh_on_startup=False,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            # Should return False when no data is returned
-            assert result is False
-            mock_pricing_updater.get_current_pricing.assert_called_once()
-
-            await task.cleanup()
-
-
+# TestPushgatewayTask removed - functionality moved to metrics plugin
+# The metrics plugin now has its own tests for the PushgatewayTask
+
+
+# TestStatsPrintingTask removed - functionality moved to metrics plugin
+
+
+# class TestStatsPrintingTask:
+#     """Test StatsPrintingTask specific functionality."""
+#
+#     @pytest.mark.asyncio
+#     async def test_stats_printing_task_setup(self) -> None:
+#         """Test StatsPrintingTask setup process."""
+#         with (
+#             patch("ccproxy.config.settings.get_settings") as mock_get_settings,
+#             patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
+#             patch(
+#                 "ccproxy.observability.stats_printer.get_stats_collector"
+#             ) as mock_get_stats,
+#         ):
+#             # Setup mocks
+#             mock_settings = MagicMock()
+#             mock_settings.observability = MagicMock()
+#             mock_get_settings.return_value = mock_settings
+#
+#             mock_metrics = MagicMock()
+#             mock_get_metrics.return_value = mock_metrics
+#
+#             mock_stats_collector = AsyncMock()
+#             mock_get_stats.return_value = mock_stats_collector
+#
+#             task = StatsPrintingTask(
+#                 name="stats_setup_test",
+#                 interval_seconds=60.0,
+#                 enabled=True,
+#             )
+#
+#             await task.setup()
+#             assert task._stats_collector_instance is not None
+#             assert task._metrics_instance is not None
+#
+#             await task.cleanup()
+#
+#     @pytest.mark.asyncio
+#     async def test_stats_printing_task_run_success(self) -> None:
+#         """Test successful stats printing task execution."""
+#         with (
+#             patch("ccproxy.config.settings.get_settings") as mock_get_settings,
+#             patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
+#             patch(
+#                 "ccproxy.observability.stats_printer.get_stats_collector"
+#             ) as mock_get_stats,
+#         ):
+#             # Setup mocks
+#             mock_settings = MagicMock()
+#             mock_settings.observability = MagicMock()
+#             mock_get_settings.return_value = mock_settings
+#
+#             mock_metrics = MagicMock()
+#             mock_get_metrics.return_value = mock_metrics
+#
+#             mock_stats_collector = AsyncMock()
+#             mock_get_stats.return_value = mock_stats_collector
+#
+#             task = StatsPrintingTask(
+#                 name="stats_success_test",
+#                 interval_seconds=60.0,
+#                 enabled=True,
+#             )
+#
+#             await task.setup()
+#             result = await task.run()
+#
+#             assert result is True
+#             mock_stats_collector.print_stats.assert_called_once()
+#
+#             await task.cleanup()
+#
+#     @pytest.mark.asyncio
+#     async def test_stats_printing_task_error_handling(self) -> None:
+#         """Test stats printing task error handling."""
+#         with (
+#             patch("ccproxy.config.settings.get_settings") as mock_get_settings,
+#             patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
+#             patch(
+#                 "ccproxy.observability.stats_printer.get_stats_collector"
+#             ) as mock_get_stats,
+#         ):
+#             # Setup mocks
+#             mock_settings = MagicMock()
+#             mock_settings.observability = MagicMock()
+#             mock_get_settings.return_value = mock_settings
+#
+#             mock_metrics = MagicMock()
+#             mock_get_metrics.return_value = mock_metrics
+#
+#             mock_stats_collector = AsyncMock()
+#             mock_stats_collector.print_stats.side_effect = Exception("Print error")
+#             mock_get_stats.return_value = mock_stats_collector
+#
+#             task = StatsPrintingTask(
+#                 name="stats_error_test",
+#                 interval_seconds=60.0,
+#                 enabled=True,
+#             )
+#
+#             await task.setup()
+#             result = await task.run()
+#
+#             assert result is False
+#             mock_stats_collector.print_stats.assert_called_once()
+#
+#             await task.cleanup()
+#
+#
 class TestVersionUpdateCheckTask:
     """Test VersionUpdateCheckTask specific functionality."""
 
@@ -575,12 +338,18 @@ class TestVersionUpdateCheckTask:
         """Test version check task when update is available."""
         with (
             patch(
-                "ccproxy.utils.version_checker.fetch_latest_github_version"
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
             ) as mock_fetch,
-            patch("ccproxy.utils.version_checker.get_current_version") as mock_current,
-            patch("ccproxy.utils.version_checker.compare_versions") as mock_compare,
-            patch("ccproxy.utils.version_checker.save_check_state") as mock_save,
-            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
+            patch("ccproxy.scheduler.tasks.compare_versions") as mock_compare,
+            patch(
+                "ccproxy.scheduler.tasks.save_check_state", new_callable=AsyncMock
+            ) as mock_save,
+            patch(
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
         ):
             # Mock successful fetch with newer version
             mock_fetch.return_value = "1.5.0"
@@ -588,6 +357,7 @@ class TestVersionUpdateCheckTask:
             mock_compare.return_value = True  # Update available
             mock_load.return_value = None  # No previous state
             mock_save.return_value = None
+            mock_path.return_value = "/tmp/version_check.json"
 
             task = VersionUpdateCheckTask(
                 name="version_update_test",
@@ -610,12 +380,18 @@ class TestVersionUpdateCheckTask:
         """Test version check task when no update is available."""
         with (
             patch(
-                "ccproxy.utils.version_checker.fetch_latest_github_version"
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
             ) as mock_fetch,
-            patch("ccproxy.utils.version_checker.get_current_version") as mock_current,
-            patch("ccproxy.utils.version_checker.compare_versions") as mock_compare,
-            patch("ccproxy.utils.version_checker.save_check_state") as mock_save,
-            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
+            patch("ccproxy.scheduler.tasks.compare_versions") as mock_compare,
+            patch(
+                "ccproxy.scheduler.tasks.save_check_state", new_callable=AsyncMock
+            ) as mock_save,
+            patch(
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
         ):
             # Mock successful fetch with same version
             mock_fetch.return_value = "1.0.0"
@@ -623,6 +399,7 @@ class TestVersionUpdateCheckTask:
             mock_compare.return_value = False  # No update available
             mock_load.return_value = None  # No previous state
             mock_save.return_value = None
+            mock_path.return_value = "/tmp/version_check.json"
 
             task = VersionUpdateCheckTask(
                 name="version_no_update_test",
@@ -645,13 +422,24 @@ class TestVersionUpdateCheckTask:
         """Test version check task when GitHub fetch fails."""
         with (
             patch(
-                "ccproxy.utils.version_checker.fetch_latest_github_version"
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
             ) as mock_fetch,
-            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_version,
+            patch(
+                "ccproxy.scheduler.tasks.extract_commit_from_version"
+            ) as mock_extract,
         ):
             # Mock failed fetch
             mock_fetch.return_value = None
             mock_load.return_value = None  # No previous state
+            mock_path.return_value = "/tmp/version_check.json"
+            mock_version.return_value = "1.0.0"  # Stable version (not dev release)
+            mock_extract.return_value = None  # No commit info
 
             task = VersionUpdateCheckTask(
                 name="version_fetch_fail_test",
@@ -681,12 +469,19 @@ class TestVersionUpdateCheckTask:
         )
 
         with (
-            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
             patch(
-                "ccproxy.utils.version_checker.fetch_latest_github_version"
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
             ) as mock_fetch,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
         ):
             mock_load.return_value = recent_state
+            mock_path.return_value = "/tmp/version_check.json"
+            mock_current.return_value = "1.0.0"
 
             task = VersionUpdateCheckTask(
                 name="version_skip_test",
@@ -718,19 +513,26 @@ class TestVersionUpdateCheckTask:
         )
 
         with (
-            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
             patch(
-                "ccproxy.utils.version_checker.fetch_latest_github_version"
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
             ) as mock_fetch,
-            patch("ccproxy.utils.version_checker.get_current_version") as mock_current,
-            patch("ccproxy.utils.version_checker.compare_versions") as mock_compare,
-            patch("ccproxy.utils.version_checker.save_check_state") as mock_save,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
+            patch("ccproxy.scheduler.tasks.compare_versions") as mock_compare,
+            patch(
+                "ccproxy.scheduler.tasks.save_check_state", new_callable=AsyncMock
+            ) as mock_save,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
         ):
             mock_load.return_value = old_state
             mock_fetch.return_value = "1.1.0"
             mock_current.return_value = "1.0.0"
             mock_compare.return_value = True
             mock_save.return_value = None
+            mock_path.return_value = "/tmp/version_check.json"
 
             task = VersionUpdateCheckTask(
                 name="version_old_test",
@@ -751,19 +553,26 @@ class TestVersionUpdateCheckTask:
     async def test_version_check_task_second_run_normal(self) -> None:
         """Test version check task second run behavior (non-startup)."""
         with (
-            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
             patch(
-                "ccproxy.utils.version_checker.fetch_latest_github_version"
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
             ) as mock_fetch,
-            patch("ccproxy.utils.version_checker.get_current_version") as mock_current,
-            patch("ccproxy.utils.version_checker.compare_versions") as mock_compare,
-            patch("ccproxy.utils.version_checker.save_check_state") as mock_save,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
+            patch("ccproxy.scheduler.tasks.compare_versions") as mock_compare,
+            patch(
+                "ccproxy.scheduler.tasks.save_check_state", new_callable=AsyncMock
+            ) as mock_save,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
         ):
             mock_load.return_value = None  # No previous state
             mock_fetch.return_value = "1.1.0"
             mock_current.return_value = "1.0.0"
             mock_compare.return_value = True
             mock_save.return_value = None
+            mock_path.return_value = "/tmp/version_check.json"
 
             task = VersionUpdateCheckTask(
                 name="version_second_run_test",
@@ -789,10 +598,14 @@ class TestVersionUpdateCheckTask:
     async def test_version_check_task_error_handling(self) -> None:
         """Test version check task error handling."""
         with (
-            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
         ):
             # Mock exception during load
             mock_load.side_effect = Exception("File system error")
+            mock_path.return_value = "/tmp/version_check.json"
 
             task = VersionUpdateCheckTask(
                 name="version_error_test",
@@ -806,6 +619,125 @@ class TestVersionUpdateCheckTask:
 
             assert result is False
             mock_load.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_version_check_cache_invalidated_on_version_change(self) -> None:
+        """Cache is ignored when local version differs from cached information."""
+
+        from datetime import datetime
+
+        from ccproxy.utils.version_checker import VersionCheckState
+
+        cached_time = datetime.now(UTC)
+        cached_state = VersionCheckState(
+            last_check_at=cached_time,
+            latest_version_found="1.1.0",
+            running_version="1.1.0",
+        )
+
+        with (
+            patch(
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
+            ) as mock_fetch,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
+            patch("ccproxy.scheduler.tasks.compare_versions") as mock_compare,
+            patch(
+                "ccproxy.scheduler.tasks.save_check_state", new_callable=AsyncMock
+            ) as mock_save,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
+        ):
+            mock_load.return_value = cached_state
+            mock_fetch.return_value = "1.2.0"
+            mock_current.return_value = "2.0.0"
+            mock_compare.return_value = True
+            mock_save.return_value = None
+            mock_path.return_value = "/tmp/version_check.json"
+
+            task = VersionUpdateCheckTask(
+                name="version_cache_invalidation_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                version_check_cache_ttl_hours=6.0,
+                skip_first_scheduled_run=False,
+            )
+
+            result = await task.run()
+
+            assert result is True
+            mock_fetch.assert_awaited_once()
+            mock_compare.assert_called_once_with("2.0.0", "1.2.0")
+            mock_save.assert_awaited_once()
+
+            saved_state = mock_save.await_args.args[1]  # type: ignore[union-attr]
+            assert isinstance(saved_state, VersionCheckState)
+            assert saved_state.running_version == "2.0.0"
+
+    @pytest.mark.asyncio
+    async def test_version_check_dev_branch_resolution(self) -> None:
+        """Dev versions use branch commit comparison for updates."""
+
+        current_dev_version = "0.2.0.dev37+gabcdef12"
+        branch_name = "main"
+        branch_commit = "abcdef1234567890abcdef1234567890abcdef12"
+
+        with (
+            patch(
+                "ccproxy.scheduler.tasks.load_check_state", new_callable=AsyncMock
+            ) as mock_load,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_github_version",
+                new_callable=AsyncMock,
+            ) as mock_release_fetch,
+            patch(
+                "ccproxy.scheduler.tasks.fetch_latest_branch_commit",
+                new_callable=AsyncMock,
+            ) as mock_branch_fetch,
+            patch(
+                "ccproxy.scheduler.tasks.resolve_branch_for_commit",
+                new_callable=AsyncMock,
+            ) as mock_branch_resolve,
+            patch("ccproxy.scheduler.tasks.get_current_version") as mock_current,
+            patch(
+                "ccproxy.scheduler.tasks.save_check_state", new_callable=AsyncMock
+            ) as mock_save,
+            patch("ccproxy.scheduler.tasks.get_version_check_state_path") as mock_path,
+            patch("ccproxy.scheduler.tasks.logger") as mock_logger,
+        ):
+            mock_load.return_value = None
+            mock_branch_resolve.return_value = branch_name
+            mock_branch_fetch.return_value = branch_commit
+            mock_current.return_value = current_dev_version
+            mock_save.return_value = None
+            mock_path.return_value = "/tmp/version_check.json"
+
+            task = VersionUpdateCheckTask(
+                name="version_branch_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                version_check_cache_ttl_hours=1.0,
+                skip_first_scheduled_run=False,
+            )
+
+            result = await task.run()
+
+            assert result is True
+            mock_branch_resolve.assert_awaited_once_with("abcdef12")
+            mock_branch_fetch.assert_awaited_once_with(branch_name)
+            mock_release_fetch.assert_not_called()
+            mock_save.assert_awaited_once()
+            mock_logger.warning.assert_not_called()
+
+            saved_state = mock_save.await_args.args[1]  # type: ignore[union-attr]
+
+            from ccproxy.utils.version_checker import VersionCheckState
+
+            assert isinstance(saved_state, VersionCheckState)
+            assert saved_state.latest_branch_name == branch_name
+            assert saved_state.latest_branch_commit == branch_commit
 
 
 if __name__ == "__main__":

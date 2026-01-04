@@ -11,7 +11,7 @@ from .errors import (
     TaskNotFoundError,
     TaskRegistrationError,
 )
-from .registry import TaskRegistry, get_task_registry
+from .registry import TaskRegistry
 from .tasks import BaseScheduledTask
 
 
@@ -31,9 +31,9 @@ class Scheduler:
 
     def __init__(
         self,
+        task_registry: TaskRegistry,
         max_concurrent_tasks: int = 10,
         graceful_shutdown_timeout: float = 30.0,
-        task_registry: TaskRegistry | None = None,
     ):
         """
         Initialize the scheduler.
@@ -41,11 +41,11 @@ class Scheduler:
         Args:
             max_concurrent_tasks: Maximum number of tasks to run concurrently
             graceful_shutdown_timeout: Timeout for graceful shutdown in seconds
-            task_registry: Task registry instance (uses global if None)
+            task_registry: Task registry instance (required)
         """
         self.max_concurrent_tasks = max_concurrent_tasks
         self.graceful_shutdown_timeout = graceful_shutdown_timeout
-        self.task_registry = task_registry or get_task_registry()
+        self.task_registry = task_registry
 
         self._running = False
         self._tasks: dict[str, BaseScheduledTask] = {}
@@ -63,7 +63,7 @@ class Scheduler:
         logger.debug(
             "scheduler_starting",
             max_concurrent_tasks=self.max_concurrent_tasks,
-            registered_tasks=self.task_registry.list_tasks(),
+            registered_tasks=self.task_registry.list(),
         )
 
         try:
@@ -81,6 +81,7 @@ class Scheduler:
                 "scheduler_start_failed",
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise SchedulerError(f"Failed to start scheduler: {e}") from e
 
@@ -90,7 +91,7 @@ class Scheduler:
             return
 
         self._running = False
-        logger.info("scheduler_stopping", active_tasks=len(self._tasks))
+        logger.debug("scheduler_stopping", active_tasks=len(self._tasks))
 
         # Stop all tasks
         stop_tasks = []
@@ -106,7 +107,7 @@ class Scheduler:
                     asyncio.gather(*stop_tasks, return_exceptions=True),
                     timeout=self.graceful_shutdown_timeout,
                 )
-                logger.info("scheduler_stopped_gracefully")
+                logger.debug("scheduler_stopped_gracefully")
             except TimeoutError:
                 logger.warning(
                     "scheduler_shutdown_timeout",
@@ -123,6 +124,7 @@ class Scheduler:
                     "scheduler_shutdown_error",
                     error=str(e),
                     error_type=type(e).__name__,
+                    exc_info=e,
                 )
                 raise SchedulerShutdownError(
                     f"Error during scheduler shutdown: {e}"
@@ -152,13 +154,25 @@ class Scheduler:
         if task_name in self._tasks:
             raise SchedulerError(f"Task '{task_name}' already exists")
 
-        if not self.task_registry.is_registered(task_type):
+        if not self.task_registry.has(task_type):
             raise TaskRegistrationError(f"Task type '{task_type}' is not registered")
 
         try:
             # Get task class and create instance
             task_class = self.task_registry.get(task_type)
             task_instance = task_class(name=task_name, **task_kwargs)
+
+            interval_value = task_kwargs.get("interval_seconds")
+            if interval_value is not None:
+                try:
+                    task_instance.interval_seconds = max(1.0, float(interval_value))
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "task_interval_invalid",
+                        task_name=task_name,
+                        task_type=task_type,
+                        interval_value=interval_value,
+                    )
 
             # Add to our tasks dict
             self._tasks[task_name] = task_instance
@@ -191,6 +205,7 @@ class Scheduler:
                 task_type=task_type,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise SchedulerError(f"Failed to add task '{task_name}': {e}") from e
 
@@ -222,6 +237,7 @@ class Scheduler:
                 task_name=task_name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise SchedulerError(f"Failed to remove task '{task_name}': {e}") from e
 
@@ -287,7 +303,7 @@ class Scheduler:
             "graceful_shutdown_timeout": self.graceful_shutdown_timeout,
             "task_names": list(self._tasks.keys()),
             "running_task_names": running_tasks,
-            "registered_task_types": self.task_registry.list_tasks(),
+            "registered_task_types": self.task_registry.list(),
         }
 
     @property
@@ -301,35 +317,4 @@ class Scheduler:
         return len(self._tasks)
 
 
-# Global scheduler instance
-_global_scheduler: Scheduler | None = None
-
-
-async def get_scheduler() -> Scheduler:
-    """
-    Get or create the global scheduler instance.
-
-    Returns:
-        Global Scheduler instance
-    """
-    global _global_scheduler
-
-    if _global_scheduler is None:
-        _global_scheduler = Scheduler()
-
-    return _global_scheduler
-
-
-async def start_scheduler() -> None:
-    """Start the global scheduler."""
-    scheduler = await get_scheduler()
-    await scheduler.start()
-
-
-async def stop_scheduler() -> None:
-    """Stop the global scheduler."""
-    global _global_scheduler
-
-    if _global_scheduler:
-        await _global_scheduler.stop()
-        _global_scheduler = None
+# Global scheduler helpers omitted.

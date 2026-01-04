@@ -8,8 +8,13 @@ import json
 from collections.abc import Generator
 from typing import Any
 
+import httpx
 import pytest
 from pytest_httpx import HTTPXMock
+from tests.helpers.sample_loader import (
+    load_sample,
+    response_content_from_sample,
+)
 
 
 @pytest.fixture
@@ -174,5 +179,39 @@ def mock_external_anthropic_api_unavailable(httpx_mock: HTTPXMock) -> HTTPXMock:
         },
         status_code=503,
         headers={"content-type": "application/json"},
+    )
+    return httpx_mock
+
+
+@pytest.fixture
+def mock_external_anthropic_api_samples(httpx_mock: HTTPXMock) -> HTTPXMock:
+    """Mock Anthropic API using recorded samples for streaming and non-streaming flows."""
+
+    samples = {
+        False: load_sample("claude_messages"),
+        True: load_sample("claude_messages_stream"),
+    }
+
+    def _callback(request: httpx.Request) -> httpx.Response:
+        print(
+            f"🌐 [MOCK] Intercepted upstream Anthropic API request: {request.method} {request.url}"
+        )
+        try:
+            payload = json.loads(request.content.decode() or "{}")
+        except json.JSONDecodeError:
+            payload = {}
+
+        wants_stream = bool(payload.get("stream"))
+        sample = samples[wants_stream]
+        status_code, headers, content = response_content_from_sample(sample)
+        print(
+            f"🌐 [MOCK] Returning mocked Anthropic response: {status_code}, stream={wants_stream}"
+        )
+        return httpx.Response(status_code=status_code, headers=headers, content=content)
+
+    httpx_mock.add_callback(
+        _callback,
+        url="https://api.anthropic.com/v1/messages",
+        is_reusable=True,
     )
     return httpx_mock

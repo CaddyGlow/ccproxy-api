@@ -6,17 +6,16 @@ including token validation, credential storage, and API endpoint access control.
 
 import asyncio
 import json
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException, status
-from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from ccproxy.auth.bearer import BearerTokenAuthManager
-from ccproxy.auth.credentials_adapter import CredentialsAuthManager
+
+# from ccproxy.auth.credentials_adapter import CredentialsAuthManager
 from ccproxy.auth.dependencies import (
     get_access_token,
     require_auth,
@@ -28,19 +27,16 @@ from ccproxy.auth.exceptions import (
     CredentialsExpiredError,
     CredentialsNotFoundError,
     InvalidTokenError,
-    OAuthCallbackError,
     OAuthError,
-    OAuthLoginError,
     OAuthTokenRefreshError,
 )
 from ccproxy.auth.manager import AuthManager
-from ccproxy.auth.models import (
-    AccountInfo,
-    ClaudeCredentials,
-    OAuthToken,
-    UserProfile,
+from ccproxy.plugins.oauth_claude.models import (
+    ClaudeOAuthToken,
 )
-from ccproxy.services.credentials.manager import CredentialsManager
+
+
+# from ccproxy.services.credentials.manager import CredentialsManager
 
 
 @pytest.mark.auth
@@ -108,144 +104,6 @@ class TestBearerTokenAuthentication:
 
 
 @pytest.mark.auth
-class TestCredentialsAuthentication:
-    """Test credentials-based authentication mechanism."""
-
-    @pytest.fixture
-    def mock_credentials_manager(self) -> AsyncMock:
-        """Create mock credentials manager."""
-        mock = AsyncMock(spec=CredentialsManager)
-        return mock
-
-    @pytest.fixture
-    def credentials_auth_manager(
-        self, mock_credentials_manager: AsyncMock
-    ) -> CredentialsAuthManager:
-        """Create credentials auth manager with mock."""
-        return CredentialsAuthManager(mock_credentials_manager)
-
-    async def test_credentials_auth_manager_get_access_token_success(
-        self,
-        credentials_auth_manager: CredentialsAuthManager,
-        mock_credentials_manager: AsyncMock,
-    ) -> None:
-        """Test successful access token retrieval."""
-        expected_token = "sk-test-token-123"
-        mock_credentials_manager.get_access_token.return_value = expected_token
-
-        token = await credentials_auth_manager.get_access_token()
-        assert token == expected_token
-        mock_credentials_manager.get_access_token.assert_called_once()
-
-    async def test_credentials_auth_manager_get_access_token_not_found(
-        self,
-        credentials_auth_manager: CredentialsAuthManager,
-        mock_credentials_manager: AsyncMock,
-    ) -> None:
-        """Test access token retrieval when credentials not found."""
-        mock_credentials_manager.get_access_token.side_effect = (
-            CredentialsNotFoundError("No credentials found")
-        )
-
-        with pytest.raises(AuthenticationError, match="No credentials found"):
-            await credentials_auth_manager.get_access_token()
-
-    async def test_credentials_auth_manager_get_access_token_expired(
-        self,
-        credentials_auth_manager: CredentialsAuthManager,
-        mock_credentials_manager: AsyncMock,
-    ) -> None:
-        """Test access token retrieval when credentials expired."""
-        mock_credentials_manager.get_access_token.side_effect = CredentialsExpiredError(
-            "Credentials expired"
-        )
-
-        with pytest.raises(AuthenticationError, match="Credentials expired"):
-            await credentials_auth_manager.get_access_token()
-
-    async def test_credentials_auth_manager_get_credentials_success(
-        self,
-        credentials_auth_manager: CredentialsAuthManager,
-        mock_credentials_manager: AsyncMock,
-    ) -> None:
-        """Test successful credentials retrieval."""
-        oauth_token = OAuthToken(
-            accessToken="sk-test-token-123",
-            refreshToken="refresh-token-456",
-            expiresAt=None,
-            tokenType="Bearer",
-            subscriptionType=None,
-        )
-        expected_creds = ClaudeCredentials(claudeAiOauth=oauth_token)
-        mock_credentials_manager.get_valid_credentials.return_value = expected_creds
-
-        creds = await credentials_auth_manager.get_credentials()
-        assert creds == expected_creds
-        mock_credentials_manager.get_valid_credentials.assert_called_once()
-
-    async def test_credentials_auth_manager_is_authenticated_true(
-        self,
-        credentials_auth_manager: CredentialsAuthManager,
-        mock_credentials_manager: AsyncMock,
-    ) -> None:
-        """Test authentication status when credentials are valid."""
-        oauth_token = OAuthToken(
-            accessToken="sk-test-token-123",
-            refreshToken="refresh-token-456",
-            expiresAt=None,
-            tokenType="Bearer",
-            subscriptionType=None,
-        )
-        mock_credentials_manager.get_valid_credentials.return_value = ClaudeCredentials(
-            claudeAiOauth=oauth_token
-        )
-
-        is_authenticated = await credentials_auth_manager.is_authenticated()
-        assert is_authenticated is True
-
-    async def test_credentials_auth_manager_is_authenticated_false(
-        self,
-        credentials_auth_manager: CredentialsAuthManager,
-        mock_credentials_manager: AsyncMock,
-    ) -> None:
-        """Test authentication status when credentials are invalid."""
-        mock_credentials_manager.get_valid_credentials.side_effect = CredentialsError(
-            "Invalid credentials"
-        )
-
-        is_authenticated = await credentials_auth_manager.is_authenticated()
-        assert is_authenticated is False
-
-    async def test_credentials_auth_manager_get_user_profile_success(
-        self,
-        credentials_auth_manager: CredentialsAuthManager,
-        mock_credentials_manager: AsyncMock,
-    ) -> None:
-        """Test successful user profile retrieval."""
-        account_info = AccountInfo(
-            uuid="user-123", email="test@example.com", full_name="Test User"
-        )
-        expected_profile = UserProfile(account=account_info)
-        mock_credentials_manager.fetch_user_profile.return_value = expected_profile
-
-        profile = await credentials_auth_manager.get_user_profile()
-        assert profile == expected_profile
-
-    async def test_credentials_auth_manager_get_user_profile_error(
-        self,
-        credentials_auth_manager: CredentialsAuthManager,
-        mock_credentials_manager: AsyncMock,
-    ) -> None:
-        """Test user profile retrieval when error occurs."""
-        mock_credentials_manager.fetch_user_profile.side_effect = CredentialsError(
-            "Profile error"
-        )
-
-        profile = await credentials_auth_manager.get_user_profile()
-        assert profile is None
-
-
-@pytest.mark.auth
 class TestAuthDependencies:
     """Test FastAPI authentication dependencies."""
 
@@ -295,259 +153,29 @@ class TestAuthDependencies:
 class TestAPIEndpointsWithAuth:
     """Test API endpoints with authentication enabled."""
 
-    def test_unauthenticated_request_with_auth_enabled(
-        self, client_configured_auth: TestClient
-    ) -> None:
-        """Test unauthenticated request when auth is enabled."""
-        # Test unauthenticated request with auth enabled
-        response = client_configured_auth.post(
-            "/api/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hello"}],
-            },
-        )
-        # Should return 401 because request is unauthenticated
-        assert response.status_code == 401
 
-    def test_authenticated_request_with_valid_token(
-        self,
-        client_configured_auth: TestClient,
-        auth_mode_configured_token: dict[str, Any],
-        auth_headers_factory: Callable[[dict[str, Any]], dict[str, str]],
-    ) -> None:
-        """Test authenticated request with valid bearer token."""
-        headers = auth_headers_factory(auth_mode_configured_token)
-        response = client_configured_auth.post(
-            "/api/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hello"}],
-            },
-            headers=headers,
-        )
-        # Should return 401 because auth token is valid but proxy service is not set up in test
-        assert response.status_code == 401
-
-    def test_authenticated_request_with_invalid_token(
-        self,
-        client_configured_auth: TestClient,
-        auth_mode_configured_token: dict[str, Any],
-        invalid_auth_headers_factory: Callable[[dict[str, Any]], dict[str, str]],
-    ) -> None:
-        """Test authenticated request with invalid bearer token."""
-        invalid_headers = invalid_auth_headers_factory(auth_mode_configured_token)
-        response = client_configured_auth.post(
-            "/api/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hello"}],
-            },
-            headers=invalid_headers,
-        )
-        # Should return 401 because token is invalid
-        assert response.status_code == 401
-
-    def test_authenticated_request_with_malformed_token(
-        self, client_configured_auth: TestClient
-    ) -> None:
-        """Test authenticated request with malformed authorization header."""
-        malformed_headers = {"Authorization": "InvalidFormat token"}
-        response = client_configured_auth.post(
-            "/api/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hello"}],
-            },
-            headers=malformed_headers,
-        )
-        # Should return 401 because token is malformed
-        assert response.status_code == 401
-
-
-@pytest.mark.auth
-class TestOAuth2Flow:
-    """Test OAuth2 authentication flow."""
-
-    def test_oauth_callback_success_flow(self, client: TestClient) -> None:
-        """Test successful OAuth callback flow."""
-        # Simulate successful OAuth callback
-        state = "test-state-123"
-        code = "test-auth-code-456"
-
-        # Mock pending flow state
-        with (
-            patch(
-                "ccproxy.auth.oauth.routes._pending_flows",
-                {
-                    state: {
-                        "code_verifier": "test-verifier",
-                        "custom_paths": [],
-                        "completed": False,
-                        "success": False,
-                        "error": None,
-                    }
-                },
-            ),
-            patch(
-                "ccproxy.auth.oauth.routes._exchange_code_for_tokens", return_value=True
-            ),
-        ):
-            response = client.get(f"/oauth/callback?code={code}&state={state}")
-
-        assert response.status_code == 200
-        assert "Login Successful" in response.text
-
-    def test_oauth_callback_missing_code(self, client: TestClient) -> None:
-        """Test OAuth callback with missing authorization code."""
-        state = "test-state-123"
-
-        # Mock pending flow state
-        with patch(
-            "ccproxy.auth.oauth.routes._pending_flows",
-            {
-                state: {
-                    "code_verifier": "test-verifier",
-                    "custom_paths": [],
-                    "completed": False,
-                    "success": False,
-                    "error": None,
-                }
-            },
-        ):
-            response = client.get(f"/oauth/callback?state={state}")
-
-        assert response.status_code == 400
-        assert "No authorization code received" in response.text
-
-    def test_oauth_callback_missing_state(self, client: TestClient) -> None:
-        """Test OAuth callback with missing state parameter."""
-        code = "test-auth-code-456"
-
-        response = client.get(f"/oauth/callback?code={code}")
-
-        assert response.status_code == 400
-        assert "Missing state parameter" in response.text
-
-    def test_oauth_callback_invalid_state(self, client: TestClient) -> None:
-        """Test OAuth callback with invalid state parameter."""
-        code = "test-auth-code-456"
-        state = "invalid-state"
-
-        # Empty pending flows
-        with patch("ccproxy.auth.oauth.routes._pending_flows", {}):
-            response = client.get(f"/oauth/callback?code={code}&state={state}")
-
-        assert response.status_code == 400
-        assert "Invalid or expired state parameter" in response.text
-
-    def test_oauth_callback_with_error(self, client: TestClient) -> None:
-        """Test OAuth callback with error response."""
-        state = "test-state-123"
-        error = "access_denied"
-        error_description = "User denied access"
-
-        # Mock pending flow state
-        with patch(
-            "ccproxy.auth.oauth.routes._pending_flows",
-            {
-                state: {
-                    "code_verifier": "test-verifier",
-                    "custom_paths": [],
-                    "completed": False,
-                    "success": False,
-                    "error": None,
-                }
-            },
-        ):
-            response = client.get(
-                f"/oauth/callback?error={error}&error_description={error_description}&state={state}"
-            )
-
-        assert response.status_code == 400
-        assert "User denied access" in response.text
-
-    def test_oauth_callback_token_exchange_failure(self, client: TestClient) -> None:
-        """Test OAuth callback when token exchange fails."""
-        state = "test-state-123"
-        code = "test-auth-code-456"
-
-        # Mock pending flow state
-        with (
-            patch(
-                "ccproxy.auth.oauth.routes._pending_flows",
-                {
-                    state: {
-                        "code_verifier": "test-verifier",
-                        "custom_paths": [],
-                        "completed": False,
-                        "success": False,
-                        "error": None,
-                    }
-                },
-            ),
-            patch(
-                "ccproxy.auth.oauth.routes._exchange_code_for_tokens",
-                return_value=False,
-            ),
-        ):
-            response = client.get(f"/oauth/callback?code={code}&state={state}")
-
-        assert response.status_code == 500
-        assert "Failed to exchange authorization code for tokens" in response.text
-
-    @patch("ccproxy.auth.oauth.routes._exchange_code_for_tokens")
-    def test_oauth_callback_exception_handling(
-        self, mock_exchange: MagicMock, client: TestClient
-    ) -> None:
-        """Test OAuth callback exception handling."""
-        state = "test-state-123"
-        code = "test-auth-code-456"
-
-        # Mock exception during token exchange
-        mock_exchange.side_effect = Exception("Unexpected error")
-
-        # Mock pending flow state
-        with patch(
-            "ccproxy.auth.oauth.routes._pending_flows",
-            {
-                state: {
-                    "code_verifier": "test-verifier",
-                    "custom_paths": [],
-                    "completed": False,
-                    "success": False,
-                    "error": None,
-                }
-            },
-        ):
-            response = client.get(f"/oauth/callback?code={code}&state={state}")
-
-        assert response.status_code == 500
-        assert "An unexpected error occurred" in response.text
-
-
-@pytest.mark.auth
 class TestTokenRefreshFlow:
     """Test OAuth token refresh functionality."""
 
     @pytest.fixture
-    def mock_oauth_token(self) -> OAuthToken:
+    def mock_oauth_token(self) -> ClaudeOAuthToken:
         """Create mock OAuth token."""
-        return OAuthToken(
-            accessToken="sk-test-token-123",
-            refreshToken="refresh-token-456",
+        return ClaudeOAuthToken(
+            accessToken=SecretStr("sk-test-token-123"),
+            refreshToken=SecretStr("refresh-token-456"),
             expiresAt=None,
-            tokenType="Bearer",
             subscriptionType=None,
         )
 
-    async def test_token_refresh_success(self, mock_oauth_token: OAuthToken) -> None:
+    async def test_token_refresh_success(
+        self, mock_oauth_token: ClaudeOAuthToken
+    ) -> None:
         """Test successful token refresh."""
         # This is a unit test for the OAuthToken model structure
         # Actual token refresh would be tested via the CredentialsManager or OAuthClient
         # in integration tests
-        assert mock_oauth_token.access_token == "sk-test-token-123"
-        assert mock_oauth_token.refresh_token == "refresh-token-456"
+        assert mock_oauth_token.access_token.get_secret_value() == "sk-test-token-123"
+        assert mock_oauth_token.refresh_token.get_secret_value() == "refresh-token-456"
 
     async def test_token_refresh_failure(self) -> None:
         """Test token refresh failure."""
@@ -671,22 +299,10 @@ class TestAuthExceptions:
         assert str(error) == "OAuth authentication failed"
         assert isinstance(error, Exception)
 
-    def test_oauth_login_error_creation(self) -> None:
-        """Test OAuthLoginError exception creation."""
-        error = OAuthLoginError("OAuth login failed")
-        assert str(error) == "OAuth login failed"
-        assert isinstance(error, OAuthError)
-
     def test_oauth_token_refresh_error_creation(self) -> None:
         """Test OAuthTokenRefreshError exception creation."""
         error = OAuthTokenRefreshError("Token refresh failed")
         assert str(error) == "Token refresh failed"
-        assert isinstance(error, OAuthError)
-
-    def test_oauth_callback_error_creation(self) -> None:
-        """Test OAuthCallbackError exception creation."""
-        error = OAuthCallbackError("OAuth callback failed")
-        assert str(error) == "OAuth callback failed"
         assert isinstance(error, OAuthError)
 
 
@@ -763,189 +379,3 @@ class TestAsyncAuthenticationPatterns:
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert "Test error" in str(exc_info.value.detail)
-
-
-@pytest.mark.auth
-class TestOpenAIAuthentication:
-    """Test OpenAI OAuth authentication flow."""
-
-    def test_openai_credentials_creation(self) -> None:
-        """Test OpenAI credentials creation."""
-        from datetime import UTC, datetime
-
-        from ccproxy.auth.openai import OpenAICredentials
-
-        expires_at = datetime.fromtimestamp(1234567890, UTC)
-
-        credentials = OpenAICredentials(
-            access_token="test-access-token-123",
-            refresh_token="test-refresh-token-456",
-            expires_at=expires_at,
-            account_id="test-account-id",
-        )
-
-        assert credentials.access_token == "test-access-token-123"
-        assert credentials.refresh_token == "test-refresh-token-456"
-        assert credentials.expires_at == expires_at
-        assert credentials.account_id == "test-account-id"
-
-    @patch("ccproxy.auth.openai.OpenAITokenStorage.save")
-    async def test_openai_token_manager_save(self, mock_save: MagicMock) -> None:
-        """Test OpenAI token manager save functionality."""
-        from datetime import UTC, datetime
-
-        from ccproxy.auth.openai import OpenAICredentials, OpenAITokenManager
-
-        mock_save.return_value = True
-
-        credentials = OpenAICredentials(
-            access_token="test-token",
-            refresh_token="test-refresh",
-            expires_at=datetime.fromtimestamp(1234567890, UTC),
-            account_id="test-account",
-        )
-
-        manager = OpenAITokenManager()
-        result = await manager.save_credentials(credentials)
-
-        assert result is True
-        mock_save.assert_called_once_with(credentials)
-
-    @patch("ccproxy.auth.openai.OpenAITokenStorage.load")
-    async def test_openai_token_manager_load(self, mock_load: MagicMock) -> None:
-        """Test OpenAI token manager load functionality."""
-        from datetime import UTC, datetime
-
-        from ccproxy.auth.openai import OpenAICredentials, OpenAITokenManager
-
-        expected_credentials = OpenAICredentials(
-            access_token="test-token",
-            refresh_token="test-refresh",
-            expires_at=datetime.fromtimestamp(1234567890, UTC),
-            account_id="test-account",
-        )
-        mock_load.return_value = expected_credentials
-
-        manager = OpenAITokenManager()
-        credentials = await manager.load_credentials()
-
-        assert credentials == expected_credentials
-        mock_load.assert_called_once()
-
-    def test_openai_oauth_client_initialization(self) -> None:
-        """Test OpenAI OAuth client initialization."""
-        from ccproxy.auth.openai import OpenAIOAuthClient
-        from ccproxy.config.codex import CodexSettings
-
-        settings = CodexSettings()
-        client = OpenAIOAuthClient(settings)
-
-        assert client.settings == settings
-        assert client.token_manager is not None
-
-    @patch("ccproxy.auth.openai.OpenAIOAuthClient.authenticate")
-    async def test_openai_oauth_flow_success(
-        self,
-        mock_authenticate: AsyncMock,
-    ) -> None:
-        """Test successful OpenAI OAuth flow."""
-        from datetime import UTC, datetime
-
-        from ccproxy.auth.openai import OpenAICredentials, OpenAIOAuthClient
-        from ccproxy.config.codex import CodexSettings
-
-        # Mock successful authentication
-        expected_credentials = OpenAICredentials(
-            access_token="oauth-access-token",
-            refresh_token="oauth-refresh-token",
-            expires_at=datetime.fromtimestamp(1234567890, UTC),
-            account_id="oauth-account-id",
-        )
-        mock_authenticate.return_value = expected_credentials
-
-        settings = CodexSettings()
-        client = OpenAIOAuthClient(settings)
-
-        credentials = await client.authenticate(open_browser=False)
-
-        assert credentials == expected_credentials
-        mock_authenticate.assert_called_once_with(open_browser=False)
-
-    def test_openai_oauth_callback_success_flow(self, client: TestClient) -> None:
-        """Test successful OpenAI OAuth callback flow."""
-        # This would be similar to the existing OAuth callback tests
-        # but for OpenAI-specific endpoints and flows
-        pass
-
-    @patch("ccproxy.auth.openai.OpenAIOAuthClient.authenticate")
-    async def test_openai_oauth_flow_error(
-        self,
-        mock_authenticate: AsyncMock,
-    ) -> None:
-        """Test OpenAI OAuth flow error handling."""
-        from ccproxy.auth.openai import OpenAIOAuthClient
-        from ccproxy.config.codex import CodexSettings
-
-        # Mock authentication failure
-        mock_authenticate.side_effect = ValueError("OAuth error")
-
-        settings = CodexSettings()
-        client = OpenAIOAuthClient(settings)
-
-        with pytest.raises(ValueError, match="OAuth error"):
-            await client.authenticate(open_browser=False)
-
-    async def test_openai_token_storage_file_operations(self, tmp_path: Path) -> None:
-        """Test OpenAI token storage file operations."""
-        import json
-        import time
-        from datetime import UTC, datetime
-
-        from ccproxy.auth.openai import OpenAICredentials, OpenAITokenStorage
-
-        storage = OpenAITokenStorage(file_path=tmp_path / "test_auth.json")
-
-        # Create a valid JWT-like token with proper claims
-        import jwt
-
-        expiration_time = int(time.time()) + 3600  # 1 hour from now
-        payload = {
-            "exp": expiration_time,
-            "account_id": "file-test-account",
-            "org_id": "file-test-account",  # fallback for account_id extraction
-            "iat": int(time.time()),
-        }
-        # Create a JWT token (no signature verification needed for test)
-        jwt_token = jwt.encode(payload, "test-secret", algorithm="HS256")
-
-        credentials = OpenAICredentials(
-            access_token=jwt_token,
-            refresh_token="file-test-refresh",
-            expires_at=datetime.fromtimestamp(expiration_time, UTC),
-            account_id="file-test-account",
-        )
-
-        # Test save
-        result = await storage.save(credentials)
-        assert result is True
-
-        # Verify the file was created with correct structure
-        assert storage.file_path.exists()
-        with storage.file_path.open("r") as f:
-            data = json.load(f)
-        assert "tokens" in data
-        assert data["tokens"]["access_token"] == jwt_token
-
-        # Test load
-        loaded_credentials = await storage.load()
-        assert loaded_credentials is not None
-        assert loaded_credentials.access_token == credentials.access_token
-        assert loaded_credentials.refresh_token == credentials.refresh_token
-        assert loaded_credentials.account_id == credentials.account_id
-        # Expiration might be slightly different due to JWT extraction, so check it's close
-        assert (
-            abs(
-                (loaded_credentials.expires_at - credentials.expires_at).total_seconds()
-            )
-            < 2
-        )

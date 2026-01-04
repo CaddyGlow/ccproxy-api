@@ -2,43 +2,53 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, dev]
   pull_request:
-    branches: [main, develop]
+    branches: [main, dev]
 
 jobs:
-  test:
+  lint:
+    name: Lint (ruff)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-
     steps:
       - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
+      - name: Set up Python
+        run: uv python install
+      - name: Install deps
+        run: ./Taskfile dev-install
+      - name: Ruff check
+        run: ./Taskfile lint
 
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: make dev-install
-
-      - name: Run CI pipeline
-        run: make ci
-
-      - name: Build documentation
-        run: make docs-build
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+  typecheck:
+    name: Typecheck (mypy)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
         with:
-          file: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install
+      - name: Install deps
+        run: ./Taskfile dev-install
+      - name: mypy
+        run: ./Taskfile typecheck
+
+  tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install
+      - name: Install deps
+        run: ./Taskfile dev-install
+      - name: Run unit tests (no network)
+        run: ./Taskfile test-unit

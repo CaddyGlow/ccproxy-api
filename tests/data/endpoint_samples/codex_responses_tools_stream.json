@@ -1,0 +1,1347 @@
+{
+  "endpoint": "/codex/v1/responses",
+  "metadata": {
+    "error": null,
+    "success": true
+  },
+  "model": "gpt-5",
+  "name": "codex_responses_tools_stream",
+  "request": {
+    "payload": {
+      "input": [
+        {
+          "content": "What's the weather like in New York, and how far is it from Los Angeles?",
+          "role": "user"
+        }
+      ],
+      "max_completion_tokens": 1000,
+      "model": "gpt-5",
+      "stream": true,
+      "tools": [
+        {
+          "description": "Get current weather information for a specific location",
+          "name": "get_weather",
+          "parameters": {
+            "properties": {
+              "location": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "location"
+            ],
+            "type": "object"
+          },
+          "type": "function"
+        },
+        {
+          "description": "Calculate the distance between two geographic coordinates",
+          "name": "calculate_distance",
+          "parameters": {
+            "properties": {
+              "lat1": {
+                "type": "string"
+              },
+              "lat2": {
+                "type": "string"
+              },
+              "lon1": {
+                "type": "string"
+              },
+              "lon2": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "lat1",
+              "lon1",
+              "lat2",
+              "lon2"
+            ],
+            "type": "object"
+          },
+          "type": "function"
+        },
+        {
+          "description": "Perform basic arithmetic calculations",
+          "name": "calculate",
+          "parameters": {
+            "properties": {
+              "expression": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "expression"
+            ],
+            "type": "object"
+          },
+          "type": "function"
+        }
+      ]
+    },
+    "request_key": "responses_tools_stream"
+  },
+  "response": {
+    "events": [
+      {
+        "data": "{\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"resp_0a6505c52947edbe0168d46974c39c8198b5427a3b53782766\",\"object\":\"response\",\"created_at\":1758751092,\"status\":\"in_progress\",\"background\":false,\"error\":null,\"incomplete_details\":null,\"instructions\":\"You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.\\n\\n## General\\n\\n- The arguments to `shell` will be passed to execvp(). Most terminal commands should be prefixed with [\\\"bash\\\", \\\"-lc\\\"].\\n- Always set the `workdir` param when using the shell function. Do not use `cd` unless absolutely necessary.\\n- When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)\\n\\n## Editing constraints\\n\\n- Default to ASCII when editing or creating files. Only introduce non-ASCII or other Unicode characters when there is a clear justification and the file already uses them.\\n- Add succinct code comments that explain what is going on if code is not self-explanatory. You should not add comments like \\\"Assigns the value to the variable\\\", but a brief comment might be useful ahead of a complex code block that the user would otherwise have to spend time parsing out. Usage of these comments should be rare.\\n- You may be in a dirty git worktree.\\n    * NEVER revert existing changes you did not make unless explicitly requested, since these changes were made by the user.\\n    * If asked to make a commit or code edits and there are unrelated changes to your work or changes that you didn't make in those files, don't revert those changes.\\n    * If the changes are in files you've touched recently, you should read carefully and understand how you can work with the changes rather than reverting them.\\n    * If the changes are in unrelated files, just ignore them and don't revert them.\\n- While you are working, you might notice unexpected changes that you didn't make. If this happens, STOP IMMEDIATELY and ask the user how they would like to proceed.\\n\\n## Plan tool\\n\\nWhen using the planning tool:\\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\\n- Do not make single-step plans.\\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\\n\\n## Codex CLI harness, sandboxing, and approvals\\n\\nThe Codex CLI harness supports several different configurations for sandboxing and escalation approvals that the user can choose from.\\n\\nFilesystem sandboxing defines which files can be read or written. The options for `sandbox_mode` are:\\n- **read-only**: The sandbox only permits reading files.\\n- **workspace-write**: The sandbox permits reading files, and editing files in `cwd` and `writable_roots`. Editing files in other directories requires approval.\\n- **danger-full-access**: No filesystem sandboxing - all commands are permitted.\\n\\nNetwork sandboxing defines whether network can be accessed without approval. Options for `network_access` are:\\n- **restricted**: Requires approval\\n- **enabled**: No approval needed\\n\\nApprovals are your mechanism to get user consent to run shell commands without the sandbox. Possible configuration options for `approval_policy` are\\n- **untrusted**: The harness will escalate most commands for user approval, apart from a limited allowlist of safe \\\"read\\\" commands.\\n- **on-failure**: The harness will allow all commands to run in the sandbox (if enabled), and failures will be escalated to the user for approval to run again without the sandbox.\\n- **on-request**: Commands will be run in the sandbox by default, and you can specify in your tool call if you want to escalate a command to run without sandboxing. (Note that this mode is not always available. If it is, you'll see parameters for it in the `shell` command description.)\\n- **never**: This is a non-interactive mode where you may NEVER ask the user for approval to run commands. Instead, you must always persist and work around constraints to solve the task for the user. You MUST do your utmost best to finish the task and validate your work before yielding. If this mode is paired with `danger-full-access`, take advantage of it to deliver the best outcome for the user. Further, in this mode, your default testing philosophy is overridden: Even if you don't see local patterns for testing, you may add tests and scripts to validate your work. Just remove them before yielding.\\n\\nWhen you are running with `approval_policy == on-request`, and sandboxing enabled, here are scenarios where you'll need to request approval:\\n- You need to run a command that writes to a directory that requires it (e.g. running tests that write to /var)\\n- You need to run a GUI app (e.g., open/xdg-open/osascript) to open browsers or files.\\n- You are running sandboxed and need to run a command that requires network access (e.g. installing packages)\\n- If you run a command that is important to solving the user's query, but it fails because of sandboxing, rerun the command with approval. ALWAYS proceed to use the `with_escalated_permissions` and `justification` parameters - do not message the user before requesting approval for the command.\\n- You are about to take a potentially destructive action such as an `rm` or `git reset` that the user did not explicitly ask for\\n- (for all of these, you should weigh alternative paths that do not require approval)\\n\\nWhen `sandbox_mode` is set to read-only, you'll need to request approval for any command that isn't a read.\\n\\nYou will be told what filesystem sandboxing, network sandboxing, and approval mode are active in a developer or user message. If you are not told about this, assume that you are running with workspace-write, network sandboxing enabled, and approval on-failure.\\n\\nAlthough they introduce friction to the user because your work is paused until the user responds, you should leverage them when necessary to accomplish important work. If the completing the task requires escalated permissions, Do not let these settings or the sandbox deter you from attempting to accomplish the user's task unless it is set to \\\"never\\\", in which case never ask for approvals.\\n\\nWhen requesting approval to execute a command that will require escalated privileges:\\n  - Provide the `with_escalated_permissions` parameter with the boolean value true\\n  - Include a short, 1 sentence explanation for why you need to enable `with_escalated_permissions` in the justification parameter\\n\\n## Special user requests\\n\\n- If the user makes a simple request (such as asking for the time) which you can fulfill by running a terminal command (such as `date`), you should do so.\\n- If the user asks for a \\\"review\\\", default to a code review mindset: prioritise identifying bugs, risks, behavioural regressions, and missing tests. Findings must be the primary focus of the response - keep summaries or overviews brief and only after enumerating the issues. Present findings first (ordered by severity with file/line references), follow with open questions or assumptions, and offer a change-summary only as a secondary detail. If no findings are discovered, state that explicitly and mention any residual risks or testing gaps.\\n\\n## Presenting your work and final message\\n\\nYou are producing plain text that will later be styled by the CLI. Follow these rules exactly. Formatting should make results easy to scan, but not feel mechanical. Use judgment to decide how much structure adds value.\\n\\n- Default: be very concise; friendly coding teammate tone.\\n- Ask only when needed; suggest ideas; mirror the user's style.\\n- For substantial work, summarize clearly; follow final\u2011answer formatting.\\n- Skip heavy formatting for simple confirmations.\\n- Don't dump large files you've written; reference paths only.\\n- No \\\"save/copy this file\\\" - User is on the same machine.\\n- Offer logical next steps (tests, commits, build) briefly; add verify steps if you couldn't do something.\\n- For code changes:\\n  * Lead with a quick explanation of the change, and then give more details on the context covering where and why a change was made. Do not start this explanation with \\\"summary\\\", just jump right in.\\n  * If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps.\\n  * When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.\\n- The user does not command execution outputs. When asked to show the output of a command (e.g. `git show`), relay the important details in your answer or summarize the key lines so the user understands the result.\\n\\n### Final answer structure and style guidelines\\n\\n- Plain text; CLI handles styling. Use structure only when it helps scanability.\\n- Headers: optional; short Title Case (1-3 words) wrapped in **\u2026**; no blank line before the first bullet; add only if they truly help.\\n- Bullets: use - ; merge related points; keep to one line when possible; 4\u20136 per list ordered by importance; keep phrasing consistent.\\n- Monospace: backticks for commands/paths/env vars/code ids and inline examples; use for literal keyword bullets; never combine with **.\\n- Code samples or multi-line snippets should be wrapped in fenced code blocks; add a language hint whenever obvious.\\n- Structure: group related bullets; order sections general \u2192 specific \u2192 supporting; for subsections, start with a bolded keyword bullet, then items; match complexity to the task.\\n- Tone: collaborative, concise, factual; present tense, active voice; self\u2011contained; no \\\"above/below\\\"; parallel wording.\\n- Don'ts: no nested bullets/hierarchies; no ANSI codes; don't cram unrelated keywords; keep keyword lists short\u2014wrap/reformat if long; avoid naming formatting styles in answers.\\n- Adaptation: code explanations \u2192 precise, structured with code refs; simple tasks \u2192 lead with outcome; big changes \u2192 logical walkthrough + rationale + next actions; casual one-offs \u2192 plain sentences, no headers/bullets.\\n- File References: When referencing files in your response, make sure to include the relevant start line and always follow the below rules:\\n  * Use inline code to make file paths clickable.\\n  * Each reference should have a stand alone path. Even if it's the same file.\\n  * Accepted: absolute, workspace\u2011relative, a/ or b/ diff prefixes, or bare filename/suffix.\\n  * Line/column (1\u2011based, optional): :line[:column] or #Lline[Ccolumn] (column defaults to 1).\\n  * Do not use URIs like file://, vscode://, or https://.\\n  * Do not provide range of lines\\n  * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10, C:\\\\repo\\\\project\\\\main.rs:12:5\\n\",\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5-2025-08-07\",\"output\":[],\"parallel_tool_calls\":true,\"previous_response_id\":null,\"prompt_cache_key\":\"acdaa857-b959-434e-a8c9-fe6f6d6cb578\",\"reasoning\":{\"effort\":\"medium\",\"summary\":null},\"safety_identifier\":\"user-bzqd8nlU6CqqzeqDriP9GvUt\",\"service_tier\":\"auto\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Get current weather information for a specific location\",\"name\":\"get_weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\"},\"unit\":{\"type\":\"string\"}},\"required\":[\"location\",\"unit\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Calculate the distance between two geographic coordinates\",\"name\":\"calculate_distance\",\"parameters\":{\"type\":\"object\",\"properties\":{\"lat1\":{\"type\":\"string\"},\"lon1\":{\"type\":\"string\"},\"lat2\":{\"type\":\"string\"},\"lon2\":{\"type\":\"string\"}},\"required\":[\"lat1\",\"lon1\",\"lat2\",\"lon2\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Perform basic arithmetic calculations\",\"name\":\"calculate\",\"parameters\":{\"type\":\"object\",\"properties\":{\"expression\":{\"type\":\"string\"}},\"required\":[\"expression\"],\"additionalProperties\":false},\"strict\":true}],\"top_logprobs\":0,\"top_p\":1.0,\"truncation\":\"disabled\",\"usage\":null,\"user\":null,\"metadata\":{}}}",
+        "event": "response.created",
+        "json": {
+          "response": {
+            "background": false,
+            "created_at": 1758751092,
+            "error": null,
+            "id": "resp_0a6505c52947edbe0168d46974c39c8198b5427a3b53782766",
+            "incomplete_details": null,
+            "instructions": "You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.\n\n## General\n\n- The arguments to `shell` will be passed to execvp(). Most terminal commands should be prefixed with [\"bash\", \"-lc\"].\n- Always set the `workdir` param when using the shell function. Do not use `cd` unless absolutely necessary.\n- When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)\n\n## Editing constraints\n\n- Default to ASCII when editing or creating files. Only introduce non-ASCII or other Unicode characters when there is a clear justification and the file already uses them.\n- Add succinct code comments that explain what is going on if code is not self-explanatory. You should not add comments like \"Assigns the value to the variable\", but a brief comment might be useful ahead of a complex code block that the user would otherwise have to spend time parsing out. Usage of these comments should be rare.\n- You may be in a dirty git worktree.\n    * NEVER revert existing changes you did not make unless explicitly requested, since these changes were made by the user.\n    * If asked to make a commit or code edits and there are unrelated changes to your work or changes that you didn't make in those files, don't revert those changes.\n    * If the changes are in files you've touched recently, you should read carefully and understand how you can work with the changes rather than reverting them.\n    * If the changes are in unrelated files, just ignore them and don't revert them.\n- While you are working, you might notice unexpected changes that you didn't make. If this happens, STOP IMMEDIATELY and ask the user how they would like to proceed.\n\n## Plan tool\n\nWhen using the planning tool:\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\n- Do not make single-step plans.\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\n\n## Codex CLI harness, sandboxing, and approvals\n\nThe Codex CLI harness supports several different configurations for sandboxing and escalation approvals that the user can choose from.\n\nFilesystem sandboxing defines which files can be read or written. The options for `sandbox_mode` are:\n- **read-only**: The sandbox only permits reading files.\n- **workspace-write**: The sandbox permits reading files, and editing files in `cwd` and `writable_roots`. Editing files in other directories requires approval.\n- **danger-full-access**: No filesystem sandboxing - all commands are permitted.\n\nNetwork sandboxing defines whether network can be accessed without approval. Options for `network_access` are:\n- **restricted**: Requires approval\n- **enabled**: No approval needed\n\nApprovals are your mechanism to get user consent to run shell commands without the sandbox. Possible configuration options for `approval_policy` are\n- **untrusted**: The harness will escalate most commands for user approval, apart from a limited allowlist of safe \"read\" commands.\n- **on-failure**: The harness will allow all commands to run in the sandbox (if enabled), and failures will be escalated to the user for approval to run again without the sandbox.\n- **on-request**: Commands will be run in the sandbox by default, and you can specify in your tool call if you want to escalate a command to run without sandboxing. (Note that this mode is not always available. If it is, you'll see parameters for it in the `shell` command description.)\n- **never**: This is a non-interactive mode where you may NEVER ask the user for approval to run commands. Instead, you must always persist and work around constraints to solve the task for the user. You MUST do your utmost best to finish the task and validate your work before yielding. If this mode is paired with `danger-full-access`, take advantage of it to deliver the best outcome for the user. Further, in this mode, your default testing philosophy is overridden: Even if you don't see local patterns for testing, you may add tests and scripts to validate your work. Just remove them before yielding.\n\nWhen you are running with `approval_policy == on-request`, and sandboxing enabled, here are scenarios where you'll need to request approval:\n- You need to run a command that writes to a directory that requires it (e.g. running tests that write to /var)\n- You need to run a GUI app (e.g., open/xdg-open/osascript) to open browsers or files.\n- You are running sandboxed and need to run a command that requires network access (e.g. installing packages)\n- If you run a command that is important to solving the user's query, but it fails because of sandboxing, rerun the command with approval. ALWAYS proceed to use the `with_escalated_permissions` and `justification` parameters - do not message the user before requesting approval for the command.\n- You are about to take a potentially destructive action such as an `rm` or `git reset` that the user did not explicitly ask for\n- (for all of these, you should weigh alternative paths that do not require approval)\n\nWhen `sandbox_mode` is set to read-only, you'll need to request approval for any command that isn't a read.\n\nYou will be told what filesystem sandboxing, network sandboxing, and approval mode are active in a developer or user message. If you are not told about this, assume that you are running with workspace-write, network sandboxing enabled, and approval on-failure.\n\nAlthough they introduce friction to the user because your work is paused until the user responds, you should leverage them when necessary to accomplish important work. If the completing the task requires escalated permissions, Do not let these settings or the sandbox deter you from attempting to accomplish the user's task unless it is set to \"never\", in which case never ask for approvals.\n\nWhen requesting approval to execute a command that will require escalated privileges:\n  - Provide the `with_escalated_permissions` parameter with the boolean value true\n  - Include a short, 1 sentence explanation for why you need to enable `with_escalated_permissions` in the justification parameter\n\n## Special user requests\n\n- If the user makes a simple request (such as asking for the time) which you can fulfill by running a terminal command (such as `date`), you should do so.\n- If the user asks for a \"review\", default to a code review mindset: prioritise identifying bugs, risks, behavioural regressions, and missing tests. Findings must be the primary focus of the response - keep summaries or overviews brief and only after enumerating the issues. Present findings first (ordered by severity with file/line references), follow with open questions or assumptions, and offer a change-summary only as a secondary detail. If no findings are discovered, state that explicitly and mention any residual risks or testing gaps.\n\n## Presenting your work and final message\n\nYou are producing plain text that will later be styled by the CLI. Follow these rules exactly. Formatting should make results easy to scan, but not feel mechanical. Use judgment to decide how much structure adds value.\n\n- Default: be very concise; friendly coding teammate tone.\n- Ask only when needed; suggest ideas; mirror the user's style.\n- For substantial work, summarize clearly; follow final\u2011answer formatting.\n- Skip heavy formatting for simple confirmations.\n- Don't dump large files you've written; reference paths only.\n- No \"save/copy this file\" - User is on the same machine.\n- Offer logical next steps (tests, commits, build) briefly; add verify steps if you couldn't do something.\n- For code changes:\n  * Lead with a quick explanation of the change, and then give more details on the context covering where and why a change was made. Do not start this explanation with \"summary\", just jump right in.\n  * If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps.\n  * When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.\n- The user does not command execution outputs. When asked to show the output of a command (e.g. `git show`), relay the important details in your answer or summarize the key lines so the user understands the result.\n\n### Final answer structure and style guidelines\n\n- Plain text; CLI handles styling. Use structure only when it helps scanability.\n- Headers: optional; short Title Case (1-3 words) wrapped in **\u2026**; no blank line before the first bullet; add only if they truly help.\n- Bullets: use - ; merge related points; keep to one line when possible; 4\u20136 per list ordered by importance; keep phrasing consistent.\n- Monospace: backticks for commands/paths/env vars/code ids and inline examples; use for literal keyword bullets; never combine with **.\n- Code samples or multi-line snippets should be wrapped in fenced code blocks; add a language hint whenever obvious.\n- Structure: group related bullets; order sections general \u2192 specific \u2192 supporting; for subsections, start with a bolded keyword bullet, then items; match complexity to the task.\n- Tone: collaborative, concise, factual; present tense, active voice; self\u2011contained; no \"above/below\"; parallel wording.\n- Don'ts: no nested bullets/hierarchies; no ANSI codes; don't cram unrelated keywords; keep keyword lists short\u2014wrap/reformat if long; avoid naming formatting styles in answers.\n- Adaptation: code explanations \u2192 precise, structured with code refs; simple tasks \u2192 lead with outcome; big changes \u2192 logical walkthrough + rationale + next actions; casual one-offs \u2192 plain sentences, no headers/bullets.\n- File References: When referencing files in your response, make sure to include the relevant start line and always follow the below rules:\n  * Use inline code to make file paths clickable.\n  * Each reference should have a stand alone path. Even if it's the same file.\n  * Accepted: absolute, workspace\u2011relative, a/ or b/ diff prefixes, or bare filename/suffix.\n  * Line/column (1\u2011based, optional): :line[:column] or #Lline[Ccolumn] (column defaults to 1).\n  * Do not use URIs like file://, vscode://, or https://.\n  * Do not provide range of lines\n  * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10, C:\\repo\\project\\main.rs:12:5\n",
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
+            "model": "gpt-5-2025-08-07",
+            "object": "response",
+            "output": [],
+            "parallel_tool_calls": true,
+            "previous_response_id": null,
+            "prompt_cache_key": "acdaa857-b959-434e-a8c9-fe6f6d6cb578",
+            "reasoning": {
+              "effort": "medium",
+              "summary": null
+            },
+            "safety_identifier": "user-bzqd8nlU6CqqzeqDriP9GvUt",
+            "service_tier": "auto",
+            "status": "in_progress",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tools": [
+              {
+                "description": "Get current weather information for a specific location",
+                "name": "get_weather",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "location": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "location",
+                    "unit"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              },
+              {
+                "description": "Calculate the distance between two geographic coordinates",
+                "name": "calculate_distance",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lat1": {
+                      "type": "string"
+                    },
+                    "lat2": {
+                      "type": "string"
+                    },
+                    "lon1": {
+                      "type": "string"
+                    },
+                    "lon2": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lat1",
+                    "lon1",
+                    "lat2",
+                    "lon2"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              },
+              {
+                "description": "Perform basic arithmetic calculations",
+                "name": "calculate",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "usage": null,
+            "user": null
+          },
+          "sequence_number": 0,
+          "type": "response.created"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.in_progress\",\"sequence_number\":1,\"response\":{\"id\":\"resp_0a6505c52947edbe0168d46974c39c8198b5427a3b53782766\",\"object\":\"response\",\"created_at\":1758751092,\"status\":\"in_progress\",\"background\":false,\"error\":null,\"incomplete_details\":null,\"instructions\":\"You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.\\n\\n## General\\n\\n- The arguments to `shell` will be passed to execvp(). Most terminal commands should be prefixed with [\\\"bash\\\", \\\"-lc\\\"].\\n- Always set the `workdir` param when using the shell function. Do not use `cd` unless absolutely necessary.\\n- When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)\\n\\n## Editing constraints\\n\\n- Default to ASCII when editing or creating files. Only introduce non-ASCII or other Unicode characters when there is a clear justification and the file already uses them.\\n- Add succinct code comments that explain what is going on if code is not self-explanatory. You should not add comments like \\\"Assigns the value to the variable\\\", but a brief comment might be useful ahead of a complex code block that the user would otherwise have to spend time parsing out. Usage of these comments should be rare.\\n- You may be in a dirty git worktree.\\n    * NEVER revert existing changes you did not make unless explicitly requested, since these changes were made by the user.\\n    * If asked to make a commit or code edits and there are unrelated changes to your work or changes that you didn't make in those files, don't revert those changes.\\n    * If the changes are in files you've touched recently, you should read carefully and understand how you can work with the changes rather than reverting them.\\n    * If the changes are in unrelated files, just ignore them and don't revert them.\\n- While you are working, you might notice unexpected changes that you didn't make. If this happens, STOP IMMEDIATELY and ask the user how they would like to proceed.\\n\\n## Plan tool\\n\\nWhen using the planning tool:\\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\\n- Do not make single-step plans.\\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\\n\\n## Codex CLI harness, sandboxing, and approvals\\n\\nThe Codex CLI harness supports several different configurations for sandboxing and escalation approvals that the user can choose from.\\n\\nFilesystem sandboxing defines which files can be read or written. The options for `sandbox_mode` are:\\n- **read-only**: The sandbox only permits reading files.\\n- **workspace-write**: The sandbox permits reading files, and editing files in `cwd` and `writable_roots`. Editing files in other directories requires approval.\\n- **danger-full-access**: No filesystem sandboxing - all commands are permitted.\\n\\nNetwork sandboxing defines whether network can be accessed without approval. Options for `network_access` are:\\n- **restricted**: Requires approval\\n- **enabled**: No approval needed\\n\\nApprovals are your mechanism to get user consent to run shell commands without the sandbox. Possible configuration options for `approval_policy` are\\n- **untrusted**: The harness will escalate most commands for user approval, apart from a limited allowlist of safe \\\"read\\\" commands.\\n- **on-failure**: The harness will allow all commands to run in the sandbox (if enabled), and failures will be escalated to the user for approval to run again without the sandbox.\\n- **on-request**: Commands will be run in the sandbox by default, and you can specify in your tool call if you want to escalate a command to run without sandboxing. (Note that this mode is not always available. If it is, you'll see parameters for it in the `shell` command description.)\\n- **never**: This is a non-interactive mode where you may NEVER ask the user for approval to run commands. Instead, you must always persist and work around constraints to solve the task for the user. You MUST do your utmost best to finish the task and validate your work before yielding. If this mode is paired with `danger-full-access`, take advantage of it to deliver the best outcome for the user. Further, in this mode, your default testing philosophy is overridden: Even if you don't see local patterns for testing, you may add tests and scripts to validate your work. Just remove them before yielding.\\n\\nWhen you are running with `approval_policy == on-request`, and sandboxing enabled, here are scenarios where you'll need to request approval:\\n- You need to run a command that writes to a directory that requires it (e.g. running tests that write to /var)\\n- You need to run a GUI app (e.g., open/xdg-open/osascript) to open browsers or files.\\n- You are running sandboxed and need to run a command that requires network access (e.g. installing packages)\\n- If you run a command that is important to solving the user's query, but it fails because of sandboxing, rerun the command with approval. ALWAYS proceed to use the `with_escalated_permissions` and `justification` parameters - do not message the user before requesting approval for the command.\\n- You are about to take a potentially destructive action such as an `rm` or `git reset` that the user did not explicitly ask for\\n- (for all of these, you should weigh alternative paths that do not require approval)\\n\\nWhen `sandbox_mode` is set to read-only, you'll need to request approval for any command that isn't a read.\\n\\nYou will be told what filesystem sandboxing, network sandboxing, and approval mode are active in a developer or user message. If you are not told about this, assume that you are running with workspace-write, network sandboxing enabled, and approval on-failure.\\n\\nAlthough they introduce friction to the user because your work is paused until the user responds, you should leverage them when necessary to accomplish important work. If the completing the task requires escalated permissions, Do not let these settings or the sandbox deter you from attempting to accomplish the user's task unless it is set to \\\"never\\\", in which case never ask for approvals.\\n\\nWhen requesting approval to execute a command that will require escalated privileges:\\n  - Provide the `with_escalated_permissions` parameter with the boolean value true\\n  - Include a short, 1 sentence explanation for why you need to enable `with_escalated_permissions` in the justification parameter\\n\\n## Special user requests\\n\\n- If the user makes a simple request (such as asking for the time) which you can fulfill by running a terminal command (such as `date`), you should do so.\\n- If the user asks for a \\\"review\\\", default to a code review mindset: prioritise identifying bugs, risks, behavioural regressions, and missing tests. Findings must be the primary focus of the response - keep summaries or overviews brief and only after enumerating the issues. Present findings first (ordered by severity with file/line references), follow with open questions or assumptions, and offer a change-summary only as a secondary detail. If no findings are discovered, state that explicitly and mention any residual risks or testing gaps.\\n\\n## Presenting your work and final message\\n\\nYou are producing plain text that will later be styled by the CLI. Follow these rules exactly. Formatting should make results easy to scan, but not feel mechanical. Use judgment to decide how much structure adds value.\\n\\n- Default: be very concise; friendly coding teammate tone.\\n- Ask only when needed; suggest ideas; mirror the user's style.\\n- For substantial work, summarize clearly; follow final\u2011answer formatting.\\n- Skip heavy formatting for simple confirmations.\\n- Don't dump large files you've written; reference paths only.\\n- No \\\"save/copy this file\\\" - User is on the same machine.\\n- Offer logical next steps (tests, commits, build) briefly; add verify steps if you couldn't do something.\\n- For code changes:\\n  * Lead with a quick explanation of the change, and then give more details on the context covering where and why a change was made. Do not start this explanation with \\\"summary\\\", just jump right in.\\n  * If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps.\\n  * When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.\\n- The user does not command execution outputs. When asked to show the output of a command (e.g. `git show`), relay the important details in your answer or summarize the key lines so the user understands the result.\\n\\n### Final answer structure and style guidelines\\n\\n- Plain text; CLI handles styling. Use structure only when it helps scanability.\\n- Headers: optional; short Title Case (1-3 words) wrapped in **\u2026**; no blank line before the first bullet; add only if they truly help.\\n- Bullets: use - ; merge related points; keep to one line when possible; 4\u20136 per list ordered by importance; keep phrasing consistent.\\n- Monospace: backticks for commands/paths/env vars/code ids and inline examples; use for literal keyword bullets; never combine with **.\\n- Code samples or multi-line snippets should be wrapped in fenced code blocks; add a language hint whenever obvious.\\n- Structure: group related bullets; order sections general \u2192 specific \u2192 supporting; for subsections, start with a bolded keyword bullet, then items; match complexity to the task.\\n- Tone: collaborative, concise, factual; present tense, active voice; self\u2011contained; no \\\"above/below\\\"; parallel wording.\\n- Don'ts: no nested bullets/hierarchies; no ANSI codes; don't cram unrelated keywords; keep keyword lists short\u2014wrap/reformat if long; avoid naming formatting styles in answers.\\n- Adaptation: code explanations \u2192 precise, structured with code refs; simple tasks \u2192 lead with outcome; big changes \u2192 logical walkthrough + rationale + next actions; casual one-offs \u2192 plain sentences, no headers/bullets.\\n- File References: When referencing files in your response, make sure to include the relevant start line and always follow the below rules:\\n  * Use inline code to make file paths clickable.\\n  * Each reference should have a stand alone path. Even if it's the same file.\\n  * Accepted: absolute, workspace\u2011relative, a/ or b/ diff prefixes, or bare filename/suffix.\\n  * Line/column (1\u2011based, optional): :line[:column] or #Lline[Ccolumn] (column defaults to 1).\\n  * Do not use URIs like file://, vscode://, or https://.\\n  * Do not provide range of lines\\n  * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10, C:\\\\repo\\\\project\\\\main.rs:12:5\\n\",\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5-2025-08-07\",\"output\":[],\"parallel_tool_calls\":true,\"previous_response_id\":null,\"prompt_cache_key\":\"acdaa857-b959-434e-a8c9-fe6f6d6cb578\",\"reasoning\":{\"effort\":\"medium\",\"summary\":null},\"safety_identifier\":\"user-bzqd8nlU6CqqzeqDriP9GvUt\",\"service_tier\":\"auto\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Get current weather information for a specific location\",\"name\":\"get_weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\"},\"unit\":{\"type\":\"string\"}},\"required\":[\"location\",\"unit\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Calculate the distance between two geographic coordinates\",\"name\":\"calculate_distance\",\"parameters\":{\"type\":\"object\",\"properties\":{\"lat1\":{\"type\":\"string\"},\"lon1\":{\"type\":\"string\"},\"lat2\":{\"type\":\"string\"},\"lon2\":{\"type\":\"string\"}},\"required\":[\"lat1\",\"lon1\",\"lat2\",\"lon2\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Perform basic arithmetic calculations\",\"name\":\"calculate\",\"parameters\":{\"type\":\"object\",\"properties\":{\"expression\":{\"type\":\"string\"}},\"required\":[\"expression\"],\"additionalProperties\":false},\"strict\":true}],\"top_logprobs\":0,\"top_p\":1.0,\"truncation\":\"disabled\",\"usage\":null,\"user\":null,\"metadata\":{}}}",
+        "event": "response.in_progress",
+        "json": {
+          "response": {
+            "background": false,
+            "created_at": 1758751092,
+            "error": null,
+            "id": "resp_0a6505c52947edbe0168d46974c39c8198b5427a3b53782766",
+            "incomplete_details": null,
+            "instructions": "You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.\n\n## General\n\n- The arguments to `shell` will be passed to execvp(). Most terminal commands should be prefixed with [\"bash\", \"-lc\"].\n- Always set the `workdir` param when using the shell function. Do not use `cd` unless absolutely necessary.\n- When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)\n\n## Editing constraints\n\n- Default to ASCII when editing or creating files. Only introduce non-ASCII or other Unicode characters when there is a clear justification and the file already uses them.\n- Add succinct code comments that explain what is going on if code is not self-explanatory. You should not add comments like \"Assigns the value to the variable\", but a brief comment might be useful ahead of a complex code block that the user would otherwise have to spend time parsing out. Usage of these comments should be rare.\n- You may be in a dirty git worktree.\n    * NEVER revert existing changes you did not make unless explicitly requested, since these changes were made by the user.\n    * If asked to make a commit or code edits and there are unrelated changes to your work or changes that you didn't make in those files, don't revert those changes.\n    * If the changes are in files you've touched recently, you should read carefully and understand how you can work with the changes rather than reverting them.\n    * If the changes are in unrelated files, just ignore them and don't revert them.\n- While you are working, you might notice unexpected changes that you didn't make. If this happens, STOP IMMEDIATELY and ask the user how they would like to proceed.\n\n## Plan tool\n\nWhen using the planning tool:\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\n- Do not make single-step plans.\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\n\n## Codex CLI harness, sandboxing, and approvals\n\nThe Codex CLI harness supports several different configurations for sandboxing and escalation approvals that the user can choose from.\n\nFilesystem sandboxing defines which files can be read or written. The options for `sandbox_mode` are:\n- **read-only**: The sandbox only permits reading files.\n- **workspace-write**: The sandbox permits reading files, and editing files in `cwd` and `writable_roots`. Editing files in other directories requires approval.\n- **danger-full-access**: No filesystem sandboxing - all commands are permitted.\n\nNetwork sandboxing defines whether network can be accessed without approval. Options for `network_access` are:\n- **restricted**: Requires approval\n- **enabled**: No approval needed\n\nApprovals are your mechanism to get user consent to run shell commands without the sandbox. Possible configuration options for `approval_policy` are\n- **untrusted**: The harness will escalate most commands for user approval, apart from a limited allowlist of safe \"read\" commands.\n- **on-failure**: The harness will allow all commands to run in the sandbox (if enabled), and failures will be escalated to the user for approval to run again without the sandbox.\n- **on-request**: Commands will be run in the sandbox by default, and you can specify in your tool call if you want to escalate a command to run without sandboxing. (Note that this mode is not always available. If it is, you'll see parameters for it in the `shell` command description.)\n- **never**: This is a non-interactive mode where you may NEVER ask the user for approval to run commands. Instead, you must always persist and work around constraints to solve the task for the user. You MUST do your utmost best to finish the task and validate your work before yielding. If this mode is paired with `danger-full-access`, take advantage of it to deliver the best outcome for the user. Further, in this mode, your default testing philosophy is overridden: Even if you don't see local patterns for testing, you may add tests and scripts to validate your work. Just remove them before yielding.\n\nWhen you are running with `approval_policy == on-request`, and sandboxing enabled, here are scenarios where you'll need to request approval:\n- You need to run a command that writes to a directory that requires it (e.g. running tests that write to /var)\n- You need to run a GUI app (e.g., open/xdg-open/osascript) to open browsers or files.\n- You are running sandboxed and need to run a command that requires network access (e.g. installing packages)\n- If you run a command that is important to solving the user's query, but it fails because of sandboxing, rerun the command with approval. ALWAYS proceed to use the `with_escalated_permissions` and `justification` parameters - do not message the user before requesting approval for the command.\n- You are about to take a potentially destructive action such as an `rm` or `git reset` that the user did not explicitly ask for\n- (for all of these, you should weigh alternative paths that do not require approval)\n\nWhen `sandbox_mode` is set to read-only, you'll need to request approval for any command that isn't a read.\n\nYou will be told what filesystem sandboxing, network sandboxing, and approval mode are active in a developer or user message. If you are not told about this, assume that you are running with workspace-write, network sandboxing enabled, and approval on-failure.\n\nAlthough they introduce friction to the user because your work is paused until the user responds, you should leverage them when necessary to accomplish important work. If the completing the task requires escalated permissions, Do not let these settings or the sandbox deter you from attempting to accomplish the user's task unless it is set to \"never\", in which case never ask for approvals.\n\nWhen requesting approval to execute a command that will require escalated privileges:\n  - Provide the `with_escalated_permissions` parameter with the boolean value true\n  - Include a short, 1 sentence explanation for why you need to enable `with_escalated_permissions` in the justification parameter\n\n## Special user requests\n\n- If the user makes a simple request (such as asking for the time) which you can fulfill by running a terminal command (such as `date`), you should do so.\n- If the user asks for a \"review\", default to a code review mindset: prioritise identifying bugs, risks, behavioural regressions, and missing tests. Findings must be the primary focus of the response - keep summaries or overviews brief and only after enumerating the issues. Present findings first (ordered by severity with file/line references), follow with open questions or assumptions, and offer a change-summary only as a secondary detail. If no findings are discovered, state that explicitly and mention any residual risks or testing gaps.\n\n## Presenting your work and final message\n\nYou are producing plain text that will later be styled by the CLI. Follow these rules exactly. Formatting should make results easy to scan, but not feel mechanical. Use judgment to decide how much structure adds value.\n\n- Default: be very concise; friendly coding teammate tone.\n- Ask only when needed; suggest ideas; mirror the user's style.\n- For substantial work, summarize clearly; follow final\u2011answer formatting.\n- Skip heavy formatting for simple confirmations.\n- Don't dump large files you've written; reference paths only.\n- No \"save/copy this file\" - User is on the same machine.\n- Offer logical next steps (tests, commits, build) briefly; add verify steps if you couldn't do something.\n- For code changes:\n  * Lead with a quick explanation of the change, and then give more details on the context covering where and why a change was made. Do not start this explanation with \"summary\", just jump right in.\n  * If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps.\n  * When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.\n- The user does not command execution outputs. When asked to show the output of a command (e.g. `git show`), relay the important details in your answer or summarize the key lines so the user understands the result.\n\n### Final answer structure and style guidelines\n\n- Plain text; CLI handles styling. Use structure only when it helps scanability.\n- Headers: optional; short Title Case (1-3 words) wrapped in **\u2026**; no blank line before the first bullet; add only if they truly help.\n- Bullets: use - ; merge related points; keep to one line when possible; 4\u20136 per list ordered by importance; keep phrasing consistent.\n- Monospace: backticks for commands/paths/env vars/code ids and inline examples; use for literal keyword bullets; never combine with **.\n- Code samples or multi-line snippets should be wrapped in fenced code blocks; add a language hint whenever obvious.\n- Structure: group related bullets; order sections general \u2192 specific \u2192 supporting; for subsections, start with a bolded keyword bullet, then items; match complexity to the task.\n- Tone: collaborative, concise, factual; present tense, active voice; self\u2011contained; no \"above/below\"; parallel wording.\n- Don'ts: no nested bullets/hierarchies; no ANSI codes; don't cram unrelated keywords; keep keyword lists short\u2014wrap/reformat if long; avoid naming formatting styles in answers.\n- Adaptation: code explanations \u2192 precise, structured with code refs; simple tasks \u2192 lead with outcome; big changes \u2192 logical walkthrough + rationale + next actions; casual one-offs \u2192 plain sentences, no headers/bullets.\n- File References: When referencing files in your response, make sure to include the relevant start line and always follow the below rules:\n  * Use inline code to make file paths clickable.\n  * Each reference should have a stand alone path. Even if it's the same file.\n  * Accepted: absolute, workspace\u2011relative, a/ or b/ diff prefixes, or bare filename/suffix.\n  * Line/column (1\u2011based, optional): :line[:column] or #Lline[Ccolumn] (column defaults to 1).\n  * Do not use URIs like file://, vscode://, or https://.\n  * Do not provide range of lines\n  * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10, C:\\repo\\project\\main.rs:12:5\n",
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
+            "model": "gpt-5-2025-08-07",
+            "object": "response",
+            "output": [],
+            "parallel_tool_calls": true,
+            "previous_response_id": null,
+            "prompt_cache_key": "acdaa857-b959-434e-a8c9-fe6f6d6cb578",
+            "reasoning": {
+              "effort": "medium",
+              "summary": null
+            },
+            "safety_identifier": "user-bzqd8nlU6CqqzeqDriP9GvUt",
+            "service_tier": "auto",
+            "status": "in_progress",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tools": [
+              {
+                "description": "Get current weather information for a specific location",
+                "name": "get_weather",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "location": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "location",
+                    "unit"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              },
+              {
+                "description": "Calculate the distance between two geographic coordinates",
+                "name": "calculate_distance",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lat1": {
+                      "type": "string"
+                    },
+                    "lat2": {
+                      "type": "string"
+                    },
+                    "lon1": {
+                      "type": "string"
+                    },
+                    "lon2": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lat1",
+                    "lon1",
+                    "lat2",
+                    "lon2"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              },
+              {
+                "description": "Perform basic arithmetic calculations",
+                "name": "calculate",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "usage": null,
+            "user": null
+          },
+          "sequence_number": 1,
+          "type": "response.in_progress"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.output_item.added\",\"sequence_number\":2,\"output_index\":0,\"item\":{\"id\":\"rs_0a6505c52947edbe0168d4697597a4819885d99f20debc623d\",\"type\":\"reasoning\",\"summary\":[]}}",
+        "event": "response.output_item.added",
+        "json": {
+          "item": {
+            "id": "rs_0a6505c52947edbe0168d4697597a4819885d99f20debc623d",
+            "summary": [],
+            "type": "reasoning"
+          },
+          "output_index": 0,
+          "sequence_number": 2,
+          "type": "response.output_item.added"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.output_item.done\",\"sequence_number\":3,\"output_index\":0,\"item\":{\"id\":\"rs_0a6505c52947edbe0168d4697597a4819885d99f20debc623d\",\"type\":\"reasoning\",\"summary\":[]}}",
+        "event": "response.output_item.done",
+        "json": {
+          "item": {
+            "id": "rs_0a6505c52947edbe0168d4697597a4819885d99f20debc623d",
+            "summary": [],
+            "type": "reasoning"
+          },
+          "output_index": 0,
+          "sequence_number": 3,
+          "type": "response.output_item.done"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.output_item.added\",\"sequence_number\":4,\"output_index\":1,\"item\":{\"id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"type\":\"function_call\",\"status\":\"in_progress\",\"arguments\":\"\",\"call_id\":\"call_eUSoRaSdhGFRVK4PMkXefkGK\",\"name\":\"get_weather\"}}",
+        "event": "response.output_item.added",
+        "json": {
+          "item": {
+            "arguments": "",
+            "call_id": "call_eUSoRaSdhGFRVK4PMkXefkGK",
+            "id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+            "name": "get_weather",
+            "status": "in_progress",
+            "type": "function_call"
+          },
+          "output_index": 1,
+          "sequence_number": 4,
+          "type": "response.output_item.added"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":5,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"{\",\"obfuscation\":\"FAU4c0Q0DqODjED\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "{",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "FAU4c0Q0DqODjED",
+          "output_index": 1,
+          "sequence_number": 5,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":6,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"\\\"location\",\"obfuscation\":\"VjN7w4O\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"location",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "VjN7w4O",
+          "output_index": 1,
+          "sequence_number": 6,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":7,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"\\\":\",\"obfuscation\":\"A0T4znjMXiWPXi\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\":",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "A0T4znjMXiWPXi",
+          "output_index": 1,
+          "sequence_number": 7,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":8,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"\\\"New\",\"obfuscation\":\"ErlcohSnAyoC\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"New",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "ErlcohSnAyoC",
+          "output_index": 1,
+          "sequence_number": 8,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":9,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\" York\",\"obfuscation\":\"WaUk1d2E5Rt\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": " York",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "WaUk1d2E5Rt",
+          "output_index": 1,
+          "sequence_number": 9,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":10,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\",\",\"obfuscation\":\"FCfclyKPxGOfYah\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": ",",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "FCfclyKPxGOfYah",
+          "output_index": 1,
+          "sequence_number": 10,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":11,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\" NY\",\"obfuscation\":\"Nw5VTutzubcF2\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": " NY",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "Nw5VTutzubcF2",
+          "output_index": 1,
+          "sequence_number": 11,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":12,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"\\\",\",\"obfuscation\":\"0ar00zmKYKXkvb\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\",",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "0ar00zmKYKXkvb",
+          "output_index": 1,
+          "sequence_number": 12,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":13,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"\\\"unit\",\"obfuscation\":\"Ny6l2KkJQey\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"unit",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "Ny6l2KkJQey",
+          "output_index": 1,
+          "sequence_number": 13,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":14,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"\\\":\",\"obfuscation\":\"qvqFz4LCpohhql\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\":",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "qvqFz4LCpohhql",
+          "output_index": 1,
+          "sequence_number": 14,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":15,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"\\\"F\",\"obfuscation\":\"vrSZOE9Jp2aswI\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"F",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "vrSZOE9Jp2aswI",
+          "output_index": 1,
+          "sequence_number": 15,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":16,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"delta\":\"\\\"}\",\"obfuscation\":\"CUd8ME93GE74J9\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"}",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "obfuscation": "CUd8ME93GE74J9",
+          "output_index": 1,
+          "sequence_number": 16,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.done\",\"sequence_number\":17,\"item_id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"output_index\":1,\"arguments\":\"{\\\"location\\\":\\\"New York, NY\\\",\\\"unit\\\":\\\"F\\\"}\"}",
+        "event": "response.function_call_arguments.done",
+        "json": {
+          "arguments": "{\"location\":\"New York, NY\",\"unit\":\"F\"}",
+          "item_id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+          "output_index": 1,
+          "sequence_number": 17,
+          "type": "response.function_call_arguments.done"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.output_item.done\",\"sequence_number\":18,\"output_index\":1,\"item\":{\"id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"location\\\":\\\"New York, NY\\\",\\\"unit\\\":\\\"F\\\"}\",\"call_id\":\"call_eUSoRaSdhGFRVK4PMkXefkGK\",\"name\":\"get_weather\"}}",
+        "event": "response.output_item.done",
+        "json": {
+          "item": {
+            "arguments": "{\"location\":\"New York, NY\",\"unit\":\"F\"}",
+            "call_id": "call_eUSoRaSdhGFRVK4PMkXefkGK",
+            "id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+            "name": "get_weather",
+            "status": "completed",
+            "type": "function_call"
+          },
+          "output_index": 1,
+          "sequence_number": 18,
+          "type": "response.output_item.done"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.output_item.added\",\"sequence_number\":19,\"output_index\":2,\"item\":{\"id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"type\":\"function_call\",\"status\":\"in_progress\",\"arguments\":\"\",\"call_id\":\"call_8PVI0M8Z0FET0LRZJAvSjCHa\",\"name\":\"calculate_distance\"}}",
+        "event": "response.output_item.added",
+        "json": {
+          "item": {
+            "arguments": "",
+            "call_id": "call_8PVI0M8Z0FET0LRZJAvSjCHa",
+            "id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+            "name": "calculate_distance",
+            "status": "in_progress",
+            "type": "function_call"
+          },
+          "output_index": 2,
+          "sequence_number": 19,
+          "type": "response.output_item.added"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":20,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"{\",\"obfuscation\":\"NdIfdgCu0IiEiWY\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "{",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "NdIfdgCu0IiEiWY",
+          "output_index": 2,
+          "sequence_number": 20,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":21,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"lat\",\"obfuscation\":\"1Jse0afvZ8h8\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"lat",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "1Jse0afvZ8h8",
+          "output_index": 2,
+          "sequence_number": 21,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":22,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"1\",\"obfuscation\":\"BCVYuxeppFY5UU2\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "1",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "BCVYuxeppFY5UU2",
+          "output_index": 2,
+          "sequence_number": 22,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":23,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\":\",\"obfuscation\":\"D9VnI6pr158Ooe\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\":",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "D9VnI6pr158Ooe",
+          "output_index": 2,
+          "sequence_number": 23,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":24,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"40\",\"obfuscation\":\"174Fsg7TF9aOk\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"40",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "174Fsg7TF9aOk",
+          "output_index": 2,
+          "sequence_number": 24,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":25,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\".\",\"obfuscation\":\"hJIAiddfBg5hFZa\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": ".",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "hJIAiddfBg5hFZa",
+          "output_index": 2,
+          "sequence_number": 25,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":26,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"712\",\"obfuscation\":\"yLbOJ892ox16F\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "712",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "yLbOJ892ox16F",
+          "output_index": 2,
+          "sequence_number": 26,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":27,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"8\",\"obfuscation\":\"XzmWOKXMKb1OkB7\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "8",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "XzmWOKXMKb1OkB7",
+          "output_index": 2,
+          "sequence_number": 27,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":28,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\",\",\"obfuscation\":\"r1IXhAuFEe4Msa\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\",",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "r1IXhAuFEe4Msa",
+          "output_index": 2,
+          "sequence_number": 28,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":29,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"lon\",\"obfuscation\":\"e5qT4i5WealX\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"lon",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "e5qT4i5WealX",
+          "output_index": 2,
+          "sequence_number": 29,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":30,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"1\",\"obfuscation\":\"ZO5iOVC7T1Qay4p\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "1",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "ZO5iOVC7T1Qay4p",
+          "output_index": 2,
+          "sequence_number": 30,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":31,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\":\",\"obfuscation\":\"bff1wZFXZiRFiL\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\":",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "bff1wZFXZiRFiL",
+          "output_index": 2,
+          "sequence_number": 31,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":32,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"-\",\"obfuscation\":\"begES18bdbRE2q\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"-",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "begES18bdbRE2q",
+          "output_index": 2,
+          "sequence_number": 32,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":33,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"74\",\"obfuscation\":\"sXfb0j5f89L7N5\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "74",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "sXfb0j5f89L7N5",
+          "output_index": 2,
+          "sequence_number": 33,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":34,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\".\",\"obfuscation\":\"KiKgtlSowJs18FX\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": ".",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "KiKgtlSowJs18FX",
+          "output_index": 2,
+          "sequence_number": 34,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":35,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"006\",\"obfuscation\":\"lcbkoT8ppvDJQ\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "006",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "lcbkoT8ppvDJQ",
+          "output_index": 2,
+          "sequence_number": 35,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":36,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"0\",\"obfuscation\":\"53nYb1A9YxM6JZI\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "0",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "53nYb1A9YxM6JZI",
+          "output_index": 2,
+          "sequence_number": 36,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":37,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\",\",\"obfuscation\":\"WkaynPafloCbVP\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\",",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "WkaynPafloCbVP",
+          "output_index": 2,
+          "sequence_number": 37,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":38,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"lat\",\"obfuscation\":\"AkyNwc9sPX66\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"lat",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "AkyNwc9sPX66",
+          "output_index": 2,
+          "sequence_number": 38,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":39,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"2\",\"obfuscation\":\"vMmM0bkxs1KeM86\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "2",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "vMmM0bkxs1KeM86",
+          "output_index": 2,
+          "sequence_number": 39,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":40,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\":\",\"obfuscation\":\"sPUElIUWlpa2Xq\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\":",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "sPUElIUWlpa2Xq",
+          "output_index": 2,
+          "sequence_number": 40,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":41,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"34\",\"obfuscation\":\"Yji0pLV60gVNQ\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"34",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "Yji0pLV60gVNQ",
+          "output_index": 2,
+          "sequence_number": 41,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":42,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\".\",\"obfuscation\":\"o9TXSOEw3lZuBMP\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": ".",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "o9TXSOEw3lZuBMP",
+          "output_index": 2,
+          "sequence_number": 42,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":43,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"052\",\"obfuscation\":\"7dIMbqj1CQxHs\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "052",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "7dIMbqj1CQxHs",
+          "output_index": 2,
+          "sequence_number": 43,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":44,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"2\",\"obfuscation\":\"kj4BDu6weCpkaXH\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "2",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "kj4BDu6weCpkaXH",
+          "output_index": 2,
+          "sequence_number": 44,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":45,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\",\",\"obfuscation\":\"Klnae4e7cG4neR\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\",",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "Klnae4e7cG4neR",
+          "output_index": 2,
+          "sequence_number": 45,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":46,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"lon\",\"obfuscation\":\"VhqDIgkeYyAr\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"lon",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "VhqDIgkeYyAr",
+          "output_index": 2,
+          "sequence_number": 46,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":47,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"2\",\"obfuscation\":\"lMoVrm9tNSz0AZ5\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "2",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "lMoVrm9tNSz0AZ5",
+          "output_index": 2,
+          "sequence_number": 47,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":48,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\":\",\"obfuscation\":\"LfdZOPlNzVA1ln\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\":",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "LfdZOPlNzVA1ln",
+          "output_index": 2,
+          "sequence_number": 48,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":49,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"-\",\"obfuscation\":\"Qr80CaueQY68ID\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"-",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "Qr80CaueQY68ID",
+          "output_index": 2,
+          "sequence_number": 49,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":50,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"118\",\"obfuscation\":\"95Yxjw17cWjMW\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "118",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "95Yxjw17cWjMW",
+          "output_index": 2,
+          "sequence_number": 50,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":51,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\".\",\"obfuscation\":\"T1XAMC6iMwhHIFm\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": ".",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "T1XAMC6iMwhHIFm",
+          "output_index": 2,
+          "sequence_number": 51,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":52,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"243\",\"obfuscation\":\"rbfdmpDOEp7Lp\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "243",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "rbfdmpDOEp7Lp",
+          "output_index": 2,
+          "sequence_number": 52,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":53,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"7\",\"obfuscation\":\"RP51HFTnsOJB2XF\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "7",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "RP51HFTnsOJB2XF",
+          "output_index": 2,
+          "sequence_number": 53,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.delta\",\"sequence_number\":54,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"delta\":\"\\\"}\",\"obfuscation\":\"jer6TyPYWxXzQY\"}",
+        "event": "response.function_call_arguments.delta",
+        "json": {
+          "delta": "\"}",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "obfuscation": "jer6TyPYWxXzQY",
+          "output_index": 2,
+          "sequence_number": 54,
+          "type": "response.function_call_arguments.delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.function_call_arguments.done\",\"sequence_number\":55,\"item_id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"output_index\":2,\"arguments\":\"{\\\"lat1\\\":\\\"40.7128\\\",\\\"lon1\\\":\\\"-74.0060\\\",\\\"lat2\\\":\\\"34.0522\\\",\\\"lon2\\\":\\\"-118.2437\\\"}\"}",
+        "event": "response.function_call_arguments.done",
+        "json": {
+          "arguments": "{\"lat1\":\"40.7128\",\"lon1\":\"-74.0060\",\"lat2\":\"34.0522\",\"lon2\":\"-118.2437\"}",
+          "item_id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+          "output_index": 2,
+          "sequence_number": 55,
+          "type": "response.function_call_arguments.done"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.output_item.done\",\"sequence_number\":56,\"output_index\":2,\"item\":{\"id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"lat1\\\":\\\"40.7128\\\",\\\"lon1\\\":\\\"-74.0060\\\",\\\"lat2\\\":\\\"34.0522\\\",\\\"lon2\\\":\\\"-118.2437\\\"}\",\"call_id\":\"call_8PVI0M8Z0FET0LRZJAvSjCHa\",\"name\":\"calculate_distance\"}}",
+        "event": "response.output_item.done",
+        "json": {
+          "item": {
+            "arguments": "{\"lat1\":\"40.7128\",\"lon1\":\"-74.0060\",\"lat2\":\"34.0522\",\"lon2\":\"-118.2437\"}",
+            "call_id": "call_8PVI0M8Z0FET0LRZJAvSjCHa",
+            "id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+            "name": "calculate_distance",
+            "status": "completed",
+            "type": "function_call"
+          },
+          "output_index": 2,
+          "sequence_number": 56,
+          "type": "response.output_item.done"
+        }
+      },
+      {
+        "data": "{\"type\":\"response.completed\",\"sequence_number\":57,\"response\":{\"id\":\"resp_0a6505c52947edbe0168d46974c39c8198b5427a3b53782766\",\"object\":\"response\",\"created_at\":1758751092,\"status\":\"completed\",\"background\":false,\"error\":null,\"incomplete_details\":null,\"instructions\":\"You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.\\n\\n## General\\n\\n- The arguments to `shell` will be passed to execvp(). Most terminal commands should be prefixed with [\\\"bash\\\", \\\"-lc\\\"].\\n- Always set the `workdir` param when using the shell function. Do not use `cd` unless absolutely necessary.\\n- When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)\\n\\n## Editing constraints\\n\\n- Default to ASCII when editing or creating files. Only introduce non-ASCII or other Unicode characters when there is a clear justification and the file already uses them.\\n- Add succinct code comments that explain what is going on if code is not self-explanatory. You should not add comments like \\\"Assigns the value to the variable\\\", but a brief comment might be useful ahead of a complex code block that the user would otherwise have to spend time parsing out. Usage of these comments should be rare.\\n- You may be in a dirty git worktree.\\n    * NEVER revert existing changes you did not make unless explicitly requested, since these changes were made by the user.\\n    * If asked to make a commit or code edits and there are unrelated changes to your work or changes that you didn't make in those files, don't revert those changes.\\n    * If the changes are in files you've touched recently, you should read carefully and understand how you can work with the changes rather than reverting them.\\n    * If the changes are in unrelated files, just ignore them and don't revert them.\\n- While you are working, you might notice unexpected changes that you didn't make. If this happens, STOP IMMEDIATELY and ask the user how they would like to proceed.\\n\\n## Plan tool\\n\\nWhen using the planning tool:\\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\\n- Do not make single-step plans.\\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\\n\\n## Codex CLI harness, sandboxing, and approvals\\n\\nThe Codex CLI harness supports several different configurations for sandboxing and escalation approvals that the user can choose from.\\n\\nFilesystem sandboxing defines which files can be read or written. The options for `sandbox_mode` are:\\n- **read-only**: The sandbox only permits reading files.\\n- **workspace-write**: The sandbox permits reading files, and editing files in `cwd` and `writable_roots`. Editing files in other directories requires approval.\\n- **danger-full-access**: No filesystem sandboxing - all commands are permitted.\\n\\nNetwork sandboxing defines whether network can be accessed without approval. Options for `network_access` are:\\n- **restricted**: Requires approval\\n- **enabled**: No approval needed\\n\\nApprovals are your mechanism to get user consent to run shell commands without the sandbox. Possible configuration options for `approval_policy` are\\n- **untrusted**: The harness will escalate most commands for user approval, apart from a limited allowlist of safe \\\"read\\\" commands.\\n- **on-failure**: The harness will allow all commands to run in the sandbox (if enabled), and failures will be escalated to the user for approval to run again without the sandbox.\\n- **on-request**: Commands will be run in the sandbox by default, and you can specify in your tool call if you want to escalate a command to run without sandboxing. (Note that this mode is not always available. If it is, you'll see parameters for it in the `shell` command description.)\\n- **never**: This is a non-interactive mode where you may NEVER ask the user for approval to run commands. Instead, you must always persist and work around constraints to solve the task for the user. You MUST do your utmost best to finish the task and validate your work before yielding. If this mode is paired with `danger-full-access`, take advantage of it to deliver the best outcome for the user. Further, in this mode, your default testing philosophy is overridden: Even if you don't see local patterns for testing, you may add tests and scripts to validate your work. Just remove them before yielding.\\n\\nWhen you are running with `approval_policy == on-request`, and sandboxing enabled, here are scenarios where you'll need to request approval:\\n- You need to run a command that writes to a directory that requires it (e.g. running tests that write to /var)\\n- You need to run a GUI app (e.g., open/xdg-open/osascript) to open browsers or files.\\n- You are running sandboxed and need to run a command that requires network access (e.g. installing packages)\\n- If you run a command that is important to solving the user's query, but it fails because of sandboxing, rerun the command with approval. ALWAYS proceed to use the `with_escalated_permissions` and `justification` parameters - do not message the user before requesting approval for the command.\\n- You are about to take a potentially destructive action such as an `rm` or `git reset` that the user did not explicitly ask for\\n- (for all of these, you should weigh alternative paths that do not require approval)\\n\\nWhen `sandbox_mode` is set to read-only, you'll need to request approval for any command that isn't a read.\\n\\nYou will be told what filesystem sandboxing, network sandboxing, and approval mode are active in a developer or user message. If you are not told about this, assume that you are running with workspace-write, network sandboxing enabled, and approval on-failure.\\n\\nAlthough they introduce friction to the user because your work is paused until the user responds, you should leverage them when necessary to accomplish important work. If the completing the task requires escalated permissions, Do not let these settings or the sandbox deter you from attempting to accomplish the user's task unless it is set to \\\"never\\\", in which case never ask for approvals.\\n\\nWhen requesting approval to execute a command that will require escalated privileges:\\n  - Provide the `with_escalated_permissions` parameter with the boolean value true\\n  - Include a short, 1 sentence explanation for why you need to enable `with_escalated_permissions` in the justification parameter\\n\\n## Special user requests\\n\\n- If the user makes a simple request (such as asking for the time) which you can fulfill by running a terminal command (such as `date`), you should do so.\\n- If the user asks for a \\\"review\\\", default to a code review mindset: prioritise identifying bugs, risks, behavioural regressions, and missing tests. Findings must be the primary focus of the response - keep summaries or overviews brief and only after enumerating the issues. Present findings first (ordered by severity with file/line references), follow with open questions or assumptions, and offer a change-summary only as a secondary detail. If no findings are discovered, state that explicitly and mention any residual risks or testing gaps.\\n\\n## Presenting your work and final message\\n\\nYou are producing plain text that will later be styled by the CLI. Follow these rules exactly. Formatting should make results easy to scan, but not feel mechanical. Use judgment to decide how much structure adds value.\\n\\n- Default: be very concise; friendly coding teammate tone.\\n- Ask only when needed; suggest ideas; mirror the user's style.\\n- For substantial work, summarize clearly; follow final\u2011answer formatting.\\n- Skip heavy formatting for simple confirmations.\\n- Don't dump large files you've written; reference paths only.\\n- No \\\"save/copy this file\\\" - User is on the same machine.\\n- Offer logical next steps (tests, commits, build) briefly; add verify steps if you couldn't do something.\\n- For code changes:\\n  * Lead with a quick explanation of the change, and then give more details on the context covering where and why a change was made. Do not start this explanation with \\\"summary\\\", just jump right in.\\n  * If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps.\\n  * When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.\\n- The user does not command execution outputs. When asked to show the output of a command (e.g. `git show`), relay the important details in your answer or summarize the key lines so the user understands the result.\\n\\n### Final answer structure and style guidelines\\n\\n- Plain text; CLI handles styling. Use structure only when it helps scanability.\\n- Headers: optional; short Title Case (1-3 words) wrapped in **\u2026**; no blank line before the first bullet; add only if they truly help.\\n- Bullets: use - ; merge related points; keep to one line when possible; 4\u20136 per list ordered by importance; keep phrasing consistent.\\n- Monospace: backticks for commands/paths/env vars/code ids and inline examples; use for literal keyword bullets; never combine with **.\\n- Code samples or multi-line snippets should be wrapped in fenced code blocks; add a language hint whenever obvious.\\n- Structure: group related bullets; order sections general \u2192 specific \u2192 supporting; for subsections, start with a bolded keyword bullet, then items; match complexity to the task.\\n- Tone: collaborative, concise, factual; present tense, active voice; self\u2011contained; no \\\"above/below\\\"; parallel wording.\\n- Don'ts: no nested bullets/hierarchies; no ANSI codes; don't cram unrelated keywords; keep keyword lists short\u2014wrap/reformat if long; avoid naming formatting styles in answers.\\n- Adaptation: code explanations \u2192 precise, structured with code refs; simple tasks \u2192 lead with outcome; big changes \u2192 logical walkthrough + rationale + next actions; casual one-offs \u2192 plain sentences, no headers/bullets.\\n- File References: When referencing files in your response, make sure to include the relevant start line and always follow the below rules:\\n  * Use inline code to make file paths clickable.\\n  * Each reference should have a stand alone path. Even if it's the same file.\\n  * Accepted: absolute, workspace\u2011relative, a/ or b/ diff prefixes, or bare filename/suffix.\\n  * Line/column (1\u2011based, optional): :line[:column] or #Lline[Ccolumn] (column defaults to 1).\\n  * Do not use URIs like file://, vscode://, or https://.\\n  * Do not provide range of lines\\n  * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10, C:\\\\repo\\\\project\\\\main.rs:12:5\\n\",\"max_output_tokens\":null,\"max_tool_calls\":null,\"model\":\"gpt-5-2025-08-07\",\"output\":[{\"id\":\"rs_0a6505c52947edbe0168d4697597a4819885d99f20debc623d\",\"type\":\"reasoning\",\"summary\":[]},{\"id\":\"fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"location\\\":\\\"New York, NY\\\",\\\"unit\\\":\\\"F\\\"}\",\"call_id\":\"call_eUSoRaSdhGFRVK4PMkXefkGK\",\"name\":\"get_weather\"},{\"id\":\"fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937\",\"type\":\"function_call\",\"status\":\"completed\",\"arguments\":\"{\\\"lat1\\\":\\\"40.7128\\\",\\\"lon1\\\":\\\"-74.0060\\\",\\\"lat2\\\":\\\"34.0522\\\",\\\"lon2\\\":\\\"-118.2437\\\"}\",\"call_id\":\"call_8PVI0M8Z0FET0LRZJAvSjCHa\",\"name\":\"calculate_distance\"}],\"parallel_tool_calls\":true,\"previous_response_id\":null,\"prompt_cache_key\":\"acdaa857-b959-434e-a8c9-fe6f6d6cb578\",\"reasoning\":{\"effort\":\"medium\",\"summary\":null},\"safety_identifier\":\"user-bzqd8nlU6CqqzeqDriP9GvUt\",\"service_tier\":\"default\",\"store\":false,\"temperature\":1.0,\"text\":{\"format\":{\"type\":\"text\"},\"verbosity\":\"medium\"},\"tool_choice\":\"auto\",\"tools\":[{\"type\":\"function\",\"description\":\"Get current weather information for a specific location\",\"name\":\"get_weather\",\"parameters\":{\"type\":\"object\",\"properties\":{\"location\":{\"type\":\"string\"},\"unit\":{\"type\":\"string\"}},\"required\":[\"location\",\"unit\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Calculate the distance between two geographic coordinates\",\"name\":\"calculate_distance\",\"parameters\":{\"type\":\"object\",\"properties\":{\"lat1\":{\"type\":\"string\"},\"lon1\":{\"type\":\"string\"},\"lat2\":{\"type\":\"string\"},\"lon2\":{\"type\":\"string\"}},\"required\":[\"lat1\",\"lon1\",\"lat2\",\"lon2\"],\"additionalProperties\":false},\"strict\":true},{\"type\":\"function\",\"description\":\"Perform basic arithmetic calculations\",\"name\":\"calculate\",\"parameters\":{\"type\":\"object\",\"properties\":{\"expression\":{\"type\":\"string\"}},\"required\":[\"expression\"],\"additionalProperties\":false},\"strict\":true}],\"top_logprobs\":0,\"top_p\":1.0,\"truncation\":\"disabled\",\"usage\":{\"input_tokens\":2354,\"input_tokens_details\":{\"cached_tokens\":1536},\"output_tokens\":342,\"output_tokens_details\":{\"reasoning_tokens\":256},\"total_tokens\":2696},\"user\":null,\"metadata\":{}}}",
+        "event": "response.completed",
+        "json": {
+          "response": {
+            "background": false,
+            "created_at": 1758751092,
+            "error": null,
+            "id": "resp_0a6505c52947edbe0168d46974c39c8198b5427a3b53782766",
+            "incomplete_details": null,
+            "instructions": "You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.\n\n## General\n\n- The arguments to `shell` will be passed to execvp(). Most terminal commands should be prefixed with [\"bash\", \"-lc\"].\n- Always set the `workdir` param when using the shell function. Do not use `cd` unless absolutely necessary.\n- When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)\n\n## Editing constraints\n\n- Default to ASCII when editing or creating files. Only introduce non-ASCII or other Unicode characters when there is a clear justification and the file already uses them.\n- Add succinct code comments that explain what is going on if code is not self-explanatory. You should not add comments like \"Assigns the value to the variable\", but a brief comment might be useful ahead of a complex code block that the user would otherwise have to spend time parsing out. Usage of these comments should be rare.\n- You may be in a dirty git worktree.\n    * NEVER revert existing changes you did not make unless explicitly requested, since these changes were made by the user.\n    * If asked to make a commit or code edits and there are unrelated changes to your work or changes that you didn't make in those files, don't revert those changes.\n    * If the changes are in files you've touched recently, you should read carefully and understand how you can work with the changes rather than reverting them.\n    * If the changes are in unrelated files, just ignore them and don't revert them.\n- While you are working, you might notice unexpected changes that you didn't make. If this happens, STOP IMMEDIATELY and ask the user how they would like to proceed.\n\n## Plan tool\n\nWhen using the planning tool:\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\n- Do not make single-step plans.\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\n\n## Codex CLI harness, sandboxing, and approvals\n\nThe Codex CLI harness supports several different configurations for sandboxing and escalation approvals that the user can choose from.\n\nFilesystem sandboxing defines which files can be read or written. The options for `sandbox_mode` are:\n- **read-only**: The sandbox only permits reading files.\n- **workspace-write**: The sandbox permits reading files, and editing files in `cwd` and `writable_roots`. Editing files in other directories requires approval.\n- **danger-full-access**: No filesystem sandboxing - all commands are permitted.\n\nNetwork sandboxing defines whether network can be accessed without approval. Options for `network_access` are:\n- **restricted**: Requires approval\n- **enabled**: No approval needed\n\nApprovals are your mechanism to get user consent to run shell commands without the sandbox. Possible configuration options for `approval_policy` are\n- **untrusted**: The harness will escalate most commands for user approval, apart from a limited allowlist of safe \"read\" commands.\n- **on-failure**: The harness will allow all commands to run in the sandbox (if enabled), and failures will be escalated to the user for approval to run again without the sandbox.\n- **on-request**: Commands will be run in the sandbox by default, and you can specify in your tool call if you want to escalate a command to run without sandboxing. (Note that this mode is not always available. If it is, you'll see parameters for it in the `shell` command description.)\n- **never**: This is a non-interactive mode where you may NEVER ask the user for approval to run commands. Instead, you must always persist and work around constraints to solve the task for the user. You MUST do your utmost best to finish the task and validate your work before yielding. If this mode is paired with `danger-full-access`, take advantage of it to deliver the best outcome for the user. Further, in this mode, your default testing philosophy is overridden: Even if you don't see local patterns for testing, you may add tests and scripts to validate your work. Just remove them before yielding.\n\nWhen you are running with `approval_policy == on-request`, and sandboxing enabled, here are scenarios where you'll need to request approval:\n- You need to run a command that writes to a directory that requires it (e.g. running tests that write to /var)\n- You need to run a GUI app (e.g., open/xdg-open/osascript) to open browsers or files.\n- You are running sandboxed and need to run a command that requires network access (e.g. installing packages)\n- If you run a command that is important to solving the user's query, but it fails because of sandboxing, rerun the command with approval. ALWAYS proceed to use the `with_escalated_permissions` and `justification` parameters - do not message the user before requesting approval for the command.\n- You are about to take a potentially destructive action such as an `rm` or `git reset` that the user did not explicitly ask for\n- (for all of these, you should weigh alternative paths that do not require approval)\n\nWhen `sandbox_mode` is set to read-only, you'll need to request approval for any command that isn't a read.\n\nYou will be told what filesystem sandboxing, network sandboxing, and approval mode are active in a developer or user message. If you are not told about this, assume that you are running with workspace-write, network sandboxing enabled, and approval on-failure.\n\nAlthough they introduce friction to the user because your work is paused until the user responds, you should leverage them when necessary to accomplish important work. If the completing the task requires escalated permissions, Do not let these settings or the sandbox deter you from attempting to accomplish the user's task unless it is set to \"never\", in which case never ask for approvals.\n\nWhen requesting approval to execute a command that will require escalated privileges:\n  - Provide the `with_escalated_permissions` parameter with the boolean value true\n  - Include a short, 1 sentence explanation for why you need to enable `with_escalated_permissions` in the justification parameter\n\n## Special user requests\n\n- If the user makes a simple request (such as asking for the time) which you can fulfill by running a terminal command (such as `date`), you should do so.\n- If the user asks for a \"review\", default to a code review mindset: prioritise identifying bugs, risks, behavioural regressions, and missing tests. Findings must be the primary focus of the response - keep summaries or overviews brief and only after enumerating the issues. Present findings first (ordered by severity with file/line references), follow with open questions or assumptions, and offer a change-summary only as a secondary detail. If no findings are discovered, state that explicitly and mention any residual risks or testing gaps.\n\n## Presenting your work and final message\n\nYou are producing plain text that will later be styled by the CLI. Follow these rules exactly. Formatting should make results easy to scan, but not feel mechanical. Use judgment to decide how much structure adds value.\n\n- Default: be very concise; friendly coding teammate tone.\n- Ask only when needed; suggest ideas; mirror the user's style.\n- For substantial work, summarize clearly; follow final\u2011answer formatting.\n- Skip heavy formatting for simple confirmations.\n- Don't dump large files you've written; reference paths only.\n- No \"save/copy this file\" - User is on the same machine.\n- Offer logical next steps (tests, commits, build) briefly; add verify steps if you couldn't do something.\n- For code changes:\n  * Lead with a quick explanation of the change, and then give more details on the context covering where and why a change was made. Do not start this explanation with \"summary\", just jump right in.\n  * If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps.\n  * When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.\n- The user does not command execution outputs. When asked to show the output of a command (e.g. `git show`), relay the important details in your answer or summarize the key lines so the user understands the result.\n\n### Final answer structure and style guidelines\n\n- Plain text; CLI handles styling. Use structure only when it helps scanability.\n- Headers: optional; short Title Case (1-3 words) wrapped in **\u2026**; no blank line before the first bullet; add only if they truly help.\n- Bullets: use - ; merge related points; keep to one line when possible; 4\u20136 per list ordered by importance; keep phrasing consistent.\n- Monospace: backticks for commands/paths/env vars/code ids and inline examples; use for literal keyword bullets; never combine with **.\n- Code samples or multi-line snippets should be wrapped in fenced code blocks; add a language hint whenever obvious.\n- Structure: group related bullets; order sections general \u2192 specific \u2192 supporting; for subsections, start with a bolded keyword bullet, then items; match complexity to the task.\n- Tone: collaborative, concise, factual; present tense, active voice; self\u2011contained; no \"above/below\"; parallel wording.\n- Don'ts: no nested bullets/hierarchies; no ANSI codes; don't cram unrelated keywords; keep keyword lists short\u2014wrap/reformat if long; avoid naming formatting styles in answers.\n- Adaptation: code explanations \u2192 precise, structured with code refs; simple tasks \u2192 lead with outcome; big changes \u2192 logical walkthrough + rationale + next actions; casual one-offs \u2192 plain sentences, no headers/bullets.\n- File References: When referencing files in your response, make sure to include the relevant start line and always follow the below rules:\n  * Use inline code to make file paths clickable.\n  * Each reference should have a stand alone path. Even if it's the same file.\n  * Accepted: absolute, workspace\u2011relative, a/ or b/ diff prefixes, or bare filename/suffix.\n  * Line/column (1\u2011based, optional): :line[:column] or #Lline[Ccolumn] (column defaults to 1).\n  * Do not use URIs like file://, vscode://, or https://.\n  * Do not provide range of lines\n  * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10, C:\\repo\\project\\main.rs:12:5\n",
+            "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
+            "model": "gpt-5-2025-08-07",
+            "object": "response",
+            "output": [
+              {
+                "id": "rs_0a6505c52947edbe0168d4697597a4819885d99f20debc623d",
+                "summary": [],
+                "type": "reasoning"
+              },
+              {
+                "arguments": "{\"location\":\"New York, NY\",\"unit\":\"F\"}",
+                "call_id": "call_eUSoRaSdhGFRVK4PMkXefkGK",
+                "id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+                "name": "get_weather",
+                "status": "completed",
+                "type": "function_call"
+              },
+              {
+                "arguments": "{\"lat1\":\"40.7128\",\"lon1\":\"-74.0060\",\"lat2\":\"34.0522\",\"lon2\":\"-118.2437\"}",
+                "call_id": "call_8PVI0M8Z0FET0LRZJAvSjCHa",
+                "id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+                "name": "calculate_distance",
+                "status": "completed",
+                "type": "function_call"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "previous_response_id": null,
+            "prompt_cache_key": "acdaa857-b959-434e-a8c9-fe6f6d6cb578",
+            "reasoning": {
+              "effort": "medium",
+              "summary": null
+            },
+            "safety_identifier": "user-bzqd8nlU6CqqzeqDriP9GvUt",
+            "service_tier": "default",
+            "status": "completed",
+            "store": false,
+            "temperature": 1.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tools": [
+              {
+                "description": "Get current weather information for a specific location",
+                "name": "get_weather",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "location": {
+                      "type": "string"
+                    },
+                    "unit": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "location",
+                    "unit"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              },
+              {
+                "description": "Calculate the distance between two geographic coordinates",
+                "name": "calculate_distance",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "lat1": {
+                      "type": "string"
+                    },
+                    "lat2": {
+                      "type": "string"
+                    },
+                    "lon1": {
+                      "type": "string"
+                    },
+                    "lon2": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lat1",
+                    "lon1",
+                    "lat2",
+                    "lon2"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              },
+              {
+                "description": "Perform basic arithmetic calculations",
+                "name": "calculate",
+                "parameters": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "expression": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "expression"
+                  ],
+                  "type": "object"
+                },
+                "strict": true,
+                "type": "function"
+              }
+            ],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "usage": {
+              "input_tokens": 2354,
+              "input_tokens_details": {
+                "cached_tokens": 1536
+              },
+              "output_tokens": 342,
+              "output_tokens_details": {
+                "reasoning_tokens": 256
+              },
+              "total_tokens": 2696
+            },
+            "user": null
+          },
+          "sequence_number": 57,
+          "type": "response.completed"
+        }
+      }
+    ],
+    "headers": {
+      "cf-cache-status": "DYNAMIC",
+      "cf-ray": "98458ab7fe37e218-MRS",
+      "content-type": "text/event-stream; charset=utf-8",
+      "cross-origin-opener-policy": "same-origin-allow-popups",
+      "date": "Wed, 24 Sep 2025 21:58:13 GMT",
+      "nel": "{\"success_fraction\":0.01,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+      "referrer-policy": "strict-origin-when-cross-origin",
+      "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=TYkX07eGQiHcXqP4e6ciFe67UsS9AVJdy%2FHGmSQ58jehbkq0Lnq8DrKEMncf5gL15DngBhjwBp0DKiIIVVGtX2XTaZrQa1K63shiQr7VngxxdiyUUsgMFhI9n5sqgWYkG%2FGQDlg3ETrT\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+      "transfer-encoding": "chunked",
+      "x-codex-primary-over-secondary-limit-percent": "0",
+      "x-codex-primary-reset-after-seconds": "1609",
+      "x-codex-primary-used-percent": "9",
+      "x-codex-primary-window-minutes": "299",
+      "x-codex-secondary-reset-after-seconds": "167336",
+      "x-codex-secondary-used-percent": "31",
+      "x-codex-secondary-window-minutes": "10079",
+      "x-content-type-options": "nosniff",
+      "x-envoy-upstream-service-time": "527",
+      "x-openai-proxy-wasm": "v0.1",
+      "x-request-id": "b1d34f81",
+      "x-robots-tag": "nofollow"
+    },
+    "mode": "stream",
+    "status_code": 200,
+    "summary": {
+      "aggregated_response": {
+        "background": false,
+        "created_at": 1758751092,
+        "id": "resp_0a6505c52947edbe0168d46974c39c8198b5427a3b53782766",
+        "instructions": "You are Codex, based on GPT-5. You are running as a coding agent in the Codex CLI on a user's computer.\n\n## General\n\n- The arguments to `shell` will be passed to execvp(). Most terminal commands should be prefixed with [\"bash\", \"-lc\"].\n- Always set the `workdir` param when using the shell function. Do not use `cd` unless absolutely necessary.\n- When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)\n\n## Editing constraints\n\n- Default to ASCII when editing or creating files. Only introduce non-ASCII or other Unicode characters when there is a clear justification and the file already uses them.\n- Add succinct code comments that explain what is going on if code is not self-explanatory. You should not add comments like \"Assigns the value to the variable\", but a brief comment might be useful ahead of a complex code block that the user would otherwise have to spend time parsing out. Usage of these comments should be rare.\n- You may be in a dirty git worktree.\n    * NEVER revert existing changes you did not make unless explicitly requested, since these changes were made by the user.\n    * If asked to make a commit or code edits and there are unrelated changes to your work or changes that you didn't make in those files, don't revert those changes.\n    * If the changes are in files you've touched recently, you should read carefully and understand how you can work with the changes rather than reverting them.\n    * If the changes are in unrelated files, just ignore them and don't revert them.\n- While you are working, you might notice unexpected changes that you didn't make. If this happens, STOP IMMEDIATELY and ask the user how they would like to proceed.\n\n## Plan tool\n\nWhen using the planning tool:\n- Skip using the planning tool for straightforward tasks (roughly the easiest 25%).\n- Do not make single-step plans.\n- When you made a plan, update it after having performed one of the sub-tasks that you shared on the plan.\n\n## Codex CLI harness, sandboxing, and approvals\n\nThe Codex CLI harness supports several different configurations for sandboxing and escalation approvals that the user can choose from.\n\nFilesystem sandboxing defines which files can be read or written. The options for `sandbox_mode` are:\n- **read-only**: The sandbox only permits reading files.\n- **workspace-write**: The sandbox permits reading files, and editing files in `cwd` and `writable_roots`. Editing files in other directories requires approval.\n- **danger-full-access**: No filesystem sandboxing - all commands are permitted.\n\nNetwork sandboxing defines whether network can be accessed without approval. Options for `network_access` are:\n- **restricted**: Requires approval\n- **enabled**: No approval needed\n\nApprovals are your mechanism to get user consent to run shell commands without the sandbox. Possible configuration options for `approval_policy` are\n- **untrusted**: The harness will escalate most commands for user approval, apart from a limited allowlist of safe \"read\" commands.\n- **on-failure**: The harness will allow all commands to run in the sandbox (if enabled), and failures will be escalated to the user for approval to run again without the sandbox.\n- **on-request**: Commands will be run in the sandbox by default, and you can specify in your tool call if you want to escalate a command to run without sandboxing. (Note that this mode is not always available. If it is, you'll see parameters for it in the `shell` command description.)\n- **never**: This is a non-interactive mode where you may NEVER ask the user for approval to run commands. Instead, you must always persist and work around constraints to solve the task for the user. You MUST do your utmost best to finish the task and validate your work before yielding. If this mode is paired with `danger-full-access`, take advantage of it to deliver the best outcome for the user. Further, in this mode, your default testing philosophy is overridden: Even if you don't see local patterns for testing, you may add tests and scripts to validate your work. Just remove them before yielding.\n\nWhen you are running with `approval_policy == on-request`, and sandboxing enabled, here are scenarios where you'll need to request approval:\n- You need to run a command that writes to a directory that requires it (e.g. running tests that write to /var)\n- You need to run a GUI app (e.g., open/xdg-open/osascript) to open browsers or files.\n- You are running sandboxed and need to run a command that requires network access (e.g. installing packages)\n- If you run a command that is important to solving the user's query, but it fails because of sandboxing, rerun the command with approval. ALWAYS proceed to use the `with_escalated_permissions` and `justification` parameters - do not message the user before requesting approval for the command.\n- You are about to take a potentially destructive action such as an `rm` or `git reset` that the user did not explicitly ask for\n- (for all of these, you should weigh alternative paths that do not require approval)\n\nWhen `sandbox_mode` is set to read-only, you'll need to request approval for any command that isn't a read.\n\nYou will be told what filesystem sandboxing, network sandboxing, and approval mode are active in a developer or user message. If you are not told about this, assume that you are running with workspace-write, network sandboxing enabled, and approval on-failure.\n\nAlthough they introduce friction to the user because your work is paused until the user responds, you should leverage them when necessary to accomplish important work. If the completing the task requires escalated permissions, Do not let these settings or the sandbox deter you from attempting to accomplish the user's task unless it is set to \"never\", in which case never ask for approvals.\n\nWhen requesting approval to execute a command that will require escalated privileges:\n  - Provide the `with_escalated_permissions` parameter with the boolean value true\n  - Include a short, 1 sentence explanation for why you need to enable `with_escalated_permissions` in the justification parameter\n\n## Special user requests\n\n- If the user makes a simple request (such as asking for the time) which you can fulfill by running a terminal command (such as `date`), you should do so.\n- If the user asks for a \"review\", default to a code review mindset: prioritise identifying bugs, risks, behavioural regressions, and missing tests. Findings must be the primary focus of the response - keep summaries or overviews brief and only after enumerating the issues. Present findings first (ordered by severity with file/line references), follow with open questions or assumptions, and offer a change-summary only as a secondary detail. If no findings are discovered, state that explicitly and mention any residual risks or testing gaps.\n\n## Presenting your work and final message\n\nYou are producing plain text that will later be styled by the CLI. Follow these rules exactly. Formatting should make results easy to scan, but not feel mechanical. Use judgment to decide how much structure adds value.\n\n- Default: be very concise; friendly coding teammate tone.\n- Ask only when needed; suggest ideas; mirror the user's style.\n- For substantial work, summarize clearly; follow final\u2011answer formatting.\n- Skip heavy formatting for simple confirmations.\n- Don't dump large files you've written; reference paths only.\n- No \"save/copy this file\" - User is on the same machine.\n- Offer logical next steps (tests, commits, build) briefly; add verify steps if you couldn't do something.\n- For code changes:\n  * Lead with a quick explanation of the change, and then give more details on the context covering where and why a change was made. Do not start this explanation with \"summary\", just jump right in.\n  * If there are natural next steps the user may want to take, suggest them at the end of your response. Do not make suggestions if there are no natural next steps.\n  * When suggesting multiple options, use numeric lists for the suggestions so the user can quickly respond with a single number.\n- The user does not command execution outputs. When asked to show the output of a command (e.g. `git show`), relay the important details in your answer or summarize the key lines so the user understands the result.\n\n### Final answer structure and style guidelines\n\n- Plain text; CLI handles styling. Use structure only when it helps scanability.\n- Headers: optional; short Title Case (1-3 words) wrapped in **\u2026**; no blank line before the first bullet; add only if they truly help.\n- Bullets: use - ; merge related points; keep to one line when possible; 4\u20136 per list ordered by importance; keep phrasing consistent.\n- Monospace: backticks for commands/paths/env vars/code ids and inline examples; use for literal keyword bullets; never combine with **.\n- Code samples or multi-line snippets should be wrapped in fenced code blocks; add a language hint whenever obvious.\n- Structure: group related bullets; order sections general \u2192 specific \u2192 supporting; for subsections, start with a bolded keyword bullet, then items; match complexity to the task.\n- Tone: collaborative, concise, factual; present tense, active voice; self\u2011contained; no \"above/below\"; parallel wording.\n- Don'ts: no nested bullets/hierarchies; no ANSI codes; don't cram unrelated keywords; keep keyword lists short\u2014wrap/reformat if long; avoid naming formatting styles in answers.\n- Adaptation: code explanations \u2192 precise, structured with code refs; simple tasks \u2192 lead with outcome; big changes \u2192 logical walkthrough + rationale + next actions; casual one-offs \u2192 plain sentences, no headers/bullets.\n- File References: When referencing files in your response, make sure to include the relevant start line and always follow the below rules:\n  * Use inline code to make file paths clickable.\n  * Each reference should have a stand alone path. Even if it's the same file.\n  * Accepted: absolute, workspace\u2011relative, a/ or b/ diff prefixes, or bare filename/suffix.\n  * Line/column (1\u2011based, optional): :line[:column] or #Lline[Ccolumn] (column defaults to 1).\n  * Do not use URIs like file://, vscode://, or https://.\n  * Do not provide range of lines\n  * Examples: src/app.ts, src/app.ts:42, b/server/index.js#L10, C:\\repo\\project\\main.rs:12:5\n",
+        "model": "gpt-5-2025-08-07",
+        "object": "response",
+        "output": [
+          {
+            "id": "rs_0a6505c52947edbe0168d4697597a4819885d99f20debc623d",
+            "status": "completed",
+            "summary": [],
+            "type": "reasoning"
+          },
+          {
+            "arguments": "{\"location\":\"New York, NY\",\"unit\":\"F\"}",
+            "call_id": "call_eUSoRaSdhGFRVK4PMkXefkGK",
+            "id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+            "name": "get_weather",
+            "status": "completed",
+            "type": "function_call"
+          },
+          {
+            "arguments": "{\"lat1\":\"40.7128\",\"lon1\":\"-74.0060\",\"lat2\":\"34.0522\",\"lon2\":\"-118.2437\"}",
+            "call_id": "call_8PVI0M8Z0FET0LRZJAvSjCHa",
+            "id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+            "name": "calculate_distance",
+            "status": "completed",
+            "type": "function_call"
+          }
+        ],
+        "parallel_tool_calls": true,
+        "prompt_cache_key": "acdaa857-b959-434e-a8c9-fe6f6d6cb578",
+        "reasoning": {
+          "effort": "medium"
+        },
+        "safety_identifier": "user-bzqd8nlU6CqqzeqDriP9GvUt",
+        "service_tier": "default",
+        "status": "completed",
+        "store": false,
+        "temperature": 1.0,
+        "text": {
+          "format": {
+            "type": "text"
+          },
+          "verbosity": "medium"
+        },
+        "tool_calls": [
+          {
+            "call_id": "call_eUSoRaSdhGFRVK4PMkXefkGK",
+            "function": {
+              "arguments": "{\"location\":\"New York, NY\",\"unit\":\"F\"}",
+              "name": "get_weather"
+            },
+            "id": "fc_0a6505c52947edbe0168d46979af7881988916f77acc803ced",
+            "type": "function_call"
+          },
+          {
+            "call_id": "call_8PVI0M8Z0FET0LRZJAvSjCHa",
+            "function": {
+              "arguments": "{\"lat1\":\"40.7128\",\"lon1\":\"-74.0060\",\"lat2\":\"34.0522\",\"lon2\":\"-118.2437\"}",
+              "name": "calculate_distance"
+            },
+            "id": "fc_0a6505c52947edbe0168d46979fd3c8198980d4d1c74f81937",
+            "type": "function_call"
+          }
+        ],
+        "tool_choice": "auto",
+        "tools": [
+          {
+            "description": "Get current weather information for a specific location",
+            "name": "get_weather",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "location": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "location",
+                "unit"
+              ],
+              "type": "object"
+            },
+            "strict": true,
+            "type": "function"
+          },
+          {
+            "description": "Calculate the distance between two geographic coordinates",
+            "name": "calculate_distance",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "lat1": {
+                  "type": "string"
+                },
+                "lat2": {
+                  "type": "string"
+                },
+                "lon1": {
+                  "type": "string"
+                },
+                "lon2": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "lat1",
+                "lon1",
+                "lat2",
+                "lon2"
+              ],
+              "type": "object"
+            },
+            "strict": true,
+            "type": "function"
+          },
+          {
+            "description": "Perform basic arithmetic calculations",
+            "name": "calculate",
+            "parameters": {
+              "additionalProperties": false,
+              "properties": {
+                "expression": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "expression"
+              ],
+              "type": "object"
+            },
+            "strict": true,
+            "type": "function"
+          }
+        ],
+        "top_logprobs": 0,
+        "top_p": 1.0,
+        "truncation": "disabled",
+        "usage": {
+          "input_tokens": 2354,
+          "input_tokens_details": {
+            "cached_tokens": 1536
+          },
+          "output_tokens": 342,
+          "output_tokens_details": {
+            "reasoning_tokens": 256
+          },
+          "total_tokens": 2696
+        }
+      },
+      "chunk_model_class": "BaseStreamEvent",
+      "processed_events": 58
+    }
+  },
+  "stream": true
+}

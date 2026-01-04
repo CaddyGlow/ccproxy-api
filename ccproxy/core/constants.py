@@ -1,4 +1,9 @@
-"""Core constants used across the CCProxy API."""
+"""Core constants for format identifiers and related shared values."""
+
+# Format identifiers
+FORMAT_OPENAI_CHAT = "openai.chat_completions"
+FORMAT_OPENAI_RESPONSES = "openai.responses"
+FORMAT_ANTHROPIC_MESSAGES = "anthropic.messages"
 
 # HTTP headers
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -46,52 +51,13 @@ CONFIG_FILE_NAMES = [
     "config.yaml",
     "config.yml",
 ]
-
-# Environment variable prefixes
-ENV_PREFIX = "CCPROXY_"
-CLAUDE_ENV_PREFIX = "CLAUDE_"
-
-# Logging levels
-LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-
-# Error messages
-ERROR_MSG_INVALID_TOKEN = "Invalid or expired authentication token"
-ERROR_MSG_MODEL_NOT_FOUND = "Model not found or not available"
-ERROR_MSG_RATE_LIMIT_EXCEEDED = "Rate limit exceeded"
-ERROR_MSG_INVALID_REQUEST = "Invalid request format"
-ERROR_MSG_INTERNAL_ERROR = "Internal server error"
-
-# Status codes
-STATUS_OK = 200
-STATUS_CREATED = 201
-STATUS_BAD_REQUEST = 400
-STATUS_UNAUTHORIZED = 401
-STATUS_FORBIDDEN = 403
-STATUS_NOT_FOUND = 404
-STATUS_RATE_LIMITED = 429
-STATUS_INTERNAL_ERROR = 500
-STATUS_BAD_GATEWAY = 502
-STATUS_SERVICE_UNAVAILABLE = 503
-
-# Stream event types
-STREAM_EVENT_MESSAGE_START = "message_start"
-STREAM_EVENT_MESSAGE_DELTA = "message_delta"
-STREAM_EVENT_MESSAGE_STOP = "message_stop"
-STREAM_EVENT_CONTENT_BLOCK_START = "content_block_start"
-STREAM_EVENT_CONTENT_BLOCK_DELTA = "content_block_delta"
-STREAM_EVENT_CONTENT_BLOCK_STOP = "content_block_stop"
-
-# Content types
-CONTENT_TYPE_JSON = "application/json"
-CONTENT_TYPE_STREAM = "text/event-stream"
-CONTENT_TYPE_TEXT = "text/plain"
-
-# Character limits
-MAX_PROMPT_LENGTH = 200_000  # Maximum prompt length in characters
-MAX_MESSAGE_LENGTH = 100_000  # Maximum message length
-MAX_TOOL_CALLS = 100  # Maximum number of tool calls per request
-
-# Validation patterns
-EMAIL_PATTERN = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
-URL_PATTERN = r"^https?://[^\s/$.?#].[^\s]*$"
-UUID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+# Common upstream endpoint paths (provider APIs)
+UPSTREAM_ENDPOINT_OPENAI_RESPONSES = "/responses"
+UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS = "/chat/completions"
+UPSTREAM_ENDPOINT_ANTHROPIC_MESSAGES = "/v1/messages"
+# Additional common OpenAI-style endpoints
+UPSTREAM_ENDPOINT_OPENAI_EMBEDDINGS = "/embeddings"
+UPSTREAM_ENDPOINT_OPENAI_MODELS = "/models"
+# GitHub Copilot internal API endpoints
+UPSTREAM_ENDPOINT_COPILOT_INTERNAL_USER = "/copilot_internal/user"
+UPSTREAM_ENDPOINT_COPILOT_INTERNAL_TOKEN = "/copilot_internal/v2/token"

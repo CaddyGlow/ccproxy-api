@@ -17,24 +17,12 @@ Key components:
 """
 
 from .core import Scheduler
-from .registry import TaskRegistry, register_task
-from .tasks import (
-    BaseScheduledTask,
-    PricingCacheUpdateTask,
-    PushgatewayTask,
-    StatsPrintingTask,
-)
+from .registry import TaskRegistry
+from .tasks import BaseScheduledTask
 
-
-# Task registration is now handled in manager.py during scheduler startup
-# to avoid side effects during module imports (e.g., CLI help display)
 
 __all__ = [
     "Scheduler",
     "TaskRegistry",
-    "register_task",
     "BaseScheduledTask",
-    "PushgatewayTask",
-    "StatsPrintingTask",
-    "PricingCacheUpdateTask",
 ]

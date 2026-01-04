@@ -1,88 +1,71 @@
 [project]
 name = "ccproxy-api"
-# version = "0.1.0"
 dynamic = ["version"]
 description = "API server that provides an Anthropic and OpenAI compatible interface over Claude Code, allowing to use your Claude OAuth account or over the API."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "aiofiles>=24.1.0",
-  "aiosqlite>=0.21.0",
-  "jsonschema>=0.33.2",
   "fastapi[standard]>=0.115.14",
-  "httpx>=0.28.1",
-  "httpx-sse>=0.4.1",
-  "keyring>=25.6.0",
-  "openai>=1.93.0",
-  "prometheus-client>=0.22.1",
+  "httpx[http2]>=0.28.1",
   "pydantic>=2.8.0",
   "pydantic-settings>=2.4.0",
   "rich>=13.0.0",
   "rich-toolkit>=0.14.8",
   "structlog>=25.4.0",
-  "tomli>=2.0.0; python_version<'3.11'",
   "typer>=0.16.0",
-  "duckdb>=1.1.0",
   "typing-extensions>=4.0.0",
   "uvicorn>=0.34.0",
-  "sqlmodel>=0.0.24",
-  "duckdb-engine>=0.17.0",
-  "fastapi-mcp",
-  "textual>=3.7.1",
-  "claude-code-sdk>=0.0.19",
+  "packaging>=25.0",
+  "sortedcontainers>=2.4.0",
   "pyjwt>=2.10.1",
 ]
 
 [build-system]
-# Using hatchling to used git tag for version
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
-# requires = ["uv"]
-# build-backend = "uv.build"
 
-[tool.hatch.version]
-source = "vcs"
-
-
-[tool.hatch.build.hooks.vcs]
-version-file = "ccproxy/_version.py"
-
-[tool.hatch.build.targets.wheel]
-packages = ["ccproxy"]
-include = [
-    "ccproxy/data/*.json"
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "ccproxy/core/_version.py"
+build.targets.wheel.packages = ["ccproxy"]
+build.targets.wheel.include = ["ccproxy/data/*.json"]
+build.targets.sdist.include = [
+  "ccproxy/**/*.py",
+  "ccproxy/**/*.json",
+  "ccproxy/static/dashboard/**",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
 ]
-
-[project.scripts]
-# ccproxy = "ccproxy.cli:app"
-ccproxy = "ccproxy.cli:main"
-ccproxy-api = "ccproxy.cli:main"
-ccproxy-perm = "ccproxy.cli.commands.permission:main"
 
 [dependency-groups]
-dev = [
-  "mypy>=1.16.1",
-  "ruff>=0.12.2",
-  "pytest>=7.0.0",
-  "pytest-asyncio>=0.23.0",
-  "pytest-cov>=4.0.0",
-  "pytest-env>=0.8.0",
-  "pytest-timeout>=2.1.0",
-  "pytest-mock>=3.12.0",
-  "pytest-xdist>=3.5.0",
-  "pytest-html>=4.1.0",
-  "pytest-benchmark>=4.0.0",
-  "tox>=4.27.0",
-  "pre-commit>=4.2.0",
-  "anthropic>=0.57.1",
-  "textual-dev>=1.7.0",
-  "pytest-httpx>=0.35.0",
-  "types-pyyaml>=6.0.12.20250516",
-  "types-aiofiles>=24.0.0",
+all = [
+  "qrcode>=8.2",
+  "pyjwt>=2.10.1",
+  "sqlmodel>=0.0.24",
+  "SQLAlchemy>=2.0.0",
+  "duckdb-engine>=0.17.0",
+  "duckdb>=1.1.0,<1.4.0",
+  "fastapi-mcp>=0.3.7",
+  "textual>=3.7.1",
+  "aioconsole>=0.8.1",
+  "prometheus-client>=0.22.1",
+  "sse-starlette>=3.0.2",
+  "claude-agent-sdk>=0.1.0",
 ]
-security = [
-  "keyring>=25.0.0", # Optional keyring support for secure credential storage
+
+test = [
+  "mypy",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "pytest-timeout",
+  "pytest-env",
+  "pytest-httpx",
+  "pytest-xdist",
 ]
+
 docs = [
   "mkdocs>=1.5.3",
   "mkdocs-material>=9.5.0",
@@ -97,13 +80,64 @@ docs = [
   "mkdocs-minify-plugin>=0.7.0",
   "mkdocs-redirects>=1.2.0",
 ]
-schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
+
+dev = [
+  { include-group = "test" },
+  { include-group = "docs" },
+  { include-group = "all" },
+  "ruff",
+  "pre-commit",
+  "mypy",
+  "tox",
+  "bandit",
+  "types-aiofiles>=24.0.0",
+  "types-PyYAML>=6.0.12.12",
+]
+
+[project.optional-dependencies]
+plugins-claude = ["claude-agent-sdk>=0.1.0", "qrcode>=8.2"]
+plugins-codex = ["qrcode>=8.2", "pyjwt>=2.10.1"]
+plugins-storage = [
+  "sqlmodel>=0.0.24",
+  "SQLAlchemy>=2.0.0",
+  "duckdb-engine>=0.17.0",
+  "duckdb>=1.1.0,<1.4.0",
+]
+plugins-mcp = ["fastapi-mcp>=0.3.7"]
+plugins-tui = ["textual>=3.7.1", "aioconsole>=0.8.1"]
+plugins-metrics = ["prometheus-client>=0.22.1"]
+
+[project.scripts]
+# ccproxy = "ccproxy.cli:app"
+ccproxy = "ccproxy.cli:main"
+ccproxy-api = "ccproxy.cli:main"
+ccproxy-perm = "ccproxy.cli.commands.permission:main"
+
+[project.entry-points."ccproxy.plugins"]
+access_log = "ccproxy.plugins.access_log.plugin:factory"
+analytics = "ccproxy.plugins.analytics.plugin:factory"
+claude_api = "ccproxy.plugins.claude_api.plugin:factory"
+claude_sdk = "ccproxy.plugins.claude_sdk.plugin:factory"
+codex = "ccproxy.plugins.codex.plugin:factory"
+command_replay = "ccproxy.plugins.command_replay.plugin:factory"
+copilot = "ccproxy.plugins.copilot.plugin:factory"
+dashboard = "ccproxy.plugins.dashboard.plugin:factory"
+docker = "ccproxy.plugins.docker.plugin:factory"
+duckdb_storage = "ccproxy.plugins.duckdb_storage.plugin:factory"
+metrics = "ccproxy.plugins.metrics.plugin:factory"
+oauth_claude = "ccproxy.plugins.oauth_claude.plugin:factory"
+oauth_codex = "ccproxy.plugins.oauth_codex.plugin:factory"
+permissions = "ccproxy.plugins.permissions.plugin:factory"
+pricing = "ccproxy.plugins.pricing.plugin:factory"
+request_tracer = "ccproxy.plugins.request_tracer.plugin:factory"
+max_tokens = "ccproxy.plugins.max_tokens.plugin:factory"
+credential_balancer = "ccproxy.plugins.credential_balancer.plugin:factory"
 
 [tool.coverage.run]
-source = ["ccproxy", "tests"]
-include = ["ccproxy/*", "tests/*"]
+source = ["ccproxy/*", "tests/*"]
 omit = [
-  "ccproxy/_version.py",
+  "ccproxy/core/_version.py",
+  "ccproxy/testing/*",
   "ccproxy/__main__.py",
   "tests/conftest.py",
   "*/migrations/*",
@@ -138,7 +172,6 @@ exclude_lines = [
 
 [tool.coverage.html]
 directory = "htmlcov"
-title = "CCProxy Coverage Report"
 
 [tool.coverage.xml]
 output = "coverage.xml"
@@ -146,6 +179,8 @@ output = "coverage.xml"
 [tool.ruff]
 target-version = "py311"
 line-length = 88
+
+src = ["ccproxy", "tests"]
 
 [tool.ruff.lint]
 select = [
@@ -168,17 +203,18 @@ ignore = [
   "SIM108", # Use ternary operator (sometimes less readable)
   "F401",   # Imported but unused
   "F841",   # Local variable assigned but never used
+  "B904",   # "Use 'except*' to catch multiple exceptions"
+  "SIM102", # "Use 'set' operations to compute set intersections"
 ]
 
-exclude = [
-  ".git",
-  ".venv",
-  "venv",
-  "__pycache__",
-  "build",
-  "dist",
-  "*.egg-info",
-]
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["TID251"]
+# relax on tests
+"tests/*" = [
+  "N802",
+  "N803",
+  "B023",
+] # arg/function name should be lowercase, allow assert, does not bind loop variable
 
 
 [tool.ruff.format]
@@ -191,76 +227,74 @@ known-first-party = ["ccproxy"]
 force-single-line = false
 lines-after-imports = 2
 
-[tool.ruff.lint.per-file-ignores]
-# relax on scripts and tests
-"scripts/*" = ["T201"]       # check for print statements
-"tests/*" = ["N802", "N803"] # arg/function name should be lowercase
 
 [tool.mypy]
 python_version = "3.11"
 show_column_numbers = true
 follow_imports = "normal"
-exclude = ["^[^/]+\\.py$", "docs/", "site/", "tests.depracted/", "examples/"]
+exclude = [
+  "^[^/]+\\.py$",
+  "docs/",
+  "site/",
+  "examples/",
+  "scripts/",
+  "git_ignore/",
+]
+namespace_packages = true
+explicit_package_bases = true
 
-# Enable all strict mode flags
 strict = true
-# The following settings are enabled by --strict:
-disallow_untyped_calls = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-strict_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_return_any = true
-disallow_any_generics = true
-disallow_subclassing_any = true
-disallow_any_unimported = true
-warn_unreachable = true
-
-# if we need to disable certain strict checks
-# disallow_incomplete_defs = false
-# disallow_untyped_decorators = false
+# Allow intentionally unreachable branches used for flow control
+warn_unreachable = false
 
 
 [[tool.mypy.overrides]]
+module = ["fastapi_mcp"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "plugins.permissions.mcp"
+disable_error_code = ["unused-ignore"]
+
+[[tool.mypy.overrides]]
 module = "tests.*"
-# ignore_errors = true
+ignore_errors = false
 disallow_untyped_defs = false
-disallow_incomplete_defs = false
 disallow_untyped_calls = false
 warn_unused_ignores = false
-# Ignore call-arg errors for Pydantic models with optional fields
-disable_error_code = ["call-arg"]
-
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-timeout = 30
 addopts = [
   "-ra",
   "--strict-markers",
   "--strict-config",
-  "--disable-warnings",
+  # "--disable-warnings",
   "--tb=short",
   "-v",
-  "--cov=ccproxy",
-  "--cov=tests",
-  "--cov-report=term-missing",
-  "--cov-report=html:htmlcov",
-  "--cov-report=xml",
-  "--cov-branch",
+  "--import-mode=importlib",
+  "-m",
+  "not slow",
+  # "--cov=ccproxy",
+  # "--cov=tests",
+  # "--cov-report=term-missing",
+  # "--cov-report=html:htmlcov",
+  # "--cov-report=xml",
+  # "--cov-branch",
   # "--cov-fail-under=80",
 ]
 testpaths = ["tests"]
+## Plugin tests are colocated under tests/plugins/<plugin>/
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+timeout = 60
+timeout_method = "thread"
+
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
 norecursedirs = [
   ".git",
   ".tox",
@@ -272,49 +306,35 @@ norecursedirs = [
   ".devenv",
   "node_modules",
   "__pycache__",
-]
-filterwarnings = [
-  "ignore::UserWarning",
-  "ignore::DeprecationWarning",
-  "ignore::PendingDeprecationWarning",
+  "tests_new",
 ]
 
 # Set test mode to prevent pollution of real credential files
-env = [
-  "CCPROXY_TEST_MODE=true",
-  "PYTEST_CURRENT_TEST=true",
-  "LOG_LEVEL=WARNING",
-]
+env = ["PYTEST_CURRENT_TEST=true"]
 
-# Test markers for different test categories and tiers
+# Use modern import mode to avoid path-based module collisions
+# import-mode = "importlib"
+
+# Test markers that are currently exercised in the suite
 markers = [
-  # Primary test categories
+  # Primary categories
   "unit: Fast unit tests (< 1s each) that don't require external dependencies",
   "integration: Integration tests (< 30s each) that test component interactions",
+  "e2e: End-to-end tests that drive the external API surface",
   "slow: Slow tests (> 30s each) - use sparingly",
 
-  # External dependency markers
+  # External dependency requirements
   "real_api: Tests that make real API calls to external services (requires API keys)",
+  "network: Tests that require general network access",
   "docker: Tests that require Docker to be running",
-  "network: Tests that require network access but don't make real API calls",
 
-  # Feature-specific markers
+  # Feature- or plugin-specific scopes
   "auth: Authentication and authorization tests",
-  "streaming: SSE/streaming response tests",
-  "api: API endpoint tests",
-  "config: Configuration and settings tests",
-  "cli: Command-line interface tests",
-  "metrics: Metrics and monitoring tests",
-  "sdk: SDK endpoint tests using Anthropic SDK client (requires running server)",
-
-  # Test quality markers
-  "flaky: Tests that may be unreliable and need investigation",
-  "skip_ci: Tests to skip in CI environment",
+  "analytics: Analytics plugin tests",
+  "metrics: Metrics and monitoring plugin tests",
+  "claude_api: Claude API plugin tests",
+  "codex: Codex plugin tests",
 ]
-
-[tool.pytest_timeout]
-timeout = 300
-timeout_method = "thread"
 
 [tool.bandit]
 exclude_dirs = ["tests", "docs", "scripts", "examples"]
@@ -342,11 +362,61 @@ legacy_tox_ini = """
   commands = pytest {posargs}
   """
 
-[tool.setuptools.packages.find]
-include = ["ccproxy*"]
-
 [tool.uv]
 package = true
+default-groups = ["all"]
 
-[tool.uv.sources]
-fastapi-mcp = { git = "https://github.com/tadata-org/fastapi_mcp", rev = "6fdbff6168b2c84b22966886741d1f24a584856c" }
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard" # or "strict"
+
+include = ["ccproxy", "tests"]
+
+# Exclude unnecessary directories
+exclude = [
+  "**/__pycache__",
+  ".venv",
+  "venv",
+  "build",
+  "dist",
+  "*.egg-info",
+  ".git",
+  ".tox",
+  "htmlcov",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".devenv",
+]
+
+# Virtual environment configuration
+# venvPath = "."
+# venv = ".venv" # Adjust if using different name
+
+# Extra paths for import resolution
+extraPaths = ["."]
+
+# Type checking settings
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+reportPrivateImportUsage = false
+reportUnusedImport = true
+reportUnusedClass = true
+reportUnusedFunction = true
+reportUnusedVariable = true
+reportDuplicateImport = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportTypedDictNotRequiredAccess = true
+reportPrivateUsage = "warning"
+reportUnboundVariable = true
+reportUnusedCoroutine = true
+reportGeneralTypeIssues = true
+reportUnnecessaryTypeIgnoreComment = true
+
+# Stub settings
+stubPath = "typings"
+useLibraryCodeForTypes = true

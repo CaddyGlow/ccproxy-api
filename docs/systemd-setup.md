@@ -102,13 +102,13 @@ Environment="SECURITY__AUTH_TOKEN=your-secure-token"
 
 # Using nested syntax
 Environment="SERVER__PORT=8080"
-Environment="SERVER__LOG_LEVEL=INFO"
-Environment="SERVER__LOG_FORMAT=json"
+Environment="LOGGING__LEVEL=INFO"
+Environment="LOGGING__FORMAT=json"
 Environment="SECURITY__AUTH_TOKEN=your-secure-token"
 
 # Special environment variables
 Environment="CONFIG_FILE=/etc/ccproxy/config.toml"
-Environment="CCPROXY_VERBOSE_API=true"
+Environment="LOGGING__VERBOSE_API=true"
 Environment="CCPROXY_JSON_LOGS=true"
 
 # Scheduler and pricing
@@ -136,9 +136,11 @@ Create `/etc/ccproxy/environment`:
 # Server configuration
 SERVER__HOST=0.0.0.0
 SERVER__PORT=8000
-SERVER__LOG_LEVEL=INFO
-SERVER__LOG_FORMAT=json
-SERVER__LOG_FILE=/var/log/ccproxy/app.log
+
+# Logging configuration (centralized)
+LOGGING__LEVEL=INFO
+LOGGING__FORMAT=json
+LOGGING__FILE=/var/log/ccproxy/app.log
 
 # Security
 SECURITY__AUTH_TOKEN=your-secure-token
@@ -185,7 +187,7 @@ EnvironmentFile=-/etc/ccproxy/environment
 
 # Optional: Override specific settings
 Environment="SERVER__PORT=8080"
-Environment="SERVER__LOG_LEVEL=INFO"
+Environment="LOGGING__LEVEL=INFO"
 
 # Restart configuration
 Restart=on-failure
@@ -195,7 +197,7 @@ RestartSec=5
 WantedBy=default.target
 ```
 
-For a complete list of environment variables, see [CLAUDE.md](/CLAUDE.md).
+For a complete list of environment variables, see [CLAUDE.md](https://github.com/CaddyGlow/ccproxy-api/blob/main/CLAUDE.md).
 
 ## Troubleshooting
 

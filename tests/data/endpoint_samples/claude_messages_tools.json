@@ -1,0 +1,160 @@
+{
+  "endpoint": "/claude/v1/messages",
+  "metadata": {
+    "error": null,
+    "success": true
+  },
+  "model": "claude-sonnet-4-20250514",
+  "name": "claude_messages_tools",
+  "request": {
+    "payload": {
+      "max_tokens": 1000,
+      "messages": [
+        {
+          "content": "What's the weather like in New York, and how far is it from Los Angeles?",
+          "role": "user"
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "stream": false,
+      "tools": [
+        {
+          "description": "Get current weather information for a specific location",
+          "input_schema": {
+            "properties": {
+              "location": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "location"
+            ],
+            "type": "object"
+          },
+          "name": "get_weather",
+          "type": "custom"
+        },
+        {
+          "description": "Calculate the distance between two geographic coordinates",
+          "input_schema": {
+            "properties": {
+              "lat1": {
+                "type": "string"
+              },
+              "lat2": {
+                "type": "string"
+              },
+              "lon1": {
+                "type": "string"
+              },
+              "lon2": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "lat1",
+              "lon1",
+              "lat2",
+              "lon2"
+            ],
+            "type": "object"
+          },
+          "name": "calculate_distance",
+          "type": "custom"
+        },
+        {
+          "description": "Perform basic arithmetic calculations",
+          "input_schema": {
+            "properties": {
+              "expression": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "expression"
+            ],
+            "type": "object"
+          },
+          "name": "calculate",
+          "type": "custom"
+        }
+      ]
+    },
+    "request_key": "anthropic_tools_non_stream"
+  },
+  "response": {
+    "body": {
+      "content": [
+        {
+          "text": "I'll help you get the weather information for New York and calculate the distance between New York and Los Angeles.",
+          "type": "text"
+        },
+        {
+          "id": "toolu_01DE6pD1c6qGRUrZr6FTd5yQ",
+          "input": {
+            "location": "New York"
+          },
+          "name": "get_weather",
+          "type": "tool_use"
+        },
+        {
+          "id": "toolu_014h4Nr4a8mhDMKRjj745d4h",
+          "input": {
+            "lat1": "40.7128",
+            "lat2": "34.0522",
+            "lon1": "-74.0060",
+            "lon2": "-118.2437"
+          },
+          "name": "calculate_distance",
+          "type": "tool_use"
+        }
+      ],
+      "id": "msg_015QEQ4RQ6gHgpDFHHxZsA2E",
+      "model": "claude-sonnet-4-20250514",
+      "role": "assistant",
+      "stop_reason": "tool_use",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 572,
+        "output_tokens": 182,
+        "service_tier": "standard"
+      }
+    },
+    "headers": {
+      "anthropic-organization-id": "0112d741-46c5-4429-8da8-1addcb04278f",
+      "anthropic-ratelimit-unified-5h-reset": "1758765600",
+      "anthropic-ratelimit-unified-5h-status": "allowed",
+      "anthropic-ratelimit-unified-fallback-percentage": "0.2",
+      "anthropic-ratelimit-unified-overage-disabled-reason": "overage_not_provisioned",
+      "anthropic-ratelimit-unified-representative-claim": "five_hour",
+      "anthropic-ratelimit-unified-reset": "1758765600",
+      "anthropic-ratelimit-unified-status": "allowed",
+      "cf-cache-status": "DYNAMIC",
+      "cf-ray": "984587beacbf708d-MRS",
+      "connection": "keep-alive",
+      "content-type": "application/json",
+      "date": "Wed, 24 Sep 2025 21:56:13 GMT",
+      "request-id": "req_011CTTyLmUpCKoMA55SvfYd2",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+      "transfer-encoding": "chunked",
+      "via": "1.1 google",
+      "x-envoy-upstream-service-time": "2450",
+      "x-request-id": "e16225a9",
+      "x-robots-tag": "none"
+    },
+    "mode": "json",
+    "status_code": 200
+  },
+  "stream": false
+}

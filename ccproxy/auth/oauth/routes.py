@@ -3,18 +3,18 @@
 from pathlib import Path
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
-from structlog import get_logger
+from pydantic import ValidationError
 
-from ccproxy.auth.models import (
-    ClaudeCredentials,
-    OAuthToken,
+from ccproxy.auth.exceptions import (
+    CredentialsStorageError,
+    OAuthError,
+    OAuthTokenRefreshError,
 )
-from ccproxy.auth.storage import JsonFileTokenStorage as JsonFileStorage
-
-# Import CredentialsManager locally to avoid circular import
-from ccproxy.services.credentials.config import OAuthConfig
+from ccproxy.auth.oauth.registry import OAuthRegistry
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)
@@ -36,7 +36,12 @@ def register_oauth_flow(
         "success": False,
         "error": None,
     }
-    logger.debug("Registered OAuth flow", state=state, operation="register_oauth_flow")
+    logger.debug(
+        "Registered OAuth flow",
+        state=state,
+        operation="register_oauth_flow",
+        category="auth",
+    )
 
 
 def get_oauth_flow_result(state: str) -> dict[str, Any] | None:
@@ -68,6 +73,7 @@ async def oauth_callback(
                 oauth_error_description=error_description,
                 state=state,
                 operation="oauth_callback",
+                category="auth",
             )
 
             # Update pending flow if state is provided
@@ -102,6 +108,7 @@ async def oauth_callback(
                 error_message=error_msg,
                 state=state,
                 operation="oauth_callback",
+                category="auth",
             )
 
             if state and state in _pending_flows:
@@ -134,6 +141,7 @@ async def oauth_callback(
                 error_type="missing_state",
                 error_message=error_msg,
                 operation="oauth_callback",
+                category="auth",
             )
             return HTMLResponse(
                 content=f"""
@@ -158,6 +166,7 @@ async def oauth_callback(
                 error_message="Invalid or expired state parameter",
                 state=state,
                 operation="oauth_callback",
+                category="auth",
             )
             return HTMLResponse(
                 content=f"""
@@ -178,8 +187,13 @@ async def oauth_callback(
         code_verifier = flow["code_verifier"]
         custom_paths = flow["custom_paths"]
 
-        # Exchange authorization code for tokens
-        success = await _exchange_code_for_tokens(code, code_verifier, custom_paths)
+        # Exchange authorization code for tokens using app-scoped registry
+        registry: OAuthRegistry | None = getattr(
+            request.app.state, "oauth_registry", None
+        )
+        success = await _exchange_code_for_tokens(
+            code, code_verifier, state, custom_paths, registry
+        )
 
         # Update flow result
         _pending_flows[state].update(
@@ -192,7 +206,10 @@ async def oauth_callback(
 
         if success:
             logger.info(
-                "OAuth login successful", state=state, operation="oauth_callback"
+                "OAuth login successful",
+                state=state,
+                operation="oauth_callback",
+                category="auth",
             )
             return HTMLResponse(
                 content="""
@@ -220,6 +237,7 @@ async def oauth_callback(
                 error_message=error_msg,
                 state=state,
                 operation="oauth_callback",
+                category="auth",
             )
             return HTMLResponse(
                 content=f"""
@@ -235,14 +253,108 @@ async def oauth_callback(
                 status_code=500,
             )
 
-    except Exception as e:
+    except (OAuthError, OAuthTokenRefreshError, CredentialsStorageError) as e:
         logger.error(
-            "Unexpected error in OAuth callback",
-            error_type="unexpected_error",
-            error_message=str(e),
+            "oauth_callback_error",
+            error_type="auth_error",
+            error=str(e),
             state=state,
             operation="oauth_callback",
-            exc_info=True,
+            exc_info=e,
+        )
+
+        if state and state in _pending_flows:
+            _pending_flows[state].update(
+                {
+                    "completed": True,
+                    "success": False,
+                    "error": str(e),
+                }
+            )
+
+        return HTMLResponse(
+            content=f"""
+            <html>
+                <head><title>Login Error</title></head>
+                <body>
+                    <h1>Login Error</h1>
+                    <p>Authentication error: {str(e)}</p>
+                    <p>You can close this window and try again.</p>
+                </body>
+            </html>
+            """,
+            status_code=500,
+        )
+    except httpx.HTTPError as e:
+        logger.error(
+            "oauth_callback_http_error",
+            error=str(e),
+            status=e.response.status_code if hasattr(e, "response") else None,
+            state=state,
+            operation="oauth_callback",
+            exc_info=e,
+        )
+
+        if state and state in _pending_flows:
+            _pending_flows[state].update(
+                {
+                    "completed": True,
+                    "success": False,
+                    "error": f"HTTP error: {str(e)}",
+                }
+            )
+
+        return HTMLResponse(
+            content=f"""
+            <html>
+                <head><title>Login Error</title></head>
+                <body>
+                    <h1>Login Error</h1>
+                    <p>Network error occurred: {str(e)}</p>
+                    <p>You can close this window and try again.</p>
+                </body>
+            </html>
+            """,
+            status_code=500,
+        )
+    except ValidationError as e:
+        logger.error(
+            "oauth_callback_validation_error",
+            error=str(e),
+            state=state,
+            operation="oauth_callback",
+            exc_info=e,
+        )
+
+        if state and state in _pending_flows:
+            _pending_flows[state].update(
+                {
+                    "completed": True,
+                    "success": False,
+                    "error": f"Validation error: {str(e)}",
+                }
+            )
+
+        return HTMLResponse(
+            content="""
+            <html>
+                <head><title>Login Error</title></head>
+                <body>
+                    <h1>Login Error</h1>
+                    <p>Data validation error occurred</p>
+                    <p>You can close this window and try again.</p>
+                </body>
+            </html>
+            """,
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(
+            "oauth_callback_unexpected_error",
+            error=str(e),
+            state=state,
+            operation="oauth_callback",
+            exc_info=e,
         )
 
         if state and state in _pending_flows:
@@ -270,125 +382,86 @@ async def oauth_callback(
 
 
 async def _exchange_code_for_tokens(
-    authorization_code: str, code_verifier: str, custom_paths: list[Path] | None = None
+    authorization_code: str,
+    code_verifier: str,
+    state: str,
+    custom_paths: list[Path] | None = None,
+    registry: OAuthRegistry | None = None,
 ) -> bool:
     """Exchange authorization code for access tokens."""
     try:
-        from datetime import UTC, datetime
+        # Get OAuth provider from provided registry
+        if registry is None:
+            logger.error(
+                "oauth_registry_not_available", operation="exchange_code_for_tokens"
+            )
+            return False
+        oauth_provider = registry.get("claude-api")
+        if not oauth_provider:
+            logger.error("claude_oauth_provider_not_found", category="auth")
+            return False
 
-        import httpx
-
-        # Create OAuth config with default values
-        oauth_config = OAuthConfig()
-
-        # Exchange authorization code for tokens
-        token_data = {
-            "grant_type": "authorization_code",
-            "code": authorization_code,
-            "redirect_uri": oauth_config.redirect_uri,
-            "client_id": oauth_config.client_id,
-            "code_verifier": code_verifier,
-        }
-
-        headers = {
-            "Content-Type": "application/json",
-            "anthropic-beta": oauth_config.beta_version,
-            "User-Agent": oauth_config.user_agent,
-        }
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                oauth_config.token_url,
-                headers=headers,
-                json=token_data,
-                timeout=30.0,
+        # Use OAuth provider to handle the callback
+        try:
+            credentials = await oauth_provider.handle_callback(
+                authorization_code, state, code_verifier
             )
 
-            if response.status_code == 200:
-                result = response.json()
-
-                # Calculate expires_at from expires_in
-                expires_in = result.get("expires_in")
-                expires_at = None
-                if expires_in:
-                    expires_at = int(
-                        (datetime.now(UTC).timestamp() + expires_in) * 1000
+            # Save credentials using provider's storage mechanism
+            if custom_paths:
+                # Let the provider handle storage with custom path
+                success = await oauth_provider.save_credentials(
+                    credentials, custom_path=custom_paths[0] if custom_paths else None
+                )
+                if success:
+                    logger.info(
+                        "Successfully saved OAuth credentials to custom path",
+                        operation="exchange_code_for_tokens",
+                        path=str(custom_paths[0]),
                     )
-
-                # Create credentials object
-                oauth_data = {
-                    "accessToken": result.get("access_token"),
-                    "refreshToken": result.get("refresh_token"),
-                    "expiresAt": expires_at,
-                    "scopes": result.get("scope", "").split()
-                    if result.get("scope")
-                    else oauth_config.scopes,
-                    "subscriptionType": result.get("subscription_type", "unknown"),
-                }
-
-                credentials = ClaudeCredentials(claudeAiOauth=OAuthToken(**oauth_data))
-
-                # Save credentials using CredentialsManager (lazy import to avoid circular import)
-                from ccproxy.services.credentials.manager import CredentialsManager
-
-                if custom_paths:
-                    # Use the first custom path for storage
-                    storage = JsonFileStorage(custom_paths[0])
-                    manager = CredentialsManager(storage=storage)
                 else:
-                    manager = CredentialsManager()
-
-                if await manager.save(credentials):
+                    logger.error(
+                        "Failed to save OAuth credentials to custom path",
+                        error_type="save_credentials_failed",
+                        operation="exchange_code_for_tokens",
+                        path=str(custom_paths[0]),
+                    )
+            else:
+                # Save using provider's default storage
+                success = await oauth_provider.save_credentials(credentials)
+                if success:
                     logger.info(
                         "Successfully saved OAuth credentials",
-                        subscription_type=oauth_data["subscriptionType"],
-                        scopes=oauth_data["scopes"],
                         operation="exchange_code_for_tokens",
                     )
-                    return True
                 else:
                     logger.error(
                         "Failed to save OAuth credentials",
                         error_type="save_credentials_failed",
                         operation="exchange_code_for_tokens",
                     )
-                    return False
 
-            else:
-                # Use compact logging for the error message
-                import os
+            logger.info(
+                "OAuth flow completed successfully",
+                operation="exchange_code_for_tokens",
+            )
+            return True
 
-                verbose_api = (
-                    os.environ.get("CCPROXY_VERBOSE_API", "false").lower() == "true"
-                )
-
-                if verbose_api:
-                    error_detail = response.text
-                else:
-                    response_text = response.text
-                    if len(response_text) > 200:
-                        error_detail = f"{response_text[:100]}...{response_text[-50:]}"
-                    elif len(response_text) > 100:
-                        error_detail = f"{response_text[:100]}..."
-                    else:
-                        error_detail = response_text
-
-                logger.error(
-                    "Token exchange failed",
-                    error_type="token_exchange_failed",
-                    status_code=response.status_code,
-                    error_detail=error_detail,
-                    verbose_api_enabled=verbose_api,
-                    operation="exchange_code_for_tokens",
-                )
-                return False
+        except Exception as e:
+            logger.error(
+                "oauth_provider_callback_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                operation="exchange_code_for_tokens",
+                exc_info=e,
+            )
+            return False
 
     except Exception as e:
         logger.error(
-            "Error during token exchange",
-            error_type="token_exchange_exception",
-            error_message=str(e),
+            "oauth_exchange_error",
+            error=str(e),
             operation="exchange_code_for_tokens",
-            exc_info=True,
+            exc_info=e,
         )
         return False

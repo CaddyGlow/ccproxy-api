@@ -21,9 +21,7 @@ CCProxy supports multiple authentication methods with separate credential storag
 
 ### CCProxy Claude Authentication (API Mode)
 - **Used by**: `ccproxy auth` commands (login, validate, info)
-- **Storage**:
-  - **Primary**: System keyring (secure, recommended)
-  - **Fallback**: `~/.config/ccproxy/credentials.json`
+- **Storage**: `~/.config/ccproxy/credentials.json`
 - **Purpose**: Authenticates for API mode operations using Anthropic OAuth2
 - **Note**: Separate from Claude CLI credentials to avoid conflicts
 
@@ -61,7 +59,7 @@ ccproxy auth info
 ```
 Displays detailed credential information and automatically renews the token if expired. Shows:
 - Account email and organization
-- Storage location (keyring or file)
+- Storage location (file)
 - Token expiration and time remaining
 - Access token (partially masked)
 
@@ -148,15 +146,66 @@ This confirms:
 ### Credential Storage Locations
 
 #### Claude Credentials
-- **Primary storage**: System keyring (when available)
-- **Fallback storage**: `~/.config/ccproxy/credentials.json`
+- **Storage**: `~/.config/ccproxy/credentials.json`
 - Tokens are automatically managed and renewed by CCProxy
+- Tokens refresh automatically when less than ~2 minutes remain; adjust the
+  buffer with `AUTH__REFRESH_GRACE_SECONDS`
 
 #### OpenAI/Codex Credentials
 - **Storage**: `$HOME/.codex/auth.json`
 - **Format**: JSON with access_token, refresh_token, expires_at
 - **Sharing**: Credentials shared with official Codex CLI
 - **Auto-refresh**: Tokens renewed automatically when expired
+
+## Rotating Multiple Credential Files
+
+Some teams keep several exported credential snapshots (for example, primary and
+backup Anthropic tokens). Enable the `credential_balancer` system plugin to
+distribute requests across those files and automatically fail over when a token
+starts returning `401`/`403` responses.
+
+1. Export each credential to a dedicated JSON file using
+   `ccproxy auth login --file /abs/path/to/token.json` (add `--force` to
+   overwrite an existing export).
+   - Inspect a custom export with
+     `ccproxy auth status <provider> --file /abs/path/to/token.json`.
+   - Refresh an exported credential in place via
+     `ccproxy auth refresh <provider> --file /abs/path/to/token.json`
+     (or `ccproxy auth renew ...`).
+2. Update `config.toml` with a balancer definition, one entry per upstream
+   provider:
+
+   ```toml
+   [plugins.credential_balancer]
+   enabled = true
+
+   [[plugins.credential_balancer.providers]]
+   provider = "claude-api"
+   strategy = "round_robin"      # or "failover"
+   credentials = [
+     { path = "/home/user/.config/ccproxy/claude_primary.json" },
+     { path = "/home/user/.config/ccproxy/claude_backup.json" }
+   ]
+   ```
+
+3. Point the provider plugin at the balancer by overriding its auth manager in
+   the same configuration file:
+
+   ```toml
+   [plugins.claude_api]
+   auth_manager = "claude-api_credential_balancer"
+   ```
+
+   If you set a custom `manager_name` inside the balancer configuration, use
+   that value instead of the default `"<provider>_credential_balancer"` key.
+
+Behaviour:
+
+- **round_robin** alternates tokens every request.
+- **failover** sticks to the first credential until it fails `max_failures`
+  times, then switches to the next available file.
+All credential file paths must be absolute and should be managed by your secret
+storage workflow. The balancer never mutates the files; it only reads them.
 
 ## API Authentication (Optional)
 

@@ -1,0 +1,1 @@
+"""Pricing plugin integration tests."""

@@ -1,10 +1,10 @@
 """Core transformer abstractions for request/response transformation."""
 
+import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
-from structlog import get_logger
-
+from ccproxy.core.logging import get_logger
 from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
 
 
@@ -65,8 +65,8 @@ class BaseTransformer(ABC):
 
         try:
             # Calculate data sizes
-            input_size = self._calculate_data_size(input_data)
-            output_size = self._calculate_data_size(output_data) if output_data else 0
+            # input_size = self._calculate_data_size(input_data)
+            # output_size = self._calculate_data_size(output_data) if output_data else 0
 
             # Create a unique request ID for this transformation
             request_id = (
@@ -80,6 +80,15 @@ class BaseTransformer(ABC):
                 processing_time=duration_ms,
             )
 
+        except (AttributeError, TypeError) as e:
+            # Don't let metrics collection fail the transformation
+            logger = get_logger(__name__)
+            # logger = logging.getLogger(__name__)
+            logger.debug(
+                "transformation_metrics_attribute_error",
+                error=str(e),
+                exc_info=e,
+            )
         except Exception as e:
             # Don't let metrics collection fail the transformation
             logger = get_logger(__name__)
@@ -131,8 +140,6 @@ class RequestTransformer(BaseTransformer):
         Returns:
             The transformed request
         """
-        import time
-
         start_time = time.perf_counter()
         error_msg = None
         result = None
@@ -186,8 +193,6 @@ class ResponseTransformer(BaseTransformer):
         Returns:
             The transformed response
         """
-        import time
-
         start_time = time.perf_counter()
         error_msg = None
         result = None

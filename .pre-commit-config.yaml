@@ -1,4 +1,13 @@
 repos:
+  # Import boundary check: prevent core -> plugins.* imports
+  - repo: local
+    hooks:
+      - id: check-import-boundaries
+        name: check import boundaries (core must not import plugins)
+        entry: python3 scripts/check_import_boundaries.py
+        language: system
+        pass_filenames: false
+        files: ^ccproxy/
   # Ruff linting and formatting
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.8
@@ -24,6 +33,8 @@ repos:
           # Type stubs
           # - types-toml
           # - types-PyYAML
+          - types-aiofiles>=24.0.0
+          - types-PyYAML>=6.0.12.12
           # Core dependencies
           - pydantic>=2.8.0
           - pydantic-settings>=2.4.0
@@ -35,6 +46,8 @@ repos:
           - typer>=0.16.0
           - uvicorn>=0.34.0
           - check-jsonschema>=0.33.2
+          - aiohttp>=3.12.0
+          - aiofiles>=24.1.0
           # Test dependencies
           - pytest>=7.0.0
           - pytest-asyncio>=0.23.0
@@ -46,21 +59,19 @@ repos:
           - duckdb>=1.1.3
           - structlog>=24.1.0
           # Claude SDK (from git source)
-          - claude-code-sdk>=0.0.14
+          - claude-agent-sdk>=0.0.14
           - keyring>=24.0.0
           - aiosqlite>=0.21.0
-          - types-PyYAML>=6.0.12.12
           - sqlmodel>=0.0.24
           - duckdb-engine>=0.17.0
           - tomli>=2.0.0
           - fastapi-mcp>=0.1.0
           - sse-starlette>=1.0.0
           - textual>=3.7.1
-          - aiofiles>=24.1.0
-          - types-aiofiles>=24.0.0
           - pyjwt>=2.10.0
+          - sortedcontainers>=2.4.0
         args: [--config-file=pyproject.toml]
-        exclude: ^(docs/|examples/)
+        exclude: ^(docs/|examples/|scripts/)
 
   # Biome for TypeScript/JavaScript (dashboard)
   # - repo: local
@@ -103,7 +114,7 @@ repos:
       - id: debug-statements
       - id: name-tests-test
         args: [--pytest-test-first]
-        exclude: ^tests/(fixtures|factories|helpers)/
+        exclude: ^tests/(fixtures|factories|helpers|mock)/
 
   # Security checks
   # - repo: https://github.com/PyCQA/bandit

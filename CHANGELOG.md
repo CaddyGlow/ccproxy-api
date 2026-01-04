@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0a3] - 2026-01-04
+
+### Fixed
+
+- **Tool call streaming in SDK mode**: Fixed tool calls only working in SSE output format; now works correctly in both SSE and dict (SDK) output formats with proper indexing and debug logging.
+- **Race condition in stream broadcast**: Removed non-atomic `has_listeners()` check that caused message loss with fast STDIO tools; now always broadcasts and verifies delivery count afterward.
+- **First-message loss with rapid tool responses**: Worker creation is now deferred until listener is registered, preventing messages from being lost before the listener is ready.
+- **Orphaned tool_result API errors**: Added `_sanitize_tool_results()` to remove tool_result blocks lacking matching tool_use blocks, converting orphaned results to text and preventing "unexpected tool_use_id" API errors.
+- **Null temperature in Claude API requests**: Strip None temperature values before sending requests to Anthropic API to prevent validation errors.
+
+### Changed
+
+- Improved type annotations in tool streaming tests with explicit generics and type guards.
+- Code cleanup following code audit review.
+
+## [0.2.0a2] - 2026-01-03
+
+### Added
+
+- **Claude models endpoint**: Added `/claude/v1/models` endpoint for listing available Claude models.
+- **Temperature validation**: Added guard to validate temperature parameter before forwarding to upstream API.
+
+## [0.2.0] - 2025-09-27
+
+### Added
+
+- Added a plugin-based runtime with manifest-driven discovery, adapter registries, and lifecycle hooks (`ccproxy/core/plugins/**`, `ccproxy/api/app.py`, `ccproxy/api/dependencies.py`).
+- Added provider plugins for GitHub Copilot and OpenAI Codex covering detection, OAuth credential management, and proxy routing (`ccproxy/plugins/copilot/**`, `ccproxy/plugins/oauth_codex/**`, `tests/plugins/copilot/**`, `tests/plugins/codex/**`).
+- Added bidirectional OpenAI chat ⇄ Responses formatters that preserve reasoning, tool calls, audio blocks, and usage metadata across streaming and non-streaming flows (`ccproxy/llms/formatters/openai_to_openai.py`, `ccproxy/llms/models/openai.py`, `tests/unit/llms/test_openai_to_openai_reasoning.py`).
+- Added provider-neutral streaming accumulators to rebuild chunked events into complete responses for Anthropic, OpenAI, Copilot, and Codex integrations (`ccproxy/llms/streaming/accumulators.py`, `tests/unit/llms/streaming/test_accumulators.py`).
+- Added a `TokenSnapshot` API and integrated it with provider managers and CLI status output for consistent, masked token diagnostics (`ccproxy/auth/managers/token_snapshot.py`, `ccproxy/plugins/oauth_codex/manager.py`, `ccproxy/cli/commands/auth.py`).
+
+### Changed
+
+- Updated provider configuration models to carry ordered model-mapping rules and `/models` endpoint metadata so adapters can translate client model IDs deterministically (`ccproxy/models/provider.py`).
+- Updated settings loading to perform deep merges that respect environment variable overrides and to include explicit plugin discovery configuration (`ccproxy/config/settings.py`).
+- Updated plugin contexts to expose typed detection/token manager protocols and to register the FastAPI app in the service container, simplifying provider factory wiring (`ccproxy/core/plugins/interfaces.py`, `ccproxy/api/app.py`).
+- Updated token manager bases to derive expiration and refresh behaviour from snapshots instead of ad-hoc attribute probing, clarifying refresh flows across providers (`ccproxy/auth/managers/base.py`, `ccproxy/auth/managers/base_enhanced.py`).
+
+### Fixed
+
+- Fixed hooks middleware to wrap streaming responses so HTTP_REQUEST/HTTP_RESPONSE and completion hooks fire after streams finish, restoring tracing and analytics for long-lived responses (`ccproxy/api/middleware/hooks.py`, `ccproxy/api/middleware/streaming_hooks.py`).
+
+### Documentation
+
+- Added an auth provider developer guide covering OAuth providers, token managers, and snapshot usage for CLI tooling (`docs/development/auth-providers.md`).
+
 ## [0.1.7] - 2025-08-13
 
 ### Added
@@ -225,153 +272,6 @@ For users wanting to use Codex provider:
 
 This implementation provides a complete, production-ready OpenAI Codex proxy solution that maintains the same standards as the existing Claude provider while offering users choice in their AI provider preferences.
 
-## Added OpenAI Codex Provider with Full Proxy Support
-
-### Overview
-
-Implemented comprehensive support for OpenAI Codex CLI integration, enabling users to proxy requests through their OpenAI subscription via the ChatGPT backend API. This feature provides an alternative to the Claude provider while maintaining full compatibility with the existing proxy architecture. The implementation uses the OpenAI Responses API endpoint as documented at https://platform.openai.com/docs/api-reference/responses/get.
-
-### Key Features
-
-**Complete Codex API Proxy**
-
-- Full reverse proxy to `https://chatgpt.com/backend-api/codex`
-- Support for both `/codex/responses` and `/codex/{session_id}/responses` endpoints
-- Compatible with Codex CLI 0.21.0 and authentication flow
-- Implements OpenAI Responses API protocol
-
-**OAuth PKCE Authentication Flow**
-
-- Implements complete OpenAI OAuth 2.0 PKCE flow matching official Codex CLI
-- Local callback server on port 1455 for authorization code exchange
-- Token refresh and credential management with persistent storage
-- Support for `~/.codex/auth.json` configuration file format
-
-**Intelligent Request/Response Handling**
-
-- Automatic detection and injection of Codex CLI instructions field
-- Smart streaming behavior based on user's explicit `stream` parameter
-- Session management with flexible session ID handling (auto-generated, persistent, header-forwarded)
-- Request transformation preserving Codex CLI identity headers
-
-**Advanced Configuration**
-
-- Environment variable support: `CODEX__BASE_URL`
-- Configurable via TOML: `[codex]` section in configuration files
-- Debug logging with request/response capture capabilities
-- Comprehensive error handling with proper HTTP status codes
-- Enabled by default
-
-### Technical Implementation
-
-**New Components Added:**
-
-- `ccproxy/auth/openai.py` - OAuth token management and credential storage
-- `ccproxy/core/codex_transformers.py` - Request/response transformation for Codex format
-- `ccproxy/api/routes/codex.py` - FastAPI routes for Codex endpoints
-- `ccproxy/models/detection.py` - Codex CLI detection and header management
-- `ccproxy/services/codex_detection_service.py` - Runtime detection of Codex CLI requests
-
-**Enhanced Proxy Service:**
-
-- Extended `ProxyService.handle_codex_request()` with full Codex support
-- Intelligent streaming response conversion when user doesn't explicitly request streaming
-- Comprehensive request/response logging for debugging
-- Error handling with proper OpenAI-compatible error responses
-
-### Streaming Behavior Fix
-
-**Problem Resolved:** Fixed issue where requests without explicit `stream` field were incorrectly returning streaming responses.
-
-**Solution Implemented:**
-
-- When `"stream"` field is missing: Inject `"stream": true` for upstream (Codex requirement) but return JSON response to client
-- When `"stream": true` explicitly set: Return streaming response to client
-- When `"stream": false` explicitly set: Return JSON response to client
-- Smart response conversion: collects streaming data and converts to single JSON response when user didn't request streaming
-
-### Usage Examples
-
-**Basic Request (JSON Response):**
-
-```bash
-curl -X POST "http://127.0.0.1:8000/codex/responses" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Hello!"}]}],
-    "model": "gpt-5",
-    "store": false
-  }'
-```
-
-**Streaming Request:**
-
-```bash
-curl -X POST "http://127.0.0.1:8000/codex/responses" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Hello!"}]}],
-    "model": "gpt-5",
-    "stream": true,
-    "store": false
-  }'
-```
-
-### Authentication Setup
-
-**Environment Variables:**
-
-```bash
-export CODEX__BASE_URL="https://chatgpt.com/backend-api/codex"
-```
-
-**Configuration File (`~/.ccproxy.toml`):**
-
-```toml
-[codex]
-base_url = "https://chatgpt.com/backend-api/codex"
-```
-
-### Compatibility
-
-- Codex CLI: Full compatibility with `codex-cli 0.21.0`
-- OpenAI OAuth: Complete PKCE flow implementation
-- Session Management: Supports persistent and auto-generated sessions
-- Model Support: All Codex-supported models (`gpt-5`, `gpt-4`, etc.)
-- Streaming: Both streaming and non-streaming responses
-- Error Handling: Proper HTTP status codes and OpenAI-compatible errors
-- API Compliance: Follows OpenAI Responses API specification
-
-### Files Modified/Added
-
-**New Files:**
-
-- `ccproxy/auth/openai.py` - OpenAI authentication management
-- `ccproxy/core/codex_transformers.py` - Codex request/response transformation
-- `ccproxy/api/routes/codex.py` - Codex API endpoints
-- `ccproxy/models/detection.py` - Codex detection models
-- `ccproxy/services/codex_detection_service.py` - Codex CLI detection service
-
-**Modified Files:**
-
-- `ccproxy/services/proxy_service.py` - Added `handle_codex_request()` method
-- `ccproxy/config/settings.py` - Added Codex configuration section
-- `ccproxy/api/app.py` - Integrated Codex routes
-- `ccproxy/api/routes/health.py` - Added Codex health checks
-
-### Breaking Changes
-
-None. This is a purely additive feature that doesn't affect existing Claude provider functionality.
-
-### Migration Notes
-
-For users wanting to use Codex provider:
-
-1. Authenticate: Use existing OpenAI credentials or run Codex CLI login
-2. Update endpoints: Change from `/v1/messages` to `/codex/responses`
-
-This implementation provides a complete, production-ready OpenAI Codex proxy solution that maintains the same standards as the existing Claude provider while offering users choice in their AI provider preferences.
-
 ## [0.1.5] - 2025-08-03
 
 ### Added
@@ -442,7 +342,7 @@ This implementation provides a complete, production-ready OpenAI Codex proxy sol
   - Caches detection results per version to avoid repeated startup delays
   - Falls back to hardcoded values when detection fails
 - **Detection Models**: Added Pydantic models for Claude detection data:
-  - `ClaudeCodeHeaders` - Structured header extraction with field aliases
+  - `ClaudeAgentHeaders` - Structured header extraction with field aliases
   - `SystemPromptData` - System prompt content with cache control
   - `ClaudeCacheData` - Complete cached detection data with version tracking
 
@@ -601,7 +501,7 @@ This is the initial public release of the CCProxy API.
 
 - **Unified `ccproxy` CLI**: A single, user-friendly command-line interface for managing the proxy.
 - **TOML Configuration**: Configure the server using a `config.toml` file with JSON Schema validation.
-- **Keyring Integration**: Securely stores and manages OAuth credentials in the system's native keyring.
+<!-- Keyring integration was planned but has been removed; credentials are stored via project-managed files. -->
 - **`generate-token` Command**: A CLI command to manually generate and manage API tokens.
 - **Systemd Integration**: Includes a setup script and service template for running the proxy as a systemd service in production environments.
 - **Docker Support**: A `Dockerfile` and `docker-compose.yml` for running the proxy in an isolated containerized environment.
@@ -609,7 +509,7 @@ This is the initial public release of the CCProxy API.
 #### Security
 
 - **Local-First Design**: All processing and authentication happens locally; no conversation data is stored or transmitted to third parties.
-- **Credential Security**: OAuth tokens are stored securely in the system keyring, not in plaintext files.
+<!-- Credential storage now uses project-managed files; system keyring is not used. -->
 - **Header Stripping**: Automatically removes client-side `Authorization` headers to prevent accidental key leakage.
 
 #### Developer Experience

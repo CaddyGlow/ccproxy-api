@@ -7,7 +7,6 @@ This guide explains how to use HTTP proxies for debugging requests made by the C
 The CCProxy API server supports standard HTTP proxy environment variables, allowing you to intercept and debug HTTP/HTTPS traffic using tools like:
 
 - [mitmproxy](https://mitmproxy.org/)
-- [Charles Proxy](https://www.charlesproxy.com/)
 - [Fiddler](https://www.telerik.com/fiddler)
 - Corporate proxies
 
@@ -26,7 +25,7 @@ export HTTPS_PROXY=http://localhost:8888
 export ALL_PROXY=http://localhost:8888
 
 # Start the server
-make dev
+./Taskfile dev
 ```
 
 ### Using mitmproxy
@@ -64,7 +63,7 @@ export REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca-cert.pem
 export SSL_CERT_FILE=/path/to/your/ca-bundle.pem
 
 # Start the server
-make dev
+./Taskfile dev
 ```
 
 ### Option 2: Disable SSL Verification (Development Only)
@@ -73,7 +72,7 @@ make dev
 
 ```bash
 export SSL_VERIFY=false
-make dev
+./Taskfile dev
 ```
 
 ### Installing Proxy CA Certificates
@@ -103,7 +102,7 @@ mitmweb --listen-port 8888
 # Terminal 2: Configure and run the server
 export HTTPS_PROXY=http://localhost:8888
 export REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca-cert.pem
-make dev
+./Taskfile dev
 
 # Terminal 3: Make a test request
 curl -X POST http://localhost:8000/openai/v1/chat/completions \
@@ -161,7 +160,8 @@ If you see SSL certificate verification errors:
 
 ## OpenAI Format Endpoints
 
-When using tools like Aider that expect OpenAI-formatted responses, ensure you're using the correct endpoint:
+When using tools like Aider that expect OpenAI-formatted e correct endpoint:
+
 
 ### Endpoint Differences
 

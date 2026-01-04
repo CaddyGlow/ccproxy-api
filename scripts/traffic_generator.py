@@ -178,7 +178,7 @@ class TrafficGenerator:
                 )
 
             if self.config.log_responses:
-                logger.debug("Response received", response=response_data)
+                logger.debug("response_received", response=response_data)
 
             if self.config.log_format_conversions and scenario.api_format == "openai":
                 logger.info(

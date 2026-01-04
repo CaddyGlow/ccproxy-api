@@ -1,0 +1,194 @@
+# CCProxy Configuration Example
+# This file demonstrates how to configure CCProxy and its plugins
+
+# Server settings
+[server]
+host = "0.0.0.0"
+port = 8000
+log_level = "INFO"
+# log_file = "/var/log/ccproxy/ccproxy.log"  # Optional: Log to file
+
+# Security settings
+[security]
+enable_auth = false # Set to true to require authentication
+# auth_token = "your-secret-token"  # Required if enable_auth is true
+
+# CORS settings
+[cors]
+allow_origins = ["*"]
+allow_credentials = true
+allow_methods = ["*"]
+allow_headers = ["*"]
+
+# Claude settings (for Claude SDK integration)
+[claude]
+cli_path = "auto"                        # Auto-detect Claude CLI, or specify path
+builtin_permissions = true
+include_system_messages_in_stream = true
+
+# Scheduler settings
+[scheduler]
+enabled = true
+max_concurrent_tasks = 10
+graceful_shutdown_timeout = 30.0
+default_retry_attempts = 3
+default_retry_delay = 60.0
+
+# Logging settings
+[logging]
+level = "INFO"
+format = "auto"
+plugin_log_base_dir = "/tmp/ccproxy"
+
+# Plugin system settings
+enable_plugins = true
+
+# Filesystem plugin discovery (override defaults if needed)
+[plugin_discovery]
+# directories = ["/opt/ccproxy/plugins", "${HOME}/.config/ccproxy/custom"]
+
+# Plugin configurations
+# Each plugin can have its own configuration section under [plugins.PLUGIN_NAME].
+# Below are examples for common bundled plugins; uncomment and adjust as needed.
+
+# Access log plugin (structured/common/combined)
+[plugins.access_log]
+enabled = true
+client_enabled = true
+client_format = "structured"
+client_log_file = "/tmp/ccproxy/access.log"
+provider_enabled = false
+
+# Request tracer plugin (structured JSON + optional raw HTTP)
+[plugins.request_tracer]
+enabled = true
+verbose_api = true
+json_logs_enabled = true
+raw_http_enabled = true
+log_dir = "/tmp/ccproxy/traces"
+
+# Credential balancer plugin (rotate multiple credential files)
+[plugins.credential_balancer]
+enabled = false
+
+# Example: OpenAI Codex credential pool with manager-based credentials (recommended)
+[[plugins.credential_balancer.providers]]
+provider = "codex"
+strategy = "round_robin"          # or "failover"
+max_failures_before_disable = 2
+cooldown_seconds = 120.0
+failure_status_codes = [401, 403]
+
+# Pool-level defaults applied to all credentials in this pool
+manager_class = "ccproxy.plugins.oauth_codex.manager.CodexTokenManager"
+storage_class = "ccproxy.plugins.oauth_codex.storage.CodexTokenStorage"
+
+credentials = [
+  { type = "manager", file = "~/.config/ccproxy/codex_pro.json", label = "codex_pro" },
+  { type = "manager", file = "~/.config/ccproxy/codex_plus.json", label = "codex_plus" },
+]
+
+# Example: Claude API credential pool
+# [[plugins.credential_balancer.providers]]
+# provider = "claude-api"
+# strategy = "failover"
+# manager_class = "ccproxy.plugins.oauth_claude.manager.ClaudeApiTokenManager"
+# storage_class = "ccproxy.plugins.oauth_claude.storage.ClaudeOAuthStorage"
+# credentials = [
+#   { type = "manager", file = "~/.config/ccproxy/claude_primary.json" },
+#   { type = "manager", file = "~/.config/ccproxy/claude_backup.json" },
+# ]
+
+# Example: GitHub Copilot credential pool
+# [[plugins.credential_balancer.providers]]
+# provider = "copilot"
+# manager_class = "ccproxy.plugins.copilot.manager.CopilotTokenManager"
+# storage_class = "ccproxy.plugins.copilot.oauth.storage.CopilotOAuthStorage"
+# credentials = [
+#   { type = "manager", file = "~/.config/ccproxy/copilot_account1.json" },
+#   { type = "manager", file = "~/.config/ccproxy/copilot_account2.json" },
+# ]
+
+# Reuse the balancer inside provider plugins
+# [plugins.codex]
+# auth_manager = "codex_credential_balancer"
+
+# Example: Additional plugin configuration
+# [plugins.another_plugin]
+# name = "another_plugin"
+# base_url = "https://api.example.com"
+# api_key = "your-api-key"
+
+# Claude API provider configuration with model mapping overrides
+[plugins.claude_api]
+enabled = true
+# Configure ordered model mapping rules (exact, prefix, suffix, regex)
+model_mappings = [
+  { match = "gpt-4o", target = "claude-3-7-sonnet-20250219", kind = "prefix" },
+  { match = "claude-3-5-sonnet-latest", target = "claude-3-5-sonnet-20241022" },
+]
+
+# Plain list of model dictionaries served at /claude/v1/models
+[[plugins.claude_api.models_endpoint]]
+id = "claude-3-5-sonnet-20241022"
+object = "model"
+created = 1696000000
+owned_by = "anthropic"
+root = "claude-3-5-sonnet-20241022"
+
+[[plugins.claude_api.models_endpoint]]
+id = "claude-3-5-haiku-20241022"
+object = "model"
+created = 1696000000
+owned_by = "anthropic"
+root = "claude-3-5-haiku-20241022"
+
+# Codex provider model mappings and /models override
+[plugins.codex]
+model_mappings = [
+  { match = "gpt-5-nano", target = "gpt-5" },
+  { match = "gpt-5-nano-2025-08-07", target = "gpt-5-2025-08-07" },
+]
+
+[[plugins.codex.models_endpoint]]
+id = "gpt-5"
+object = "model"
+created = 1704000000
+owned_by = "openai"
+root = "gpt-5"
+permission = []
+
+[[plugins.codex.models_endpoint]]
+id = "gpt-5-nano"
+object = "model"
+created = 1704000000
+owned_by = "openai"
+root = "gpt-5-nano"
+permission = []
+
+# DuckDB storage plugin configuration (replaces observability.duckdb_path/backends)
+[plugins.duckdb_storage]
+# database_path = "/var/lib/ccproxy/metrics.duckdb"  # Optional override
+
+# Analytics (logs API) plugin
+[plugins.analytics]
+# route_prefix = "/logs"
+
+# Metrics plugin (serves /metrics; optional Pushgateway)
+[plugins.metrics]
+# pushgateway_enabled = false
+# pushgateway_url = "http://localhost:9091"
+# pushgateway_job = "ccproxy"
+# pushgateway_push_interval = 60
+
+# Docker settings (for running Claude in containers)
+[docker]
+enabled = false
+# docker_image = "ghcr.io/anthropics/claude-code:latest"
+# docker_volumes = ["/host/data:/container/data"]
+
+# Pricing settings
+[pricing]
+update_interval_hours = 24
+cache_duration_hours = 24
+# pricing_file = "/path/to/custom/pricing.json"  # Optional: Custom pricing file

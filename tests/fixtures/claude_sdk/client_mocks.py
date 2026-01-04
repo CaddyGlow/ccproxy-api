@@ -1,6 +1,6 @@
 """Mock fixtures for Claude SDK client testing.
 
-These fixtures provide mocks for the claude_code_sdk client components
+These fixtures provide mocks for the claude_agent_sdk client components
 used in unit tests for the ClaudeSDKClient wrapper.
 """
 # mypy: disable-error-code="unreachable"
@@ -10,7 +10,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
-from claude_code_sdk import (
+from claude_agent_sdk import (
     AssistantMessage,
     CLIConnectionError,
     CLIJSONDecodeError,
@@ -23,7 +23,7 @@ from claude_code_sdk import (
 )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")  # Changed to session scope for faster tests
 def mock_sdk_client_instance() -> AsyncMock:
     """Create a mock Claude SDK client instance with standard behavior."""
     mock_client = AsyncMock()
@@ -41,7 +41,7 @@ def mock_sdk_client_instance() -> AsyncMock:
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")  # Changed to session scope for faster tests
 def mock_sdk_client_streaming() -> AsyncMock:
     """Create a mock Claude SDK client instance with streaming responses."""
     mock_client = AsyncMock()
@@ -71,7 +71,7 @@ def mock_sdk_client_streaming() -> AsyncMock:
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")  # Changed to session scope for faster tests
 def mock_sdk_client_cli_not_found() -> AsyncMock:
     """Create a mock Claude SDK client that raises CLINotFoundError."""
     mock_client = AsyncMock()
@@ -81,7 +81,7 @@ def mock_sdk_client_cli_not_found() -> AsyncMock:
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")  # Changed to session scope for faster tests
 def mock_sdk_client_cli_connection_error() -> AsyncMock:
     """Create a mock Claude SDK client that raises CLIConnectionError."""
     mock_client = AsyncMock()
@@ -89,7 +89,7 @@ def mock_sdk_client_cli_connection_error() -> AsyncMock:
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")  # Changed to session scope for faster tests
 def mock_sdk_client_process_error() -> AsyncMock:
     """Create a mock Claude SDK client that raises ProcessError."""
     mock_client = AsyncMock()
@@ -108,7 +108,7 @@ def mock_sdk_client_process_error() -> AsyncMock:
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")  # Changed to session scope for faster tests
 def mock_sdk_client_json_decode_error() -> AsyncMock:
     """Create a mock Claude SDK client that raises CLIJSONDecodeError."""
     mock_client = AsyncMock()
@@ -127,7 +127,7 @@ def mock_sdk_client_json_decode_error() -> AsyncMock:
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")  # Changed to session scope for faster tests
 def mock_sdk_client_unexpected_error() -> AsyncMock:
     """Create a mock Claude SDK client that raises unexpected error."""
     mock_client = AsyncMock()

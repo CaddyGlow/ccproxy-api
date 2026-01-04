@@ -30,7 +30,7 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: make dev-install
+        run: make dev_install
 
       - name: Run tests
         run: make ci

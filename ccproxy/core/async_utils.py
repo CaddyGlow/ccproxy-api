@@ -5,7 +5,9 @@ import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
+
+from ccproxy.core.logging import get_logger
 
 
 T = TypeVar("T")
@@ -45,7 +47,13 @@ def get_package_dir() -> Path:
             package_dir = Path(spec.origin).parent.parent.resolve()
         else:
             package_dir = Path(__file__).parent.parent.parent.resolve()
-    except Exception:
+    except (AttributeError, ImportError, ModuleNotFoundError) as e:
+        logger = get_logger(__name__)
+        logger.debug("package_dir_fallback", error=str(e), exc_info=e)
+        package_dir = Path(__file__).parent.parent.parent.resolve()
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.debug("package_dir_unexpected_error", error=str(e), exc_info=e)
         package_dir = Path(__file__).parent.parent.parent.resolve()
 
     return package_dir
@@ -100,7 +108,11 @@ async def safe_await(awaitable: Awaitable[T], timeout: float | None = None) -> T
         return await awaitable
     except TimeoutError:
         return None
-    except Exception:
+    except asyncio.CancelledError:
+        return None
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.debug("awaitable_silent_error", error=str(e), exc_info=e)
         return None
 
 
@@ -215,7 +227,11 @@ async def wait_for_condition(
                 result = await result
             if result:
                 return True
-        except Exception:
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            return False
+        except Exception as e:
+            logger = get_logger(__name__)
+            logger.debug("condition_check_error", error=str(e), exc_info=e)
             pass
 
         if asyncio.get_event_loop().time() - start_time > timeout:
@@ -254,7 +270,7 @@ async def async_cache_result(
     if cache_key in _cache:
         cached_time, cached_result = _cache[cache_key]
         if current_time - cached_time < cache_duration:
-            return cached_result  # type: ignore[no-any-return]
+            return cast(T, cached_result)
 
     # Compute and cache the result
     result = await func(*args, **kwargs)
@@ -467,10 +483,14 @@ def validate_config_with_schema(
     import tempfile
 
     # Import tomllib for Python 3.11+ or fallback to tomli
+    # Avoid name redefinition warnings by selecting a loader function.
     try:
-        import tomllib
+        import tomllib as _tomllib
+
+        toml_load = _tomllib.load
     except ImportError:
-        import tomli as tomllib  # type: ignore[no-redef]
+        _tomli = __import__("tomli")
+        toml_load = _tomli.load
 
     config_path = Path()
 
@@ -483,7 +503,7 @@ def validate_config_with_schema(
     if suffix == ".toml":
         # Read and parse TOML - let TOML parse errors bubble up
         with config_path.open("rb") as f:
-            toml_data = tomllib.load(f)
+            toml_data = toml_load(f)
 
         # Get or generate schema
         if schema_path:
@@ -528,6 +548,16 @@ def validate_config_with_schema(
                 "check-jsonschema command not found. "
                 "Install with: pip install check-jsonschema"
             ) from e
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            # Clean up temporary files in case of error
+            Path(temp_schema_path).unlink(missing_ok=True)
+            Path(temp_json_path).unlink(missing_ok=True)
+            raise ValueError(f"Schema validation subprocess error: {e}") from e
+        except (OSError, PermissionError) as e:
+            # Clean up temporary files in case of error
+            Path(temp_schema_path).unlink(missing_ok=True)
+            Path(temp_json_path).unlink(missing_ok=True)
+            raise ValueError(f"File operation error during validation: {e}") from e
         except Exception as e:
             # Clean up temporary files in case of error
             Path(temp_schema_path).unlink(missing_ok=True)
@@ -577,6 +607,14 @@ def validate_config_with_schema(
                 "check-jsonschema command not found. "
                 "Install with: pip install check-jsonschema"
             ) from e
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            if cleanup_schema:
+                Path(temp_schema_path).unlink(missing_ok=True)
+            raise ValueError(f"Schema validation subprocess error: {e}") from e
+        except (OSError, PermissionError) as e:
+            if cleanup_schema:
+                Path(temp_schema_path).unlink(missing_ok=True)
+            raise ValueError(f"File operation error during validation: {e}") from e
         except Exception as e:
             if cleanup_schema:
                 Path(temp_schema_path).unlink(missing_ok=True)
@@ -595,13 +633,8 @@ def generate_json_schema() -> dict[str, Any]:
     Returns:
         JSON Schema dictionary
 
-    Raises:
-        ImportError: If required dependencies are not available
     """
-    try:
-        from ccproxy.config.settings import Settings
-    except ImportError as e:
-        raise ImportError(f"Required dependencies not available: {e}") from e
+    from ccproxy.config.settings import Settings
 
     schema = Settings.model_json_schema()
 

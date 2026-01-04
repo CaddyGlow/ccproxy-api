@@ -1,0 +1,67 @@
+name: Python CI
+
+on:
+  push:
+    branches: [ "main", "dev", "dev/**" ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref (branch, tag, or SHA) to build'
+        required: false
+        type: string
+        default: ''
+      target_preset:
+        description: 'Target preset to build'
+        required: false
+        type: choice
+        options:
+          - all
+          - windows
+          - linux
+          - macos
+        default: 'all'
+      skip_tests:
+        description: 'Skip tests'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    if: ${{ !inputs.skip_tests && github.event_name != 'push' || github.ref_type != 'tag' }}
+    uses: CaddyGlow/homebrew-packages/.github/workflows/python-test.yml@main
+    with:
+      ref: ${{ inputs.ref || '' }}
+      python_version: '3.11'
+
+  build:
+    needs: [test]
+    if: |
+      always() &&
+      !cancelled() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+    uses: CaddyGlow/homebrew-packages/.github/workflows/python-build.yml@main
+    with:
+      ref: ${{ inputs.ref || '' }}
+      binary_name: ccproxy
+      entry_point: 'ccproxy.cli.main:main'
+      assets: '["README.md", "LICENSE"]'
+      target_preset: ${{ inputs.target_preset || 'all' }}
+      python_version: '3.11'
+
+  release:
+    needs: [build]
+    if: |
+      always() &&
+      !cancelled() &&
+      needs.build.result == 'success' &&
+      (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.ref, 'v')))
+    uses: CaddyGlow/homebrew-packages/.github/workflows/python-release.yml@main
+    with:
+      ref: ${{ inputs.ref || '' }}

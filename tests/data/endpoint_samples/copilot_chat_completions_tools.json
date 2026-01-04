@@ -1,0 +1,183 @@
+{
+  "endpoint": "/copilot/v1/chat/completions",
+  "metadata": {
+    "error": null,
+    "success": true
+  },
+  "model": "gpt-4o",
+  "name": "copilot_chat_completions_tools",
+  "request": {
+    "payload": {
+      "max_tokens": 1000,
+      "messages": [
+        {
+          "content": "What's the weather like in New York, and how far is it from Los Angeles?",
+          "role": "user"
+        }
+      ],
+      "model": "gpt-4o",
+      "stream": false,
+      "tools": [
+        {
+          "function": {
+            "description": "Get current weather information for a specific location",
+            "name": "get_weather",
+            "parameters": {
+              "properties": {
+                "location": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "location"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "Calculate the distance between two geographic coordinates",
+            "name": "calculate_distance",
+            "parameters": {
+              "properties": {
+                "lat1": {
+                  "type": "string"
+                },
+                "lat2": {
+                  "type": "string"
+                },
+                "lon1": {
+                  "type": "string"
+                },
+                "lon2": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "lat1",
+                "lon1",
+                "lat2",
+                "lon2"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "Perform basic arithmetic calculations",
+            "name": "calculate",
+            "parameters": {
+              "properties": {
+                "expression": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "expression"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        }
+      ]
+    },
+    "request_key": "openai_tools_non_stream"
+  },
+  "response": {
+    "body": {
+      "choices": [
+        {
+          "content_filter_results": {},
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "padding": "abcdefghijkl",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"location\": \"New York\"}",
+                  "name": "get_weather"
+                },
+                "id": "call_MCjAK4hvvN1lEvz5iuTQyoxs",
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{\"lat1\": \"40.7128\", \"lon1\": \"-74.0060\", \"lat2\": \"34.0522\", \"lon2\": \"-118.2437\"}",
+                  "name": "calculate_distance"
+                },
+                "id": "call_IDxuDRvR43tqcpf2C7gVH0Ms",
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 1758750873,
+      "id": "chatcmpl-CJRjURu7knsXZs2W7gUMR95q2M8lM",
+      "model": "gpt-4o-2024-11-20",
+      "prompt_filter_results": [
+        {
+          "content_filter_results": {
+            "hate": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "self_harm": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "sexual": {
+              "filtered": false,
+              "severity": "safe"
+            },
+            "violence": {
+              "filtered": false,
+              "severity": "safe"
+            }
+          },
+          "prompt_index": 0
+        }
+      ],
+      "system_fingerprint": "fp_3eed281ddb",
+      "usage": {
+        "completion_tokens": 76,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 123,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 199
+      }
+    },
+    "headers": {
+      "content-security-policy": "default-src 'none'; sandbox",
+      "content-type": "application/json",
+      "date": "Wed, 24 Sep 2025 21:54:33 GMT",
+      "server": "ccproxy",
+      "strict-transport-security": "max-age=31536000",
+      "transfer-encoding": "chunked",
+      "x-github-backend": "Kubernetes",
+      "x-github-request-id": "91C0:D4C3B:EF502:12B66E:68D46898",
+      "x-quota-snapshot-chat": "ent=-1&ov=0.0&ovPerm=false&rem=100.0&rst=2025-10-01T00%3A00%3A00Z",
+      "x-quota-snapshot-completions": "ent=-1&ov=0.0&ovPerm=false&rem=100.0&rst=2025-10-01T00%3A00%3A00Z",
+      "x-quota-snapshot-premium_interactions": "ent=300&ov=0.0&ovPerm=false&rem=88.7&rst=2025-10-01T00%3A00%3A00Z",
+      "x-request-id": "14d61d5f"
+    },
+    "mode": "json",
+    "status_code": 200
+  },
+  "stream": false
+}

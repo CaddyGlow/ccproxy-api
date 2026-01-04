@@ -1,0 +1,76 @@
+{
+  "endpoint": "/claude/v1/messages",
+  "metadata": {
+    "error": null,
+    "success": true
+  },
+  "model": "claude-sonnet-4-20250514",
+  "name": "claude_messages",
+  "request": {
+    "payload": {
+      "max_tokens": 1000,
+      "messages": [
+        {
+          "content": "Hello",
+          "role": "user"
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "stream": false
+    },
+    "request_key": "anthropic_non_stream"
+  },
+  "response": {
+    "body": {
+      "content": [
+        {
+          "text": "Hello! It's nice to meet you. I'm Claude, an AI assistant created by Anthropic. How are you doing today? Is there anything I can help you with?",
+          "type": "text"
+        }
+      ],
+      "id": "msg_017YjcXvqHCud4hryE8ztEbg",
+      "model": "claude-sonnet-4-20250514",
+      "role": "assistant",
+      "stop_reason": "end_turn",
+      "stop_sequence": null,
+      "type": "message",
+      "usage": {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 40,
+        "service_tier": "standard"
+      }
+    },
+    "headers": {
+      "anthropic-organization-id": "0112d741-46c5-4429-8da8-1addcb04278f",
+      "anthropic-ratelimit-unified-5h-reset": "1759010400",
+      "anthropic-ratelimit-unified-5h-status": "allowed",
+      "anthropic-ratelimit-unified-fallback-percentage": "0.2",
+      "anthropic-ratelimit-unified-overage-disabled-reason": "overage_not_provisioned",
+      "anthropic-ratelimit-unified-representative-claim": "five_hour",
+      "anthropic-ratelimit-unified-reset": "1759010400",
+      "anthropic-ratelimit-unified-status": "allowed",
+      "cf-cache-status": "DYNAMIC",
+      "cf-ray": "985dc89f9aeee1b2-MRS",
+      "connection": "keep-alive",
+      "content-type": "application/json",
+      "date": "Sat, 27 Sep 2025 20:34:48 GMT",
+      "request-id": "req_011CTZYZU8kLGUKu6UoFkSue",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+      "transfer-encoding": "chunked",
+      "via": "1.1 google",
+      "x-envoy-upstream-service-time": "1660",
+      "x-request-id": "c704e4b4",
+      "x-robots-tag": "none"
+    },
+    "mode": "json",
+    "status_code": 200
+  },
+  "stream": false
+}

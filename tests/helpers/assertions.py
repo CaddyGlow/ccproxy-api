@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 
-def assert_openai_response_format(data: dict[str, Any]) -> None:
+def assert_openai_responses_format(data: dict[str, Any]) -> None:
     """Assert that response follows OpenAI API format."""
     required_fields = ["id", "object", "created", "model", "choices", "usage"]
     for field in required_fields:
@@ -101,30 +101,31 @@ def assert_sse_format_compliance(chunks: list[str]) -> None:
 
 
 def assert_codex_response_format(data: dict[str, Any]) -> None:
-    """Assert that response follows OpenAI Codex API format."""
-    required_fields = ["id", "object", "created", "model", "choices", "usage"]
+    """Assert that response follows updated OpenAI Responses API format."""
+    required_fields = [
+        "id",
+        "object",
+        "created_at",
+        "model",
+        "status",
+        "output",
+        "parallel_tool_calls",
+    ]
     for field in required_fields:
         assert field in data, f"Missing required field: {field}"
 
-    # Verify types
-    assert isinstance(data["id"], str)
-    assert isinstance(data["object"], str)
-    assert isinstance(data["created"], int)
-    assert isinstance(data["model"], str)
-    assert isinstance(data["choices"], list)
-    assert isinstance(data["usage"], dict)
+    assert data["object"] == "response"
+    assert isinstance(data["created_at"], int)
+    assert isinstance(data["output"], list)
+    assert isinstance(data["parallel_tool_calls"], bool)
 
-    # Verify choice structure
-    if data["choices"]:
-        choice = data["choices"][0]
-        assert "index" in choice
-        assert "message" in choice
-        assert "finish_reason" in choice
-
-        # Verify message structure
-        message = choice["message"]
-        assert message["role"] == "assistant"
-        assert "content" in message
+    if data["output"]:
+        item = data["output"][0]
+        for field in ("type", "id", "status", "role", "content"):
+            assert field in item, f"Missing output field: {field}"
+        assert item["type"] == "message"
+        assert item["role"] == "assistant"
+        assert isinstance(item["content"], list)
 
 
 def assert_health_response_format(

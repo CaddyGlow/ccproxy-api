@@ -1,0 +1,430 @@
+{
+  "endpoint": "/claude/v1/messages",
+  "metadata": {
+    "error": null,
+    "success": true
+  },
+  "model": "claude-sonnet-4-20250514",
+  "name": "claude_messages_tools_stream",
+  "request": {
+    "payload": {
+      "max_tokens": 1000,
+      "messages": [
+        {
+          "content": "What's the weather like in New York, and how far is it from Los Angeles?",
+          "role": "user"
+        }
+      ],
+      "model": "claude-sonnet-4-20250514",
+      "stream": true,
+      "tools": [
+        {
+          "description": "Get current weather information for a specific location",
+          "input_schema": {
+            "properties": {
+              "location": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "location"
+            ],
+            "type": "object"
+          },
+          "name": "get_weather",
+          "type": "custom"
+        },
+        {
+          "description": "Calculate the distance between two geographic coordinates",
+          "input_schema": {
+            "properties": {
+              "lat1": {
+                "type": "string"
+              },
+              "lat2": {
+                "type": "string"
+              },
+              "lon1": {
+                "type": "string"
+              },
+              "lon2": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "lat1",
+              "lon1",
+              "lat2",
+              "lon2"
+            ],
+            "type": "object"
+          },
+          "name": "calculate_distance",
+          "type": "custom"
+        },
+        {
+          "description": "Perform basic arithmetic calculations",
+          "input_schema": {
+            "properties": {
+              "expression": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "expression"
+            ],
+            "type": "object"
+          },
+          "name": "calculate",
+          "type": "custom"
+        }
+      ]
+    },
+    "request_key": "anthropic_tools_stream"
+  },
+  "response": {
+    "events": [
+      {
+        "data": "{\"type\":\"message_start\",\"message\":{\"id\":\"msg_019Trf4siBq62t15mMqx89un\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-20250514\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":572,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"cache_creation\":{\"ephemeral_5m_input_tokens\":0,\"ephemeral_1h_input_tokens\":0},\"output_tokens\":5,\"service_tier\":\"standard\"}}}",
+        "event": "message_start",
+        "json": {
+          "message": {
+            "content": [],
+            "id": "msg_019Trf4siBq62t15mMqx89un",
+            "model": "claude-sonnet-4-20250514",
+            "role": "assistant",
+            "stop_reason": null,
+            "stop_sequence": null,
+            "type": "message",
+            "usage": {
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "input_tokens": 572,
+              "output_tokens": 5,
+              "service_tier": "standard"
+            }
+          },
+          "type": "message_start"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}",
+        "event": "content_block_start",
+        "json": {
+          "content_block": {
+            "text": "",
+            "type": "text"
+          },
+          "index": 0,
+          "type": "content_block_start"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"I'll help you get\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "text": "I'll help you get",
+            "type": "text_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" the weather in New York and calculate the distance to\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "text": " the weather in New York and calculate the distance to",
+            "type": "text_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\": \"ping\"}",
+        "event": "ping",
+        "json": {
+          "type": "ping"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" Los Angeles. Let me fetch this information for you.\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "text": " Los Angeles. Let me fetch this information for you.",
+            "type": "text_delta"
+          },
+          "index": 0,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_stop\",\"index\":0}",
+        "event": "content_block_stop",
+        "json": {
+          "index": 0,
+          "type": "content_block_stop"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01V8FdsLpokGb6tJ3okwkSDe\",\"name\":\"get_weather\",\"input\":{}}}",
+        "event": "content_block_start",
+        "json": {
+          "content_block": {
+            "id": "toolu_01V8FdsLpokGb6tJ3okwkSDe",
+            "input": {},
+            "name": "get_weather",
+            "type": "tool_use"
+          },
+          "index": 1,
+          "type": "content_block_start"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "",
+            "type": "input_json_delta"
+          },
+          "index": 1,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"location\\\": \\\"New York\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "{\"location\": \"New York",
+            "type": "input_json_delta"
+          },
+          "index": 1,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"}\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "\"}",
+            "type": "input_json_delta"
+          },
+          "index": 1,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_stop\",\"index\":1}",
+        "event": "content_block_stop",
+        "json": {
+          "index": 1,
+          "type": "content_block_stop"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_01LaXuzSn9P2JiYc1U99SZRv\",\"name\":\"calculate_distance\",\"input\":{}}}",
+        "event": "content_block_start",
+        "json": {
+          "content_block": {
+            "id": "toolu_01LaXuzSn9P2JiYc1U99SZRv",
+            "input": {},
+            "name": "calculate_distance",
+            "type": "tool_use"
+          },
+          "index": 2,
+          "type": "content_block_start"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "",
+            "type": "input_json_delta"
+          },
+          "index": 2,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"lat1\\\": \\\"40.7128\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "{\"lat1\": \"40.7128",
+            "type": "input_json_delta"
+          },
+          "index": 2,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"lon1\\\": \\\"-74.0060\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "\", \"lon1\": \"-74.0060",
+            "type": "input_json_delta"
+          },
+          "index": 2,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"lat2\\\": \\\"34.0522\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "\", \"lat2\": \"34.0522",
+            "type": "input_json_delta"
+          },
+          "index": 2,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\", \\\"lon2\\\": \\\"-118.2437\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "\", \"lon2\": \"-118.2437",
+            "type": "input_json_delta"
+          },
+          "index": 2,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"}\"}}",
+        "event": "content_block_delta",
+        "json": {
+          "delta": {
+            "partial_json": "\"}",
+            "type": "input_json_delta"
+          },
+          "index": 2,
+          "type": "content_block_delta"
+        }
+      },
+      {
+        "data": "{\"type\":\"content_block_stop\",\"index\":2}",
+        "event": "content_block_stop",
+        "json": {
+          "index": 2,
+          "type": "content_block_stop"
+        }
+      },
+      {
+        "data": "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"input_tokens\":572,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":186}}",
+        "event": "message_delta",
+        "json": {
+          "delta": {
+            "stop_reason": "tool_use",
+            "stop_sequence": null
+          },
+          "type": "message_delta",
+          "usage": {
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "input_tokens": 572,
+            "output_tokens": 186
+          }
+        }
+      },
+      {
+        "data": "{\"type\":\"message_stop\"}",
+        "event": "message_stop",
+        "json": {
+          "type": "message_stop"
+        }
+      },
+      {
+        "data": "[DONE]",
+        "done": true
+      }
+    ],
+    "headers": {
+      "anthropic-organization-id": "0112d741-46c5-4429-8da8-1addcb04278f",
+      "anthropic-ratelimit-unified-5h-reset": "1758765600",
+      "anthropic-ratelimit-unified-5h-status": "allowed",
+      "anthropic-ratelimit-unified-fallback-percentage": "0.2",
+      "anthropic-ratelimit-unified-overage-disabled-reason": "overage_not_provisioned",
+      "anthropic-ratelimit-unified-representative-claim": "five_hour",
+      "anthropic-ratelimit-unified-reset": "1758765600",
+      "anthropic-ratelimit-unified-status": "allowed",
+      "cache-control": "no-cache",
+      "cf-cache-status": "DYNAMIC",
+      "cf-ray": "984587776e0a12ae-MRS",
+      "content-type": "text/event-stream; charset=utf-8",
+      "date": "Wed, 24 Sep 2025 21:56:01 GMT",
+      "request-id": "req_011CTTyKviQkabxzsW4aNvWu",
+      "server": "cloudflare",
+      "strict-transport-security": "max-age=31536000; includeSubDomains; preload",
+      "transfer-encoding": "chunked",
+      "via": "1.1 google",
+      "x-envoy-upstream-service-time": "2358",
+      "x-request-id": "945e4edf",
+      "x-robots-tag": "none"
+    },
+    "mode": "stream",
+    "status_code": 200,
+    "summary": {
+      "aggregated_response": {
+        "content": [
+          {
+            "text": "I'll help you get the weather in New York and calculate the distance to Los Angeles. Let me fetch this information for you.",
+            "type": "text"
+          },
+          {
+            "id": "toolu_01V8FdsLpokGb6tJ3okwkSDe",
+            "input": {
+              "location": "New York"
+            },
+            "name": "get_weather",
+            "type": "tool_use"
+          },
+          {
+            "id": "toolu_01LaXuzSn9P2JiYc1U99SZRv",
+            "input": {
+              "lat1": "40.7128",
+              "lat2": "34.0522",
+              "lon1": "-74.0060",
+              "lon2": "-118.2437"
+            },
+            "name": "calculate_distance",
+            "type": "tool_use"
+          }
+        ],
+        "id": "msg_019Trf4siBq62t15mMqx89un",
+        "model": "claude-sonnet-4-20250514",
+        "role": "assistant",
+        "stop_reason": "tool_use",
+        "text": "I'll help you get the weather in New York and calculate the distance to Los Angeles. Let me fetch this information for you.",
+        "type": "message",
+        "usage": {
+          "cache_read_input_tokens": 0,
+          "input_tokens": 572,
+          "output_tokens": 186
+        }
+      },
+      "chunk_model_class": "MessageStartEvent",
+      "processed_events": 22
+    }
+  },
+  "stream": true
+}

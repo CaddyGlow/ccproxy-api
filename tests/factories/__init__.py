@@ -5,20 +5,14 @@ in test fixtures by allowing composition of different configurations.
 """
 
 from .fastapi_factory import (
-    AppFactoryConfig,
     FastAPIAppFactory,
     FastAPIClientFactory,
-    create_auth_app,
-    create_mock_claude_app,
-    create_unavailable_claude_app,
+    create_test_app,
 )
 
 
 __all__ = [
-    "AppFactoryConfig",
     "FastAPIAppFactory",
     "FastAPIClientFactory",
-    "create_auth_app",
-    "create_mock_claude_app",
-    "create_unavailable_claude_app",
+    "create_test_app",
 ]

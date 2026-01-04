@@ -1,208 +1,107 @@
-"""Detection models for Claude Code CLI headers and system prompt extraction."""
+"""Shared helper dataclasses for plugin detection caches."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from typing import Annotated, Any
+from collections.abc import ItemsView, Iterable
+from copy import deepcopy
+from dataclasses import dataclass, field
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
 
+@dataclass(slots=True)
+class DetectedHeaders:
+    """Normalized, lowercase HTTP headers captured during CLI detection."""
 
-class ClaudeCodeHeaders(BaseModel):
-    """Pydantic model for Claude CLI headers extraction with field aliases."""
+    values: dict[str, str] = field(default_factory=dict)
 
-    anthropic_beta: str = Field(
-        alias="anthropic-beta",
-        description="Anthropic beta features",
-        default="claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-    )
-    anthropic_version: str = Field(
-        alias="anthropic-version",
-        description="Anthropic API version",
-        default="2023-06-01",
-    )
-    anthropic_dangerous_direct_browser_access: str = Field(
-        alias="anthropic-dangerous-direct-browser-access",
-        description="Browser access flag",
-        default="true",
-    )
-    x_app: str = Field(
-        alias="x-app", description="Application identifier", default="cli"
-    )
-    user_agent: str = Field(
-        alias="user-agent",
-        description="User agent string",
-        default="claude-cli/1.0.60 (external, cli)",
-    )
-    x_stainless_lang: str = Field(
-        alias="x-stainless-lang", description="SDK language", default="js"
-    )
-    x_stainless_retry_count: str = Field(
-        alias="x-stainless-retry-count", description="Retry count", default="0"
-    )
-    x_stainless_timeout: str = Field(
-        alias="x-stainless-timeout", description="Request timeout", default="60"
-    )
-    x_stainless_package_version: str = Field(
-        alias="x-stainless-package-version",
-        description="Package version",
-        default="0.55.1",
-    )
-    x_stainless_os: str = Field(
-        alias="x-stainless-os", description="Operating system", default="Linux"
-    )
-    x_stainless_arch: str = Field(
-        alias="x-stainless-arch", description="Architecture", default="x64"
-    )
-    x_stainless_runtime: str = Field(
-        alias="x-stainless-runtime", description="Runtime", default="node"
-    )
-    x_stainless_runtime_version: str = Field(
-        alias="x-stainless-runtime-version",
-        description="Runtime version",
-        default="v24.3.0",
-    )
+    def __post_init__(self) -> None:
+        normalized: dict[str, str] = {}
+        for key, raw_value in (self.values or {}).items():
+            if key is None:
+                continue
+            normalized_key = str(key).lower()
+            normalized[normalized_key] = "" if raw_value is None else str(raw_value)
+        self.values = normalized
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    def as_dict(self) -> dict[str, str]:
+        """Return a copy of the detected headers as a plain dict."""
 
-    def to_headers_dict(self) -> dict[str, str]:
-        """Convert to headers dictionary for HTTP forwarding with proper case."""
-        headers = {}
+        return dict(self.values)
 
-        # Map field names to proper HTTP header names
-        header_mapping = {
-            "anthropic_beta": "anthropic-beta",
-            "anthropic_version": "anthropic-version",
-            "anthropic_dangerous_direct_browser_access": "anthropic-dangerous-direct-browser-access",
-            "x_app": "x-app",
-            "user_agent": "User-Agent",
-            "x_stainless_lang": "X-Stainless-Lang",
-            "x_stainless_retry_count": "X-Stainless-Retry-Count",
-            "x_stainless_timeout": "X-Stainless-Timeout",
-            "x_stainless_package_version": "X-Stainless-Package-Version",
-            "x_stainless_os": "X-Stainless-OS",
-            "x_stainless_arch": "X-Stainless-Arch",
-            "x_stainless_runtime": "X-Stainless-Runtime",
-            "x_stainless_runtime_version": "X-Stainless-Runtime-Version",
+    def filtered(
+        self,
+        ignores: Iterable[str] | None = None,
+        redacted: Iterable[str] | None = None,
+    ) -> dict[str, str]:
+        """Return headers filtered for safe forwarding."""
+
+        ignore_set = {item.lower() for item in ignores or ()}
+        redacted_set = {item.lower() for item in redacted or ()}
+        return {
+            key: value
+            for key, value in self.values.items()
+            if value and key not in ignore_set and key not in redacted_set
         }
 
-        for field_name, header_name in header_mapping.items():
-            value = getattr(self, field_name, None)
-            if value is not None:
-                headers[header_name] = value
+    def get(self, key: str, default: str | None = None) -> str | None:
+        """Lookup a header by key (case-insensitive)."""
 
-        return headers
+        return self.values.get(key.lower(), default)
 
+    def items(self) -> ItemsView[str, str]:
+        """Iterate over header key/value pairs."""
 
-class SystemPromptData(BaseModel):
-    """Extracted system prompt information."""
+        return self.values.items()
 
-    system_field: Annotated[
-        str | list[dict[str, Any]],
-        Field(
-            description="Complete system field as detected from Claude CLI, preserving exact structure including type, text, and cache_control"
-        ),
-    ]
-
-    model_config = ConfigDict(extra="forbid")
+    def __bool__(self) -> bool:
+        return bool(self.values)
 
 
-class ClaudeCacheData(BaseModel):
-    """Cached Claude CLI detection data with version tracking."""
+@dataclass(slots=True)
+class DetectedPrompts:
+    """Structured prompt metadata extracted from CLI detection payloads."""
 
-    claude_version: Annotated[str, Field(description="Claude CLI version")]
-    headers: Annotated[ClaudeCodeHeaders, Field(description="Extracted headers")]
-    system_prompt: Annotated[
-        SystemPromptData, Field(description="Extracted system prompt")
-    ]
-    cached_at: Annotated[
-        datetime,
-        Field(
-            description="Cache timestamp",
-            default_factory=lambda: datetime.now(UTC),
-        ),
-    ] = None  # type: ignore # Pydantic handles this via default_factory
+    instructions: str | None = None
+    system: Any | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
 
-    model_config = ConfigDict(extra="forbid")
+    @classmethod
+    def from_body(cls, body: Any | None) -> DetectedPrompts:
+        """Build a DetectedPrompts instance from a captured request body."""
 
+        if not isinstance(body, dict):
+            return cls(raw={} if body is None else {"__raw__": body})
 
-class CodexHeaders(BaseModel):
-    """Pydantic model for Codex CLI headers extraction with field aliases."""
+        body_copy = deepcopy(body)
 
-    session_id: str = Field(
-        alias="session_id",
-        description="Codex session identifier",
-        default="",
-    )
-    originator: str = Field(
-        description="Codex originator identifier",
-        default="codex_cli_rs",
-    )
-    openai_beta: str = Field(
-        alias="openai-beta",
-        description="OpenAI beta features",
-        default="responses=experimental",
-    )
-    version: str = Field(
-        description="Codex CLI version",
-        default="0.21.0",
-    )
-    chatgpt_account_id: str = Field(
-        alias="chatgpt-account-id",
-        description="ChatGPT account identifier",
-        default="",
-    )
+        instructions = body_copy.get("instructions")
+        if not isinstance(instructions, str) or not instructions.strip():
+            instructions = None
 
-    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+        system_value = body_copy.get("system")
 
-    def to_headers_dict(self) -> dict[str, str]:
-        """Convert to headers dictionary for HTTP forwarding with proper case."""
-        headers = {}
+        return cls(instructions=instructions, system=system_value, raw=body_copy)
 
-        # Map field names to proper HTTP header names
-        header_mapping = {
-            "session_id": "session_id",
-            "originator": "originator",
-            "openai_beta": "openai-beta",
-            "version": "version",
-            "chatgpt_account_id": "chatgpt-account-id",
-        }
+    def instructions_payload(self) -> dict[str, Any]:
+        """Return a payload suitable for injecting Codex-style instructions."""
 
-        for field_name, header_name in header_mapping.items():
-            value = getattr(self, field_name, None)
-            if value is not None and value != "":
-                headers[header_name] = value
+        if self.instructions:
+            return {"instructions": self.instructions}
+        return {}
 
-        return headers
+    def system_payload(self, mode: str = "full") -> dict[str, Any]:
+        """Return anthropic-style system data respecting the requested mode."""
 
+        if self.system is None or mode == "none":
+            return {}
 
-class CodexInstructionsData(BaseModel):
-    """Extracted Codex instructions information."""
+        if mode == "minimal" and isinstance(self.system, list):
+            return {"system": self.system[:1]} if self.system else {}
 
-    instructions_field: Annotated[
-        str,
-        Field(
-            description="Complete instructions field as detected from Codex CLI, preserving exact text content"
-        ),
-    ]
+        return {"system": self.system}
 
-    model_config = ConfigDict(extra="forbid")
+    def has_system(self) -> bool:
+        return bool(self.system)
 
-
-class CodexCacheData(BaseModel):
-    """Cached Codex CLI detection data with version tracking."""
-
-    codex_version: Annotated[str, Field(description="Codex CLI version")]
-    headers: Annotated[CodexHeaders, Field(description="Extracted headers")]
-    instructions: Annotated[
-        CodexInstructionsData, Field(description="Extracted instructions")
-    ]
-    cached_at: Annotated[
-        datetime,
-        Field(
-            description="Cache timestamp",
-            default_factory=lambda: datetime.now(UTC),
-        ),
-    ] = None  # type: ignore # Pydantic handles this via default_factory
-
-    model_config = ConfigDict(extra="forbid")
+    def has_instructions(self) -> bool:
+        return bool(self.instructions)

@@ -1,337 +1,236 @@
 # CCProxy API Server
 
-`ccproxy` is a local reverse proxy server for Anthropic Claude LLM at `api.anthropic.com/v1/messages`. It allows you to use your existing Claude Max subscription to interact with the Anthropic API, bypassing the need for separate API key billing.
+`ccproxy` is a local reverse proxy server that provides unified access to multiple AI providers through a plugin-based architecture. It supports Anthropic Claude and OpenAI Codex through dedicated provider plugins, allowing you to use your existing subscriptions without separate API key billing.
 
-The server provides two primary modes of operation:
-*   **SDK Mode (`/sdk`):** Routes requests through the local `claude-code-sdk`. This enables access to tools configured in your Claude environment and includes an integrated MCP (Model Context Protocol) server for permission management.
-*   **API Mode (`/api`):** Acts as a direct reverse proxy, injecting the necessary authentication headers. This provides full access to the underlying API features and model settings.
+## Architecture
 
-It includes a translation layer to support both Anthropic and OpenAI-compatible API formats for requests and responses, including streaming.
+CCProxy uses a modern plugin system that provides:
+
+- **Provider Plugins**: Handle specific AI providers (Claude SDK, Claude API, Codex)
+- **System Plugins**: Add functionality like pricing, logging, monitoring, and permissions
+- **Unified API**: Consistent interface across all providers
+- **Format Translation**: Seamless conversion between Anthropic and OpenAI formats
+
+## Provider Plugins
+
+The server provides access through different provider plugins:
+
+### Claude SDK Plugin (`/claude/sdk`)
+Routes requests through the local `claude-code-sdk`. This enables access to tools configured in your Claude environment and includes MCP (Model Context Protocol) integration.
+
+**Endpoints:**
+- `POST /claude/sdk/v1/messages` - Anthropic messages API
+- `POST /claude/sdk/v1/chat/completions` - OpenAI chat completions
+- `POST /claude/sdk/{session_id}/v1/messages` - Session-based messages
+- `POST /claude/sdk/{session_id}/v1/chat/completions` - Session-based completions
+
+### Claude API Plugin (`/claude`)
+Acts as a direct reverse proxy to `api.anthropic.com`, injecting the necessary authentication headers. This provides full access to the underlying API features and model settings.
+
+**Endpoints:**
+- `POST /claude/v1/messages` - Anthropic messages API
+- `POST /claude/v1/chat/completions` - OpenAI chat completions
+- `POST /claude/v1/responses` - OpenAI Responses API (via adapters)
+- `POST /claude/{session_id}/v1/responses` - Session-based Responses API
+- `GET /claude/v1/models` - List available models
+
+### Codex Plugin (`/codex`)
+Provides access to OpenAI's APIs (Responses and Chat Completions) through OAuth2 PKCE.
+
+**Endpoints:**
+- `POST /codex/v1/responses` - OpenAI Responses API
+- `POST /codex/{session_id}/v1/responses` - Session-based Responses
+- `POST /codex/v1/chat/completions` - OpenAI Chat Completions
+- `POST /codex/{session_id}/v1/chat/completions` - Session-based Chat Completions
+- `GET /codex/v1/models` - List available models
+- `POST /codex/v1/messages` - Anthropic messages (converted via adapters)
+- `POST /codex/{session_id}/v1/messages` - Session-based Anthropic messages
+
+All plugins support both Anthropic and OpenAI-compatible API formats for requests and responses, including streaming.
 
 ## Installation
 
 ```bash
-# The official claude-code CLI is required for SDK mode
-npm install -g @anthropic-ai/claude-code
-
-# run it with uv
-uvx ccproxy-api
-
-# run it with pipx
-pipx run ccproxy-api
-
-# install with uv
+# Install with uv (recommended)
 uv tool install ccproxy-api
 
-# Install ccproxy with pip
+# Or with pipx
 pipx install ccproxy-api
+
+# For development version
+uv tool install git+https://github.com/caddyglow/ccproxy-api.git@dev
 
 # Optional: Enable shell completion
 eval "$(ccproxy --show-completion zsh)"  # For zsh
 eval "$(ccproxy --show-completion bash)" # For bash
 ```
 
-
-For dev version replace `ccproxy-api` with `git+https://github.com/caddyglow/ccproxy-api.git@dev`
+**Prerequisites:**
+- Python 3.11+
+- Claude Code SDK (for SDK mode): `npm install -g @anthropic-ai/claude-code`
 
 ## Authentication
 
-The proxy uses two different authentication mechanisms depending on the mode.
+Each provider plugin has its own authentication mechanism:
 
-1.  **Claude CLI (`sdk` mode):**
-    This mode relies on the authentication handled by the `claude-code-sdk`.
-    ```bash
-    claude /login
-    ```
+### Claude SDK Plugin
+Relies on the authentication handled by the `claude-code-sdk`:
+```bash
+claude /login
+# Or for long-lived tokens:
+claude setup-token
+```
 
-    It's also possible now to get a long live token to avoid renewing issues
-    using
-    ```sh
-    ```bash
-    claude setup-token`
+### Claude API Plugin
+Uses OAuth2 flow to obtain credentials for direct API access:
+```bash
+ccproxy auth login
+```
 
-2.  **ccproxy (`api` mode):**
-    This mode uses its own OAuth2 flow to obtain credentials for direct API access.
-    ```bash
-    ccproxy auth login
-    ```
+### Codex Plugin
+Uses OpenAI OAuth2 PKCE flow for Codex access:
+```bash
+ccproxy auth login-openai
+```
 
-    If you are already connected with Claude CLI the credentials should be found automatically
-
-You can check the status of these credentials with `ccproxy auth validate` and `ccproxy auth info`.
-
-Warning is show on start up if no credentials are setup.
+Check authentication status:
+```bash
+ccproxy auth status  # Check all providers
+```
 
 ## Usage
 
-### Running the Server
+### Starting the Server
 
 ```bash
-# Start the proxy server
-ccproxy
+# Start the proxy server (default port 8000)
+ccproxy serve
+
+# With custom port
+ccproxy serve --port 8080
+
+# Development mode with reload
+ccproxy serve --reload
+
+# With debug logging
+ccproxy serve --log-level debug
+
+# Enable or disable plugins at startup
+ccproxy serve --enable-plugin metrics --disable-plugin docker
 ```
+
 The server will start on `http://127.0.0.1:8000` by default.
 
 ### Client Configuration
 
-Point your existing tools and applications to the local proxy instance by setting the appropriate environment variables. A dummy API key is required by most client libraries but is not used by the proxy itself.
+Point your existing tools and applications to the local proxy instance. Most client libraries require an API key (use any dummy value like "sk-dummy").
 
 **For OpenAI-compatible clients:**
 ```bash
-# For SDK mode
-export OPENAI_BASE_URL="http://localhost:8000/sdk/v1"
-# For API mode
-export OPENAI_BASE_URL="http://localhost:8000/api/v1"
-
-export OPENAI_API_KEY="dummy-key"
+export OPENAI_API_KEY="sk-dummy"
+export OPENAI_BASE_URL="http://localhost:8000/claude/sdk/v1"  # For Claude SDK
+# Or
+export OPENAI_BASE_URL="http://localhost:8000/claude/v1"      # For Claude API
+# Or
+export OPENAI_BASE_URL="http://localhost:8000/codex/v1"       # For Codex
 ```
 
-**For Anthropic-compatible clients:**
+**For Anthropic clients:**
 ```bash
-# For SDK mode
-export ANTHROPIC_BASE_URL="http://localhost:8000/sdk"
-# For API mode
-export ANTHROPIC_BASE_URL="http://localhost:8000/api"
-
-export ANTHROPIC_API_KEY="dummy-key"
+export ANTHROPIC_API_KEY="sk-dummy"
+export ANTHROPIC_BASE_URL="http://localhost:8000/claude/sdk"  # For Claude SDK
+# Or
+export ANTHROPIC_BASE_URL="http://localhost:8000/claude"      # For Claude API
+# Optional (via adapters)
+# export ANTHROPIC_BASE_URL="http://localhost:8000/codex"
 ```
 
+## System Plugins
 
-## MCP Server Integration & Permission System
+### Pricing Plugin
+Tracks token usage and calculates costs based on current model pricing.
 
-In SDK mode, CCProxy automatically configures an MCP (Model Context Protocol) server that provides permission checking tools for Claude Code. This enables interactive permission management for tool execution.
+### Permissions Plugin  
+Manages MCP (Model Context Protocol) permissions for tool access control.
 
-### Permission Management
-
-**Starting the Permission Handler:**
-```bash
-# In a separate terminal, start the permission handler
-ccproxy permission-handler
-
-# Or with custom settings
-ccproxy permission-handler --host 127.0.0.1 --port 8000
-```
-
-The permission handler provides:
-- **Real-time Permission Requests**: Streams permission requests via Server-Sent Events (SSE)
-- **Interactive Approval/Denial**: Command-line interface for managing tool permissions
-- **Automatic MCP Integration**: Works seamlessly with Claude Code SDK tools
-
-**Working Directory Control:**
-Control which project the Claude SDK API can access using the `--cwd` flag:
-```bash
-# Set working directory for Claude SDK
-ccproxy --claude-code-options-cwd /path/to/your/project
-
-# Example with permission bypass and formatted output
-ccproxy --claude-code-options-cwd /tmp/tmp.AZyCo5a42N \
-        --claude-code-options-permission-mode bypassPermissions \
-        --claude-sdk-message-mode formatted
-
-# Alternative: Change to project directory and start ccproxy
-cd /path/to/your/project
-ccproxy
-```
-
-### Claude SDK Message Formatting
-
-CCProxy supports flexible message formatting through the `sdk_message_mode` configuration:
-
-- **`forward`** (default): Preserves original Claude SDK content blocks with full metadata
-- **`formatted`**: Converts content to XML tags with pretty-printed JSON data
-- **`ignore`**: Filters out Claude SDK-specific content entirely
-
-Configure via environment variables:
-```bash
-# Use formatted XML output
-CLAUDE__SDK_MESSAGE_MODE=formatted ccproxy
-
-# Use compact formatting without pretty-printing
-CLAUDE__PRETTY_FORMAT=false ccproxy
-```
-
-## Using with Aider
-
-CCProxy works seamlessly with Aider and other AI coding assistants:
-
-### Anthropic Mode
-```bash
-export ANTHROPIC_API_KEY=dummy
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8000/api
-aider --model claude-sonnet-4-20250514
-```
-
-### OpenAI Mode with Model Mapping
-
-If your tool only supports OpenAI settings, ccproxy automatically maps OpenAI models to Claude:
-
-```bash
-export OPENAI_API_KEY=dummy
-export OPENAI_BASE_URL=http://127.0.0.1:8000/api/v1
-aider --model o3-mini
-```
-
-### API Mode (Direct Proxy)
-
-For minimal interference and direct API access:
-
-```bash
-export OPENAI_API_KEY=dummy
-export OPENAI_BASE_URL=http://127.0.0.1:8000/api/v1
-aider --model o3-mini
-```
-
-### `curl` Example
-
-```bash
-# SDK mode
-curl -X POST http://localhost:8000/sdk/v1/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-3-5-sonnet-20241022",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
-  }'
-
-# API mode
-curl -X POST http://localhost:8000/api/v1/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-3-5-sonnet-20241022",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
-  }'
-```
-More examples are available in the `examples/` directory.
-
-## Endpoints
-
-The proxy exposes endpoints under two prefixes, corresponding to its operating modes.
-
-| Mode | URL Prefix | Description | Use Case |
-|------|------------|-------------|----------|
-| **SDK** | `/sdk/` | Uses `claude-code-sdk` with its configured tools. | Accessing Claude with local tools. |
-| **API** | `/api/` | Direct proxy with header injection. | Full API control, direct access. |
-
-*   **Anthropic:**
-    *   `POST /sdk/v1/messages`
-    *   `POST /api/v1/messages`
-*   **OpenAI-Compatible:**
-    *   `POST /sdk/v1/chat/completions`
-    *   `POST /api/v1/chat/completions`
-*   **Utility:**
-    *   `GET /health`
-    *   `GET /sdk/models`, `GET /api/models`
-    *   `GET /sdk/status`, `GET /api/status`
-    *   `GET /oauth/callback`
-*   **MCP & Permissions:**
-    *   `POST /mcp/permission/check` - MCP permission checking endpoint
-    *   `GET /permissions/stream` - SSE stream for permission requests
-    *   `GET /permissions/{id}` - Get permission request details
-    *   `POST /permissions/{id}/respond` - Respond to permission request
-*   **Observability (Optional):**
-    *   `GET /metrics`
-    *   `GET /logs/status`, `GET /logs/query`
-    *   `GET /dashboard`
-
-## Supported Models
-
-CCProxy supports recent Claude models including Opus, Sonnet, and Haiku variants. The specific models available to you will depend on your Claude account and the features enabled for your subscription.
-
- * `claude-opus-4-20250514`
- * `claude-sonnet-4-20250514`
- * `claude-3-7-sonnet-20250219`
- * `claude-3-5-sonnet-20241022`
- * `claude-3-5-sonnet-20240620`
+### Raw HTTP Logger Plugin
+Logs raw HTTP requests and responses for debugging (configurable via environment variables).
 
 ## Configuration
 
-Settings can be configured through (in order of precedence):
+CCProxy can be configured through:
 1. Command-line arguments
-2. Environment variables
-3. `.env` file
-4. TOML configuration files (`.ccproxy.toml`, `ccproxy.toml`, or `~/.config/ccproxy/config.toml`)
-5. Default values
+2. Environment variables (use `__` for nesting, e.g., `LOGGING__LEVEL=debug`)
+3. TOML configuration files (`.ccproxy.toml`, `ccproxy.toml`)
 
-For complex configurations, you can use a nested syntax for environment variables with `__` as a delimiter:
+### Plugin Config Quickstart
 
-```bash
-# Server settings
-SERVER__HOST=0.0.0.0
-SERVER__PORT=8080
-# etc.
+Enable plugins and configure them under the `plugins.*` namespace in TOML or env vars.
+
+TOML example:
+
+```toml
+enable_plugins = true
+
+# Access log plugin
+[plugins.access_log]
+enabled = true
+client_enabled = true
+client_format = "structured"
+client_log_file = "/tmp/ccproxy/access.log"
+
+# Request tracer plugin
+[plugins.request_tracer]
+enabled = true
+json_logs_enabled = true
+raw_http_enabled = true
+log_dir = "/tmp/ccproxy/traces"
+
+# DuckDB storage (used by analytics)
+[plugins.duckdb_storage]
+enabled = true
+
+# Analytics (logs API)
+[plugins.analytics]
+enabled = true
+
+# Metrics (Prometheus endpoints and optional Pushgateway)
+[plugins.metrics]
+enabled = true
+# pushgateway_enabled = true
+# pushgateway_url = "http://localhost:9091"
+# pushgateway_job = "ccproxy"
+# pushgateway_push_interval = 60
 ```
 
-## Securing the Proxy (Optional)
+Environment variable equivalents (nested with `__`):
 
-You can enable token authentication for the proxy. This supports multiple header formats (`x-api-key` for Anthropic, `Authorization: Bearer` for OpenAI) for compatibility with standard client libraries.
-
-**1. Generate a Token:**
 ```bash
-ccproxy generate-token
-# Output: SECURITY__AUTH_TOKEN=abc123xyz789...
+export PLUGINS__ACCESS_LOG__ENABLED=true
+export PLUGINS__ACCESS_LOG__CLIENT_ENABLED=true
+export PLUGINS__ACCESS_LOG__CLIENT_FORMAT=structured
+export PLUGINS__ACCESS_LOG__CLIENT_LOG_FILE=/tmp/ccproxy/access.log
+
+export PLUGINS__REQUEST_TRACER__ENABLED=true
+export PLUGINS__REQUEST_TRACER__JSON_LOGS_ENABLED=true
+export PLUGINS__REQUEST_TRACER__RAW_HTTP_ENABLED=true
+export PLUGINS__REQUEST_TRACER__LOG_DIR=/tmp/ccproxy/traces
+
+export PLUGINS__DUCKDB_STORAGE__ENABLED=true
+export PLUGINS__ANALYTICS__ENABLED=true
+export PLUGINS__METRICS__ENABLED=true
+# export PLUGINS__METRICS__PUSHGATEWAY_ENABLED=true
+# export PLUGINS__METRICS__PUSHGATEWAY_URL=http://localhost:9091
 ```
 
-**2. Configure the Token:**
-```bash
-# Set environment variable
-export SECURITY__AUTH_TOKEN=abc123xyz789...
+See more details in Configuration and individual plugin pages:
+- `docs/getting-started/configuration.md`
+- `config.example.toml`
+- Plugin READMEs under `plugins/*/README.md`
 
-# Or add to .env file
-echo "SECURITY__AUTH_TOKEN=abc123xyz789..." >> .env
-```
+## Next Steps
 
-**3. Use in Requests:**
-When authentication is enabled, include the token in your API requests.
-```bash
-# Anthropic Format (x-api-key)
-curl -H "x-api-key: your-token" ...
-
-# OpenAI/Bearer Format
-curl -H "Authorization: Bearer your-token" ...
-```
-
-## Observability
-
-`ccproxy` includes an optional but powerful observability suite for monitoring and analytics. When enabled, it provides:
-
-*   **Prometheus Metrics:** A `/metrics` endpoint for real-time operational monitoring.
-*   **Access Log Storage:** Detailed request logs, including token usage and costs, are stored in a local DuckDB database.
-*   **Analytics API:** Endpoints to query and analyze historical usage data.
-*   **Real-time Dashboard:** A live web interface at `/dashboard` to visualize metrics and request streams.
-
-These features are disabled by default and can be enabled via configuration. For a complete guide on setting up and using these features, see the [Observability Documentation](docs/observability.md).
-
-## Troubleshooting
-
-### Common Issues
-
-1.  **Authentication Error:** Ensure you're using the correct mode (`/sdk` or `/api`) for your authentication method.
-2.  **Claude Credentials Expired:** Run `ccproxy auth login` to refresh credentials for API mode. Run `claude /login` for SDK mode.
-3.  **Missing API Auth Token:** If you've enabled security, include the token in your request headers.
-4.  **Port Already in Use:** Start the server on a different port: `ccproxy --port 8001`.
-5.  **Model Not Available:** Check that your Claude subscription includes the requested model.
-
-## Contributing
-
-Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Documentation
-
-- **[Online Documentation](https://caddyglow.github.io/ccproxy-api)**
-- **[API Reference](https://caddyglow.github.io/ccproxy-api/api-reference/overview/)**
-- **[Developer Guide](https://caddyglow.github.io/ccproxy-api/developer-guide/architecture/)**
-
-## Support
-
-- Issues: [GitHub Issues](https://github.com/CaddyGlow/ccproxy-api/issues)
-- Documentation: [Project Documentation](https://caddyglow.github.io/ccproxy-api)
-
-## Acknowledgments
-
-- [Anthropic](https://anthropic.com) for Claude and the Claude Code SDK
-- The open-source community
+- [Installation Guide](getting-started/installation.md) - Detailed setup instructions
+- [Quick Start](getting-started/quickstart.md) - Get running in minutes
+- [API Usage](user-guide/api-usage.md) - Using the API endpoints
+- [Authentication](user-guide/authentication.md) - Managing credentials

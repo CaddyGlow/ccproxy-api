@@ -1,13 +1,21 @@
-"""Authentication manager interfaces for centralized auth handling."""
+"""Unified authentication manager interface for all providers."""
 
-from abc import ABC, abstractmethod
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
-from ccproxy.auth.models import ClaudeCredentials, UserProfile
+from ccproxy.auth.models.credentials import BaseCredentials
+from ccproxy.auth.oauth.protocol import StandardProfileFields
 
 
+@runtime_checkable
 class AuthManager(Protocol):
-    """Protocol for authentication managers."""
+    """Unified authentication manager protocol for all providers.
+
+    This protocol defines the complete interface that all authentication managers
+    must implement, supporting both provider-specific methods (like Claude credentials)
+    and generic methods (like auth headers) for maximum flexibility.
+    """
+
+    # ==================== Core Authentication Methods ====================
 
     async def get_access_token(self) -> str:
         """Get valid access token.
@@ -20,14 +28,17 @@ class AuthManager(Protocol):
         """
         ...
 
-    async def get_credentials(self) -> ClaudeCredentials:
+    async def get_credentials(self) -> BaseCredentials:
         """Get valid credentials.
+
+        Note: For non-Claude providers, this may return minimal/dummy credentials
+        or raise AuthenticationError if not supported.
 
         Returns:
             Valid credentials
 
         Raises:
-            AuthenticationError: If authentication fails
+            AuthenticationError: If authentication fails or not supported
         """
         ...
 
@@ -39,64 +50,39 @@ class AuthManager(Protocol):
         """
         ...
 
-    async def get_user_profile(self) -> UserProfile | None:
-        """Get user profile information.
+    async def get_user_profile(self) -> StandardProfileFields | None:
+        """Get standardized user profile information.
 
         Returns:
-            UserProfile if available, None otherwise
+            Standardized profile details when available, otherwise ``None``
+            for providers that do not expose profile metadata.
         """
         ...
 
+    # ==================== Provider-Generic Methods ====================
 
-class BaseAuthManager(ABC):
-    """Base class for authentication managers."""
-
-    @abstractmethod
-    async def get_access_token(self) -> str:
-        """Get valid access token.
+    async def validate_credentials(self) -> bool:
+        """Validate that credentials are available and valid.
 
         Returns:
-            Access token string
-
-        Raises:
-            AuthenticationError: If authentication fails
+            True if credentials are valid, False otherwise
         """
-        pass
+        ...
 
-    @abstractmethod
-    async def get_credentials(self) -> ClaudeCredentials:
-        """Get valid credentials.
+    def get_provider_name(self) -> str:
+        """Get the provider name for logging.
 
         Returns:
-            Valid credentials
-
-        Raises:
-            AuthenticationError: If authentication fails
+            Provider name string (e.g., "anthropic-claude", "openai-codex")
         """
-        pass
+        ...
 
-    @abstractmethod
-    async def is_authenticated(self) -> bool:
-        """Check if current authentication is valid.
+    # ==================== Context Manager Support ====================
 
-        Returns:
-            True if authenticated, False otherwise
-        """
-        pass
-
-    async def get_user_profile(self) -> UserProfile | None:
-        """Get user profile information.
-
-        Returns:
-            UserProfile if available, None otherwise
-        """
-        return None
-
-    async def __aenter__(self) -> "BaseAuthManager":
+    async def __aenter__(self) -> "AuthManager":
         """Async context manager entry."""
-        return self
+        ...
 
-    @abstractmethod
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
-        pass
+        ...

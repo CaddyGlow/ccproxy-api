@@ -1,5 +1,7 @@
 """Task registry for dynamic task registration and discovery."""
 
+from __future__ import annotations
+
 from typing import Any
 
 import structlog
@@ -79,7 +81,7 @@ class TaskRegistry:
 
         return self._tasks[name]
 
-    def list_tasks(self) -> list[str]:
+    def list(self) -> list[str]:
         """
         Get list of all registered task names.
 
@@ -88,7 +90,7 @@ class TaskRegistry:
         """
         return list(self._tasks.keys())
 
-    def is_registered(self, name: str) -> bool:
+    def has(self, name: str) -> bool:
         """
         Check if a task is registered.
 
@@ -105,7 +107,7 @@ class TaskRegistry:
         self._tasks.clear()
         logger.debug("task_registry_cleared")
 
-    def get_registry_info(self) -> dict[str, Any]:
+    def info(self) -> dict[str, Any]:
         """
         Get information about the current registry state.
 
@@ -119,32 +121,4 @@ class TaskRegistry:
         }
 
 
-# Global task registry instance
-_global_registry: TaskRegistry | None = None
-
-
-def get_task_registry() -> TaskRegistry:
-    """
-    Get the global task registry instance.
-
-    Returns:
-        Global TaskRegistry instance
-    """
-    global _global_registry
-
-    if _global_registry is None:
-        _global_registry = TaskRegistry()
-
-    return _global_registry
-
-
-def register_task(name: str, task_class: type[BaseScheduledTask]) -> None:
-    """
-    Register a task in the global registry.
-
-    Args:
-        name: Unique name for the task
-        task_class: Task class that inherits from BaseScheduledTask
-    """
-    registry = get_task_registry()
-    registry.register(name, task_class)
+# Module-level accessors intentionally omitted.
