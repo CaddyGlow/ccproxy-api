@@ -421,18 +421,33 @@ class OpenAIStreamProcessor:
                 self.current_thinking_text = ""
                 self.current_thinking_signature = None
 
-            elif (
-                self.tool_calls
-                and self.enable_tool_calls
-                and self.output_format == "sse"
-            ):
-                # Send completed tool calls (only for SSE format, dict format sends immediately)
-                for tool_call in self.tool_calls.values():
+            elif self.tool_calls and self.enable_tool_calls:
+                # Send completed tool calls for both SSE and dict formats
+                # Previous bug: Only sent for SSE format, causing dict format (SDK mode) to miss tool calls
+                logger.debug(
+                    "openai_stream_sending_tool_calls",
+                    tool_count=len(self.tool_calls),
+                    output_format=self.output_format,
+                    category="streaming_conversion",
+                )
+
+                for tool_call_index, (tool_call_id, tool_call) in enumerate(
+                    self.tool_calls.items()
+                ):
+                    logger.debug(
+                        "openai_stream_tool_call_yielding",
+                        tool_call_id=tool_call_id,
+                        tool_name=tool_call["name"],
+                        has_arguments=bool(tool_call["arguments"]),
+                        index=tool_call_index,
+                        category="streaming_conversion",
+                    )
+
                     yield self._format_chunk_output(
                         delta={
                             "tool_calls": [
                                 {
-                                    "index": 0,
+                                    "index": tool_call_index,
                                     "id": tool_call["id"],
                                     "type": "function",
                                     "function": {
@@ -445,6 +460,14 @@ class OpenAIStreamProcessor:
                             ]
                         }
                     )
+
+                # Clear tool_calls after yielding to prevent duplicates
+                logger.debug(
+                    "openai_stream_clearing_tool_calls",
+                    cleared_count=len(self.tool_calls),
+                    category="streaming_conversion",
+                )
+                self.tool_calls.clear()
 
         elif chunk_type == "message_delta":
             # Usage information

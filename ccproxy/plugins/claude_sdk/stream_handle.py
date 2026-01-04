@@ -74,25 +74,48 @@ class StreamHandle:
     async def create_listener(self) -> AsyncIterator[Any]:
         """Create a new listener for this stream.
 
-        This method starts the worker on first listener and returns
-        an async iterator for consuming messages.
+        This method creates the worker if needed, pre-registers the listener,
+        then starts the worker. This ordering prevents race conditions where
+        fast STDIO tools could return results before the listener was ready.
 
         Yields:
             Messages from the stream
         """
-        # Start worker if needed
-        await self._ensure_worker_started()
+        # Create worker if needed (but don't start yet)
+        async with self._worker_lock:
+            if self._worker is None:
+                worker_id = f"{self.handle_id}-worker"
+                self._worker = StreamWorker(
+                    worker_id=worker_id,
+                    message_iterator=self._message_iterator,
+                    session_id=self.session_id,
+                    request_id=self.request_id,
+                    session_client=self._session_client,
+                    stream_handle=self,
+                )
+                logger.debug(
+                    "stream_handle_worker_created",
+                    handle_id=self.handle_id,
+                    worker_id=worker_id,
+                    session_id=self.session_id,
+                    category="streaming",
+                )
 
         if not self._worker:
-            raise RuntimeError("Failed to start stream worker")
+            raise RuntimeError("Failed to create stream worker")
 
-        # Create listener
+        # Pre-register listener BEFORE starting worker
+        # This fixes the race condition where fast STDIO tools could
+        # return results before the listener was ready
         queue = self._worker.get_message_queue()
         listener = await queue.create_listener()
         self._listeners[listener.listener_id] = listener
 
         if self._first_listener_at is None:
             self._first_listener_at = time.time()
+
+        # NOW start the worker (after listener is registered)
+        await self._worker.start()
 
         logger.debug(
             "stream_handle_listener_created",
@@ -135,11 +158,15 @@ class StreamHandle:
             # Check if we should trigger cleanup
             await self._check_cleanup()
 
-    async def _ensure_worker_started(self) -> None:
-        """Ensure the worker is started, creating it if needed."""
+    async def _ensure_worker_created(self) -> None:
+        """Ensure the worker is created (but not started).
+
+        Note: Worker is now started in create_listener() AFTER listener
+        registration to prevent race conditions with fast STDIO tools.
+        """
         async with self._worker_lock:
             if self._worker is None:
-                # Create worker
+                # Create worker (but don't start - that happens after listener registration)
                 worker_id = f"{self.handle_id}-worker"
                 self._worker = StreamWorker(
                     worker_id=worker_id,
@@ -149,9 +176,6 @@ class StreamHandle:
                     session_client=self._session_client,
                     stream_handle=self,  # Pass self for message tracking
                 )
-
-                # Start worker
-                await self._worker.start()
 
                 logger.debug(
                     "stream_handle_worker_created",
