@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0a3] - 2026-01-04
+
+### Fixed
+
+- **Tool call streaming in SDK mode**: Fixed tool calls only working in SSE output format; now works correctly in both SSE and dict (SDK) output formats with proper indexing and debug logging.
+- **Race condition in stream broadcast**: Removed non-atomic `has_listeners()` check that caused message loss with fast STDIO tools; now always broadcasts and verifies delivery count afterward.
+- **First-message loss with rapid tool responses**: Worker creation is now deferred until listener is registered, preventing messages from being lost before the listener is ready.
+- **Orphaned tool_result API errors**: Added `_sanitize_tool_results()` to remove tool_result blocks lacking matching tool_use blocks, converting orphaned results to text and preventing "unexpected tool_use_id" API errors.
+- **Null temperature in Claude API requests**: Strip None temperature values before sending requests to Anthropic API to prevent validation errors.
+
+### Changed
+
+- Improved type annotations in tool streaming tests with explicit generics and type guards.
+- Code cleanup following code audit review.
+
+## [0.2.0a2] - 2026-01-03
+
+### Added
+
+- **Claude models endpoint**: Added `/claude/v1/models` endpoint for listing available Claude models.
+- **Temperature validation**: Added guard to validate temperature parameter before forwarding to upstream API.
+
 ## [0.2.0] - 2025-09-27
 
 ### Added
@@ -102,153 +124,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This release focuses on improving the reliability and maintainability of the authentication system while providing better user experience through cleaner logs and more robust startup behavior. The version checking system ensures users stay informed about updates, while the improved Codex integration provides a more stable experience when using OpenAI providers.
 
 ## [0.1.6] - 2025-08-13
-
-## Added OpenAI Codex Provider with Full Proxy Support
-
-### Overview
-
-Implemented comprehensive support for OpenAI Codex CLI integration, enabling users to proxy requests through their OpenAI subscription via the ChatGPT backend API. This feature provides an alternative to the Claude provider while maintaining full compatibility with the existing proxy architecture. The implementation uses the OpenAI Responses API endpoint as documented at https://platform.openai.com/docs/api-reference/responses/get.
-
-### Key Features
-
-**Complete Codex API Proxy**
-
-- Full reverse proxy to `https://chatgpt.com/backend-api/codex`
-- Support for both `/codex/responses` and `/codex/{session_id}/responses` endpoints
-- Compatible with Codex CLI 0.21.0 and authentication flow
-- Implements OpenAI Responses API protocol
-
-**OAuth PKCE Authentication Flow**
-
-- Implements complete OpenAI OAuth 2.0 PKCE flow matching official Codex CLI
-- Local callback server on port 1455 for authorization code exchange
-- Token refresh and credential management with persistent storage
-- Support for `~/.codex/auth.json` configuration file format
-
-**Intelligent Request/Response Handling**
-
-- Automatic detection and injection of Codex CLI instructions field
-- Smart streaming behavior based on user's explicit `stream` parameter
-- Session management with flexible session ID handling (auto-generated, persistent, header-forwarded)
-- Request transformation preserving Codex CLI identity headers
-
-**Advanced Configuration**
-
-- Environment variable support: `CODEX__BASE_URL`
-- Configurable via TOML: `[codex]` section in configuration files
-- Debug logging with request/response capture capabilities
-- Comprehensive error handling with proper HTTP status codes
-- Enabled by default
-
-### Technical Implementation
-
-**New Components Added:**
-
-- `ccproxy/auth/openai.py` - OAuth token management and credential storage
-- `ccproxy/core/codex_transformers.py` - Request/response transformation for Codex format
-- `ccproxy/api/routes/codex.py` - FastAPI routes for Codex endpoints
-- `ccproxy/models/detection.py` - Codex CLI detection and header management
-- `ccproxy/services/codex_detection_service.py` - Runtime detection of Codex CLI requests
-
-**Enhanced Proxy Service:**
-
-- Extended `ProxyService.handle_codex_request()` with full Codex support
-- Intelligent streaming response conversion when user doesn't explicitly request streaming
-- Comprehensive request/response logging for debugging
-- Error handling with proper OpenAI-compatible error responses
-
-### Streaming Behavior Fix
-
-**Problem Resolved:** Fixed issue where requests without explicit `stream` field were incorrectly returning streaming responses.
-
-**Solution Implemented:**
-
-- When `"stream"` field is missing: Inject `"stream": true` for upstream (Codex requirement) but return JSON response to client
-- When `"stream": true` explicitly set: Return streaming response to client
-- When `"stream": false` explicitly set: Return JSON response to client
-- Smart response conversion: collects streaming data and converts to single JSON response when user didn't request streaming
-
-### Usage Examples
-
-**Basic Request (JSON Response):**
-
-```bash
-curl -X POST "http://127.0.0.1:8000/codex/responses" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Hello!"}]}],
-    "model": "gpt-5",
-    "store": false
-  }'
-```
-
-**Streaming Request:**
-
-```bash
-curl -X POST "http://127.0.0.1:8000/codex/responses" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Hello!"}]}],
-    "model": "gpt-5",
-    "stream": true,
-    "store": false
-  }'
-```
-
-### Authentication Setup
-
-**Environment Variables:**
-
-```bash
-export CODEX__BASE_URL="https://chatgpt.com/backend-api/codex"
-```
-
-**Configuration File (`~/.ccproxy.toml`):**
-
-```toml
-[codex]
-base_url = "https://chatgpt.com/backend-api/codex"
-```
-
-### Compatibility
-
-- Codex CLI: Full compatibility with `codex-cli 0.21.0`
-- OpenAI OAuth: Complete PKCE flow implementation
-- Session Management: Supports persistent and auto-generated sessions
-- Model Support: All Codex-supported models (`gpt-5`, `gpt-4`, etc.)
-- Streaming: Both streaming and non-streaming responses
-- Error Handling: Proper HTTP status codes and OpenAI-compatible errors
-- API Compliance: Follows OpenAI Responses API specification
-
-### Files Modified/Added
-
-**New Files:**
-
-- `ccproxy/auth/openai.py` - OpenAI authentication management
-- `ccproxy/core/codex_transformers.py` - Codex request/response transformation
-- `ccproxy/api/routes/codex.py` - Codex API endpoints
-- `ccproxy/models/detection.py` - Codex detection models
-- `ccproxy/services/codex_detection_service.py` - Codex CLI detection service
-
-**Modified Files:**
-
-- `ccproxy/services/proxy_service.py` - Added `handle_codex_request()` method
-- `ccproxy/config/settings.py` - Added Codex configuration section
-- `ccproxy/api/app.py` - Integrated Codex routes
-- `ccproxy/api/routes/health.py` - Added Codex health checks
-
-### Breaking Changes
-
-None. This is a purely additive feature that doesn't affect existing Claude provider functionality.
-
-### Migration Notes
-
-For users wanting to use Codex provider:
-
-1. Authenticate: Use existing OpenAI credentials or run Codex CLI login
-2. Update endpoints: Change from `/v1/messages` to `/codex/responses`
-
-This implementation provides a complete, production-ready OpenAI Codex proxy solution that maintains the same standards as the existing Claude provider while offering users choice in their AI provider preferences.
 
 ## Added OpenAI Codex Provider with Full Proxy Support
 
@@ -644,35 +519,3 @@ This is the initial public release of the CCProxy API.
 - **Modern Tooling**: Uses `uv` for package management and `devenv` for a reproducible development environment.
 - **Extensive Test Suite**: Includes unit, integration, and benchmark tests to ensure reliability.
 - **Rich Logging**: Structured and colorized logging for improved readability during development and debugging.
-## [Unreleased]
-
-### Removed
-
-- Dead code: removed `ccproxy/utils/models_provider.py` (unreferenced; model listing is provided by plugins).
-- Pruned root runtime dependencies no longer used directly by core:
-  - `aiosqlite` (unused in repo)
-  - `h2` (no direct imports; `httpx[http2]` brings HTTP/2 support transitively)
-
-### Notes
-
-- Plugin-owned dependencies remain in root for now (plugins are bundled): `duckdb`, `duckdb-engine`, `sqlmodel`, `prometheus-client`, `textual`. These may move to plugin-specific distributions or optional extras in a future split.
-## [0.2.0] - 2025-09-02
-
-### Changed
-
-- Core health endpoints simplified and plugin-agnostic; provider/OAuth/SDK checks moved to plugin health under `/plugins/{name}/health`.
-- Plugins CLI now uses centralized `load_plugin_system()`; discovery logic consolidated.
-- Documentation updated to reflect plugin-first architecture and loader flow.
-
-### Removed
-
-- Legacy plugin management endpoints: `POST /plugins/{name}/reload`, `POST /plugins/discover`, `DELETE /plugins/{name}` (v2 loads at startup; restart to apply changes).
-- Scheduler references to Pushgateway in core; metrics plugin fully owns push task registration.
-- Core middleware reliance on `app.state.duckdb_storage` alias; storage wiring is plugin-owned.
-
-### Added
-
-- Configuration validation that fails fast when deprecated keys are present, with guidance to the corresponding `plugins.*` keys.
-- Migration guide: `docs/migration/0.2-plugin-first.md`.
-
-This release completes the plugin-first migration and removes transitional shims.
