@@ -1,6 +1,7 @@
 """End-to-end integration tests for Copilot plugin."""
 
 import json
+import os
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
 from datetime import datetime
@@ -22,7 +23,12 @@ from ccproxy.plugins.copilot.oauth.models import (
 )
 
 
+# Skip in CI - requires local credentials
+_SKIP_IN_CI = os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true"
+
+
 @pytest.mark.integration
+@pytest.mark.skipif(_SKIP_IN_CI, reason="Requires local credentials")
 class TestCopilotEndToEnd:
     """End-to-end integration tests for Copilot plugin."""
 

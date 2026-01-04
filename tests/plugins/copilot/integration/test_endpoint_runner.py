@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -21,10 +22,14 @@ from tests.helpers.endpoint_runner import (
 from tests.helpers.provider_apps import PROVIDER_APP_BUILDERS, PROVIDER_FIXTURES
 
 
+# Skip in CI - requires local credentials
+_SKIP_IN_CI = os.getenv("CI") == "true" or os.getenv("GITHUB_ACTIONS") == "true"
+
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.e2e,
     pytest.mark.asyncio(loop_scope="module"),
+    pytest.mark.skipif(_SKIP_IN_CI, reason="Requires local credentials"),
 ]
 
 

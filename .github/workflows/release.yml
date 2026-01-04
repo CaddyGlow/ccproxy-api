@@ -30,10 +30,10 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: make dev_install
+        run: ./Taskfile dev-install
 
       - name: Run tests
-        run: make ci
+        run: ./Taskfile ci
         continue-on-error: ${{ github.event.inputs.force_release == 'true' }}
 
   build-package:
@@ -55,10 +55,10 @@ jobs:
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: make install
+        run: ./Taskfile install
 
       - name: Build package
-        run: make build
+        run: ./Taskfile build
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4

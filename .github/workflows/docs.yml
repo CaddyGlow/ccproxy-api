@@ -48,14 +48,13 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --group docs
+        run: ./Taskfile docs-install
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
       - name: Build documentation
-        run: |
-          uv run mkdocs build --clean --verbose
+        run: ./Taskfile docs-build
         env:
           ENABLE_MKDOCSTRINGS: true
 
@@ -93,11 +92,10 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --group docs
+        run: ./Taskfile docs-install
 
       - name: Check documentation links
-        run: |
-          uv run mkdocs build --clean --verbose
+        run: ./Taskfile docs-build
         env:
           ENABLE_MKDOCSTRINGS: true
 
@@ -106,7 +104,7 @@ jobs:
           # Install linkchecker if needed
           pip install linkchecker
           # Start a local server
-          uv run mkdocs serve --dev-addr 127.0.0.1:8000 &
+          ./Taskfile docs-serve &
           SERVER_PID=$!
           sleep 5
           # Check for broken links
