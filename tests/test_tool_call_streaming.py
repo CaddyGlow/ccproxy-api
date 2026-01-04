@@ -7,6 +7,7 @@ streaming JSON deltas were only yielded for SSE format, not dict format.
 
 import json
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 
@@ -16,8 +17,8 @@ from ccproxy.llms.streaming.processors import OpenAIStreamProcessor
 async def create_mock_claude_stream_with_tool_call(
     tool_id: str = "tool_123",
     tool_name: str = "get_weather",
-    tool_args: dict | None = None,
-) -> AsyncIterator[dict]:
+    tool_args: dict[str, Any] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
     """Create a mock Claude stream with a tool call using streaming JSON deltas.
 
     This simulates the real Claude SDK streaming format with:
@@ -34,7 +35,9 @@ async def create_mock_claude_stream_with_tool_call(
     # Simulate streaming JSON in chunks (like real Claude API)
     json_str = json.dumps(tool_args)
     chunk_size = 10
-    json_chunks = [json_str[i : i + chunk_size] for i in range(0, len(json_str), chunk_size)]
+    json_chunks = [
+        json_str[i : i + chunk_size] for i in range(0, len(json_str), chunk_size)
+    ]
 
     # Message start
     yield {
@@ -90,7 +93,9 @@ async def create_mock_claude_stream_with_tool_call(
     yield {"type": "message_stop"}
 
 
-async def create_mock_claude_stream_with_multiple_tools() -> AsyncIterator[dict]:
+async def create_mock_claude_stream_with_multiple_tools() -> AsyncIterator[
+    dict[str, Any]
+]:
     """Create a mock Claude stream with multiple tool calls."""
     # Message start
     yield {
@@ -166,9 +171,12 @@ async def test_tool_call_streaming_dict_format():
     async for chunk in processor.process_stream(mock_stream):
         chunks.append(chunk)
 
-    # Verify we got tool call chunks
-    tool_call_chunks = [
-        c for c in chunks if c.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
+    # Verify we got tool call chunks (filter for dict chunks with tool_calls)
+    tool_call_chunks: list[dict[str, Any]] = [
+        c
+        for c in chunks
+        if isinstance(c, dict)
+        and c.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
     ]
 
     # Should have exactly one tool call chunk
@@ -190,7 +198,7 @@ async def test_tool_call_streaming_dict_format():
     parsed_args = json.loads(arguments)
     assert parsed_args == {"location": "San Francisco", "unit": "celsius"}
 
-    print(f"Tool call properly streamed in dict format")
+    print("Tool call properly streamed in dict format")
     print(f"   Tool ID: {tool_call['id']}")
     print(f"   Tool Name: {tool_call['function']['name']}")
     print(f"   Arguments: {arguments}")
@@ -210,9 +218,12 @@ async def test_tool_call_streaming_multiple_tools():
     async for chunk in processor.process_stream(mock_stream):
         chunks.append(chunk)
 
-    # Get all tool call chunks
-    tool_call_chunks = [
-        c for c in chunks if c.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
+    # Get all tool call chunks (filter for dict chunks with tool_calls)
+    tool_call_chunks: list[dict[str, Any]] = [
+        c
+        for c in chunks
+        if isinstance(c, dict)
+        and c.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
     ]
 
     # Should have exactly two tool call chunks (one per tool)
@@ -236,7 +247,7 @@ async def test_tool_call_streaming_multiple_tools():
     args_2 = json.loads(tool_call_2["function"]["arguments"])
     assert args_2 == {"city": "New York", "country": "USA"}
 
-    print(f"Multiple tool calls properly yielded separately")
+    print("Multiple tool calls properly yielded separately")
     print(f"   Tool 1: {tool_call_1['function']['name']} (ID: {tool_call_1['id']})")
     print(f"   Tool 2: {tool_call_2['function']['name']} (ID: {tool_call_2['id']})")
 
@@ -257,13 +268,12 @@ async def test_tool_call_streaming_sse_format_regression():
         chunks.append(chunk)
 
     # For SSE format, chunks should be strings, not dicts
-    assert all(isinstance(c, str) for c in chunks), (
-        "SSE format should return strings"
-    )
+    assert all(isinstance(c, str) for c in chunks), "SSE format should return strings"
 
     # Parse SSE chunks to find tool call
-    tool_call_chunks = []
+    tool_call_chunks: list[dict[str, Any]] = []
     for chunk in chunks:
+        assert isinstance(chunk, str)  # Type guard for mypy
         if chunk.startswith("data: ") and "tool_calls" in chunk:
             # Extract JSON from "data: {...}\n\n" format
             json_str = chunk[6:].strip()
@@ -273,7 +283,7 @@ async def test_tool_call_streaming_sse_format_regression():
     # Should have tool call in SSE format
     assert len(tool_call_chunks) > 0, "Expected tool call chunks in SSE format"
 
-    print(f"SSE format still works correctly (no regression)")
+    print("SSE format still works correctly (no regression)")
     print(f"   Found {len(tool_call_chunks)} tool call chunk(s) in SSE format")
 
 
@@ -294,7 +304,7 @@ async def test_tool_call_arguments_complete():
         "alerts": ["severe_weather", "air_quality"],
     }
 
-    async def create_stream() -> AsyncIterator[dict]:
+    async def create_stream() -> AsyncIterator[dict[str, Any]]:
         yield {
             "type": "message_start",
             "message": {
@@ -324,7 +334,10 @@ async def test_tool_call_arguments_complete():
             yield {
                 "type": "content_block_delta",
                 "index": 0,
-                "delta": {"type": "input_json_delta", "partial_json": json_str[i : i + 5]},
+                "delta": {
+                    "type": "input_json_delta",
+                    "partial_json": json_str[i : i + 5],
+                },
             }
 
         yield {"type": "content_block_stop", "index": 0}
@@ -345,8 +358,11 @@ async def test_tool_call_arguments_complete():
     async for chunk in processor.process_stream(create_stream()):
         chunks.append(chunk)
 
-    tool_call_chunks = [
-        c for c in chunks if c.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
+    tool_call_chunks: list[dict[str, Any]] = [
+        c
+        for c in chunks
+        if isinstance(c, dict)
+        and c.get("choices", [{}])[0].get("delta", {}).get("tool_calls")
     ]
 
     assert len(tool_call_chunks) == 1
@@ -359,7 +375,7 @@ async def test_tool_call_arguments_complete():
         "Arguments should be complete and match input exactly"
     )
 
-    print(f"Complex tool call arguments are complete")
+    print("Complex tool call arguments are complete")
     print(f"   Argument keys: {list(parsed_args.keys())}")
     print(f"   Total JSON length: {len(arguments)} chars")
 

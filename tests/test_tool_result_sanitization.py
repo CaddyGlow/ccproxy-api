@@ -21,6 +21,7 @@ Real-world scenario:
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -30,7 +31,7 @@ from ccproxy.llms.formatters.openai_to_anthropic.requests import _sanitize_tool_
 
 
 @pytest.fixture
-def mock_logger() -> Mock:
+def mock_logger() -> Generator[Mock, None, None]:
     """Mock the structlog logger to avoid logging during tests."""
     with patch("ccproxy.llms.formatters.openai_to_anthropic.requests.logger") as mock:
         yield mock
@@ -100,9 +101,7 @@ def create_user_with_tool_result(
 class TestSanitizeToolResults:
     """Test suite for _sanitize_tool_results method."""
 
-    def test_valid_tool_result_preserved(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_valid_tool_result_preserved(self, mock_logger: Mock) -> None:
         """Test that valid tool_result blocks are preserved.
 
         Scenario: Normal tool use flow
@@ -115,7 +114,9 @@ class TestSanitizeToolResults:
                 "I'll help you with that.",
                 [{"id": "tool_123", "name": "calculator", "input": {"x": 5}}],
             ),
-            create_user_with_tool_result([{"tool_use_id": "tool_123", "content": "10"}]),
+            create_user_with_tool_result(
+                [{"tool_use_id": "tool_123", "content": "10"}]
+            ),
         ]
 
         result = _sanitize_tool_results(messages)
@@ -128,9 +129,7 @@ class TestSanitizeToolResults:
         # Should not log any warnings for valid results
         mock_logger.warning.assert_not_called()
 
-    def test_orphaned_tool_result_removed(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_orphaned_tool_result_removed(self, mock_logger: Mock) -> None:
         """Test that orphaned tool_result blocks are removed and converted to text.
 
         Scenario: After conversation compaction
@@ -158,9 +157,7 @@ class TestSanitizeToolResults:
         mock_logger.warning.assert_called_once()
         assert mock_logger.warning.call_args[0][0] == "orphaned_tool_result_removed"
 
-    def test_mixed_valid_and_orphaned(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_mixed_valid_and_orphaned(self, mock_logger: Mock) -> None:
         """Test mixed valid and orphaned tool_result blocks.
 
         Scenario: Partial compaction
@@ -201,9 +198,7 @@ class TestSanitizeToolResults:
         # Should log warning about orphaned result
         mock_logger.warning.assert_called_once()
 
-    def test_multiple_tool_uses_preserved(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_multiple_tool_uses_preserved(self, mock_logger: Mock) -> None:
         """Test that multiple valid tool_uses and results are all preserved.
 
         Scenario: Multiple tools used in one turn
@@ -243,9 +238,7 @@ class TestSanitizeToolResults:
         # No warnings should be logged
         mock_logger.warning.assert_not_called()
 
-    def test_conversation_compaction_scenario(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_conversation_compaction_scenario(self, mock_logger: Mock) -> None:
         """Test the real bug scenario: conversation compaction leaves orphaned results.
 
         Scenario: The actual bug from production
@@ -296,9 +289,7 @@ class TestSanitizeToolResults:
         # Should log warning
         mock_logger.warning.assert_called_once()
 
-    def test_empty_messages_list(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_empty_messages_list(self, mock_logger: Mock) -> None:
         """Test that empty messages list is handled gracefully.
 
         Scenario: Edge case - empty input
@@ -309,9 +300,7 @@ class TestSanitizeToolResults:
         assert result == []
         mock_logger.warning.assert_not_called()
 
-    def test_messages_with_no_tool_content(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_messages_with_no_tool_content(self, mock_logger: Mock) -> None:
         """Test messages with no tool_use or tool_result blocks.
 
         Scenario: Normal conversation without tools
@@ -366,9 +355,7 @@ class TestSanitizeToolResults:
 
         mock_logger.warning.assert_not_called()
 
-    def test_first_message_user_with_tool_result(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_first_message_user_with_tool_result(self, mock_logger: Mock) -> None:
         """Test user message with tool_result as first message (no preceding assistant).
 
         Scenario: Invalid state - tool_result without any preceding assistant
@@ -392,9 +379,7 @@ class TestSanitizeToolResults:
 
         mock_logger.warning.assert_called_once()
 
-    def test_tool_result_with_complex_content(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_tool_result_with_complex_content(self, mock_logger: Mock) -> None:
         """Test tool_result with complex content (list of blocks).
 
         Scenario: Tool result contains structured content
@@ -430,9 +415,7 @@ class TestSanitizeToolResults:
 
         mock_logger.warning.assert_called_once()
 
-    def test_tool_result_with_long_content_truncated(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_tool_result_with_long_content_truncated(self, mock_logger: Mock) -> None:
         """Test that very long tool_result content is truncated in text conversion.
 
         Scenario: Orphaned tool result with very long content
@@ -487,9 +470,7 @@ class TestSanitizeToolResults:
         assert "orphan_1" in result[1]["content"][0]["text"]
         assert "orphan_2" in result[1]["content"][0]["text"]
 
-    def test_non_user_messages_passed_through(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_non_user_messages_passed_through(self, mock_logger: Mock) -> None:
         """Test that non-user messages (assistant) are passed through unchanged.
 
         Scenario: Mix of user and assistant messages
@@ -517,9 +498,7 @@ class TestSanitizeToolResults:
         assert result[1] == messages[1]
         assert result[3]["content"][0]["tool_use_id"] == "tool_1"
 
-    def test_user_message_with_string_content(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_user_message_with_string_content(self, mock_logger: Mock) -> None:
         """Test that user messages with string content (not list) are handled.
 
         Scenario: User message has string content instead of list
@@ -536,9 +515,7 @@ class TestSanitizeToolResults:
         assert result == messages
         mock_logger.warning.assert_not_called()
 
-    def test_partial_match_orphaned(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_partial_match_orphaned(self, mock_logger: Mock) -> None:
         """Test when some tool_use_ids match but others don't.
 
         Scenario: Multiple results, only some have matching tool_use
@@ -579,9 +556,7 @@ class TestSanitizeToolResults:
         assert user_content[2]["type"] == "tool_result"
         assert user_content[2]["tool_use_id"] == "valid_2"
 
-    def test_assistant_with_string_content_no_tool_use(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_assistant_with_string_content_no_tool_use(self, mock_logger: Mock) -> None:
         """Test assistant message with string content (no tool_use blocks).
 
         Scenario: Preceding assistant has string content, not list
@@ -607,9 +582,7 @@ class TestSanitizeToolResults:
 
         mock_logger.warning.assert_called_once()
 
-    def test_multiple_orphaned_conversions(
-        self, mock_logger: Mock
-    ) -> None:
+    def test_multiple_orphaned_conversions(self, mock_logger: Mock) -> None:
         """Test multiple orphaned tool_results are all included in text conversion.
 
         Scenario: Multiple orphaned results in one message
