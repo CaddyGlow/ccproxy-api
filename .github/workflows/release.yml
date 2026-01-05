@@ -5,10 +5,19 @@ on:
     types: [created]
   workflow_dispatch:
     inputs:
-      force_release:
-        description: "Force release even if tests fail"
+      version:
+        description: "Version tag to publish (e.g., v0.2.0a4)"
+        required: true
+        type: string
+      skip_tests:
+        description: "Skip tests"
         required: false
-        default: false
+        default: true
+        type: boolean
+      pypi_only:
+        description: "Only publish to PyPI (skip Docker)"
+        required: false
+        default: true
         type: boolean
 
 env:
@@ -17,9 +26,12 @@ env:
 
 jobs:
   test:
+    if: ${{ github.event_name == 'release' || !inputs.skip_tests }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -34,10 +46,10 @@ jobs:
 
       - name: Run tests
         run: ./Taskfile ci
-        continue-on-error: ${{ github.event.inputs.force_release == 'true' }}
 
   build-package:
     needs: test
+    if: ${{ always() && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
     runs-on: ubuntu-latest
     environment: publish
     permissions:
@@ -45,6 +57,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -67,10 +81,10 @@ jobs:
           path: dist/
 
       - name: Publish to PyPI
-        if: startsWith(github.ref, 'refs/tags/')
         uses: pypa/gh-action-pypi-publish@release/v1
 
   build-release-docker:
+    if: ${{ github.event_name == 'release' || !inputs.pypi_only }}
     runs-on: ubuntu-latest
 
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
@@ -128,6 +142,7 @@ jobs:
 
   create-release:
     needs: [build-package, build-release-docker]
+    if: ${{ always() && needs.build-package.result == 'success' && (github.event_name == 'release' || !inputs.pypi_only) }}
     runs-on: ubuntu-latest
 
     permissions:
@@ -135,6 +150,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
 
       - name: Download package artifacts
         uses: actions/download-artifact@v4
@@ -145,6 +162,7 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.version || github.ref_name }}
           files: dist/*
           generate_release_notes: true
         env:
