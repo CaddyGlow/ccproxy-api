@@ -192,6 +192,15 @@ print(response.choices[0].message.content)
 - `POST /api/codex/v1/chat/completions` - Standard OpenAI endpoint
 - `GET /api/codex/v1/models` - List available models
 
+### Copilot Plugin (`/copilot`)
+- `POST /copilot/v1/chat/completions` - OpenAI chat completions via GitHub Copilot
+- `POST /copilot/v1/responses` - OpenAI Responses API
+- `POST /copilot/v1/messages` - Anthropic messages (adapter translated)
+- `POST /copilot/v1/embeddings` - OpenAI embeddings
+- `GET /copilot/v1/models` - List available models
+- `GET /copilot/usage` - Copilot usage snapshot
+- `GET /copilot/token` - Copilot token status
+
 ## Monitoring & Debugging
 
 ### Health Check

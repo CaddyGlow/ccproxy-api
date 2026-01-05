@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-01-05
+
+### Added
+
+- GitHub Copilot now documented across the site (index, quickstart, API usage, authentication) with endpoints, auth flow, and model examples.
+- Claude `/claude/v1/models` endpoint for model discovery.
+
+### Changed
+
+- Provider list and auth guidance now explicitly include Copilot alongside Claude and Codex.
+- Temperature validation guards requests before forwarding to upstream APIs.
+- Release workflow accepts `version`, `skip_tests`, and `pypi_only` inputs and gates steps accordingly.
+
+### Fixed
+
+- Tool-call streaming in SDK mode now works for both SSE and dict outputs with correct indexing.
+- Race conditions and first-message loss in streaming broadcasts addressed; orphaned `tool_result` blocks sanitized.
+- Null `temperature` values stripped from Claude API requests to avoid upstream validation errors.
+
+### Note
+
+- Includes all fixes and improvements from pre-release tags `0.2.0a2–0.2.0a4`.
+
+## [0.2.0a4] - 2026-01-05
+
+### Changed
+
+- Release workflow now accepts `version`, `skip_tests`, and `pypi_only` inputs and gates test/package/docker/release steps accordingly.
+- Workflow can check out an explicit ref and tag releases with the provided version.
+
 ## [0.2.0a3] - 2026-01-04
 
 ### Fixed

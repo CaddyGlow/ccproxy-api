@@ -1,12 +1,15 @@
 # CCProxy API Server
 
-`ccproxy` is a local reverse proxy server that provides unified access to multiple AI providers through a plugin-based architecture. It supports Anthropic Claude and OpenAI Codex through dedicated provider plugins, allowing you to use your existing subscriptions without separate API key billing.
+`ccproxy` is a local reverse proxy server that provides unified access to multiple
+AI providers through a plugin-based architecture. It supports Anthropic Claude,
+OpenAI Codex, and GitHub Copilot through dedicated provider plugins, allowing
+you to use your existing subscriptions without separate API key billing.
 
 ## Architecture
 
 CCProxy uses a modern plugin system that provides:
 
-- **Provider Plugins**: Handle specific AI providers (Claude SDK, Claude API, Codex)
+- **Provider Plugins**: Handle specific AI providers (Claude SDK, Claude API, Codex, Copilot)
 - **System Plugins**: Add functionality like pricing, logging, monitoring, and permissions
 - **Unified API**: Consistent interface across all providers
 - **Format Translation**: Seamless conversion between Anthropic and OpenAI formats
@@ -47,6 +50,20 @@ Provides access to OpenAI's APIs (Responses and Chat Completions) through OAuth2
 - `POST /codex/{session_id}/v1/messages` - Session-based Anthropic messages
 
 All plugins support both Anthropic and OpenAI-compatible API formats for requests and responses, including streaming.
+
+### Copilot Plugin (`/copilot`)
+Adds GitHub Copilot as a provider with OAuth device flow support and GitHub
+flavored auxiliary endpoints.
+
+**Endpoints:**
+- `POST /copilot/v1/chat/completions` - OpenAI Chat Completions via Copilot
+- `POST /copilot/v1/responses` - OpenAI Responses API
+- `POST /copilot/v1/messages` - Anthropic messages (adapter translated)
+- `POST /copilot/v1/embeddings` - OpenAI embeddings
+- `GET /copilot/v1/models` - List Copilot-exposed models
+- `GET /copilot/usage` - GitHub Copilot usage snapshot
+- `GET /copilot/token` - Copilot token status
+- `GET /copilot/health` - Plugin health (OAuth and gh CLI detection)
 
 ## Installation
 

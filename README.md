@@ -156,14 +156,14 @@ To install the latest stable release without cloning the repository, use `uvx`
 to grab the published wheel and launch the CLI:
 
 ```bash
-uvx --with "ccproxy-api[all]==0.2.0" ccproxy serve --port 8000
+uvx --with "ccproxy-api[all]" ccproxy serve --port 8000
 ```
 
 If you prefer `pipx`, install the package (optionally with extras) and use the
 local shim:
 
 ```bash
-pipx install "ccproxy-api[all]==0.2.0"
+pipx install "ccproxy-api[all]"
 ccproxy serve  # default on localhost:8000
 ```
 

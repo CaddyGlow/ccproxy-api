@@ -5,7 +5,8 @@
 CCProxy API handles authentication in multiple layers:
 1. **Claude Authentication**: Your Claude subscription credentials for accessing Claude AI
 2. **OpenAI/Codex Authentication**: Your ChatGPT Plus credentials for accessing the Response API
-3. **API Authentication**: Optional token authentication for securing access to the proxy endpoints
+3. **GitHub Copilot Authentication**: Your GitHub account credentials for Copilot chat/completions
+4. **API Authentication**: Optional token authentication for securing access to the proxy endpoints
 
 ## Important: Authentication Methods
 
@@ -31,6 +32,13 @@ CCProxy supports multiple authentication methods with separate credential storag
 - **Purpose**: Authenticates for ChatGPT Plus Response API access
 - **Requirements**: Active ChatGPT Plus subscription
 - **Credential Reuse**: Automatically uses existing Codex CLI credentials if available
+
+### GitHub Copilot Authentication
+- **Used by**: `ccproxy auth login copilot` (device flow) and Copilot endpoints
+- **Storage**: `$HOME/.config/copilot/credentials.json`
+- **Purpose**: Authenticates for GitHub Copilot chat, responses, embeddings, and usage APIs
+- **Requirements**: GitHub Copilot access (individual, business, or enterprise)
+- **Credential Reuse**: Detects existing GitHub CLI authentication when present
 
 ## Authentication Commands
 
@@ -101,6 +109,32 @@ Shows authentication status for all providers:
 - Claude SDK credentials
 - Claude API credentials  
 - OpenAI/Codex credentials
+- GitHub Copilot credentials
+
+### GitHub Copilot Authentication Commands
+
+Manage your Copilot device-flow credentials:
+
+#### Login
+```bash
+# Enable Copilot provider first (if disabled)
+ccproxy config copilot --enable
+
+# Start GitHub device flow for Copilot
+ccproxy auth login copilot
+```
+
+Flow:
+1. Prints a GitHub device code and verification URL.
+2. Complete authentication in the browser.
+3. Stores credentials in `$HOME/.config/copilot/credentials.json`.
+4. Automatically refreshes Copilot tokens when they near expiry.
+
+#### View Copilot Status
+```bash
+ccproxy auth status copilot
+```
+Shows token expiry, detected plan (individual/business/enterprise), and whether a Copilot token is present.
 
 #### View Detailed OpenAI Credentials
 ```bash

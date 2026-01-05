@@ -51,6 +51,7 @@ curl -X POST http://localhost:8000/claude/v1/messages \
 Claude SDK Mode: http://localhost:8000/claude/sdk/v1/
 Claude API Mode: http://localhost:8000/claude/v1/
 Codex (OpenAI):  http://localhost:8000/codex/v1/
+Copilot (GitHub): http://localhost:8000/copilot/v1/
 ```
 
 ### Chat Completions
@@ -93,6 +94,26 @@ curl -X POST http://localhost:8000/codex/v1/responses \
   -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-5",
+    "input": [
+      {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}
+    ]
+  }'
+
+# OpenAI Chat Completions via Copilot
+curl -X POST http://localhost:8000/copilot/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4-copilot",
+    "messages": [
+      {"role": "user", "content": "Hello from Copilot!"}
+    ]
+  }'
+
+# OpenAI Responses API via Copilot
+curl -X POST http://localhost:8000/copilot/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4-copilot",
     "input": [
       {"role": "user", "content": [{"type": "text", "text": "Hello!"}]}
     ]
