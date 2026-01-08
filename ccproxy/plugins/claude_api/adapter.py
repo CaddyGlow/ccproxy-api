@@ -12,6 +12,8 @@ from ccproxy.core.plugins.interfaces import (
     DetectionServiceProtocol,
     TokenManagerProtocol,
 )
+from ccproxy.llms.formatters.openai_to_anthropic.requests import _sanitize_tool_results
+from ccproxy.llms.utils import get_max_input_tokens, truncate_to_fit
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.utils.headers import (
     extract_response_headers,
@@ -56,6 +58,35 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Anthropic API rejects null temperature fields, so strip them early
         if body_data.get("temperature") is None:
             body_data.pop("temperature", None)
+
+        # Get model from request for context truncation
+        model = body_data.get("model", "")
+
+        # Auto-truncate context if request exceeds model limits
+        # IMPORTANT: Truncation must happen BEFORE sanitization because truncation
+        # can create orphaned tool blocks by removing messages with tool_use while
+        # keeping messages with tool_result
+        max_input = get_max_input_tokens(model)
+        if max_input:
+            body_data, was_truncated = truncate_to_fit(
+                body_data,
+                max_input_tokens=max_input,
+                preserve_recent=getattr(self.config, "preserve_recent_messages", 10),
+                safety_margin=getattr(self.config, "context_safety_margin", 0.9),
+            )
+            if was_truncated:
+                logger.info(
+                    "request_truncated_for_context_limit",
+                    model=model,
+                    max_input_tokens=max_input,
+                    category="context_management",
+                )
+
+        # Sanitize tool_result blocks to remove orphaned references
+        # This fixes "unexpected tool_use_id" errors from conversation compaction
+        # Must run AFTER truncation to catch orphans created by truncation
+        if "messages" in body_data:
+            body_data["messages"] = _sanitize_tool_results(body_data["messages"])
 
         # Anthropic API constraint: cannot accept both temperature and top_p
         # Prioritize temperature over top_p when both are present
