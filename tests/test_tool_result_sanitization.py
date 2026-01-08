@@ -1,4 +1,4 @@
-"""Test _sanitize_tool_results method for removing orphaned tool_result blocks.
+"""Test _sanitize_tool_results method for orphaned tool blocks.
 
 This module tests the bug fix for orphaned tool_result blocks that occur when
 conversation history is compacted. When tool_use blocks are removed during
@@ -9,8 +9,9 @@ the Anthropic API to reject requests with:
 The _sanitize_tool_results method fixes this by:
 1. Removing orphaned tool_result blocks that don't have matching tool_use blocks
    in the immediately preceding assistant message
-2. Converting orphaned results to text blocks to preserve information
-3. Keeping valid tool_result blocks that have matching tool_use blocks
+2. Removing tool_use blocks that don't have a tool_result in the *next* user message
+3. Converting orphaned blocks to text to preserve information
+4. Keeping valid tool_use/tool_result pairs
 
 Real-world scenario:
 - A long conversation with multiple tool calls gets compacted to stay within token limits
@@ -109,7 +110,7 @@ class TestSanitizeToolResults:
         - User message with tool_result(tool_use_id="tool_123")
         Result: tool_result should be kept unchanged
         """
-        messages = [
+        messages: list[dict[str, Any]] = [
             create_assistant_with_tool_use(
                 "I'll help you with that.",
                 [{"id": "tool_123", "name": "calculator", "input": {"x": 5}}],
@@ -137,7 +138,7 @@ class TestSanitizeToolResults:
         - NO preceding assistant with matching tool_use
         Result: tool_result should be removed and converted to text
         """
-        messages = [
+        messages: list[dict[str, Any]] = [
             create_user_text_message("Hello"),
             create_user_with_tool_result(
                 [{"tool_use_id": "orphan_456", "content": "orphaned result"}]
@@ -163,9 +164,9 @@ class TestSanitizeToolResults:
         Scenario: Partial compaction
         - Assistant with tool_use(id="valid_1")
         - User with tool_result(tool_use_id="valid_1") AND tool_result(tool_use_id="orphan_2")
-        Result: valid_1 kept, orphan_2 converted to text
+        Result: valid_1 kept, orphan_2 dropped (no text injected)
         """
-        messages = [
+        messages: list[dict[str, Any]] = [
             create_assistant_with_tool_use(
                 "Let me check that.",
                 [{"id": "valid_1", "name": "search", "input": {"query": "test"}}],
@@ -183,17 +184,10 @@ class TestSanitizeToolResults:
         assert len(result) == 2
         user_content = result[1]["content"]
 
-        # Should have text block (from orphaned) + valid tool_result
-        assert len(user_content) == 2
-
-        # First should be text block with orphaned info
-        assert user_content[0]["type"] == "text"
-        assert "Previous tool results" in user_content[0]["text"]
-        assert "orphan_2" in user_content[0]["text"]
-
-        # Second should be the valid tool_result
-        assert user_content[1]["type"] == "tool_result"
-        assert user_content[1]["tool_use_id"] == "valid_1"
+        # Only the valid tool_result should remain
+        assert len(user_content) == 1
+        assert user_content[0]["type"] == "tool_result"
+        assert user_content[0]["tool_use_id"] == "valid_1"
 
         # Should log warning about orphaned result
         mock_logger.warning.assert_called_once()
@@ -206,7 +200,7 @@ class TestSanitizeToolResults:
         - User with tool_result for all three
         Result: all three should be preserved
         """
-        messages = [
+        messages: list[dict[str, Any]] = [
             create_assistant_with_tool_use(
                 "I'll use three tools.",
                 [
@@ -237,6 +231,150 @@ class TestSanitizeToolResults:
 
         # No warnings should be logged
         mock_logger.warning.assert_not_called()
+
+    def test_orphaned_tool_use_removed_when_no_next_message(
+        self, mock_logger: Mock
+    ) -> None:
+        """Remove tool_use when no following user message exists."""
+        messages: list[dict[str, Any]] = [
+            create_assistant_with_tool_use(
+                "I'll need to run a tool.",
+                [{"id": "tool_1", "name": "helper", "input": {"q": "test"}}],
+            )
+        ]
+
+        result = _sanitize_tool_results(messages)
+
+        assert len(result) == 1
+        assert result[0]["role"] == "assistant"
+        content = result[0]["content"]
+        assert isinstance(content, list)
+        assert all(block.get("type") != "tool_use" for block in content)
+        assert "Tool calls from compacted history" in content[0]["text"]
+        mock_logger.warning.assert_called_once()
+
+    def test_orphaned_tool_use_removed_when_next_user_missing_result(
+        self, mock_logger: Mock
+    ) -> None:
+        """Remove tool_use when the next user message lacks tool_result."""
+        messages: list[dict[str, Any]] = [
+            create_assistant_with_tool_use(
+                "Let me check.",
+                [{"id": "tool_1", "name": "search", "input": {"q": "test"}}],
+            ),
+            create_user_text_message("Thanks!"),
+        ]
+
+        result = _sanitize_tool_results(messages)
+
+        assert len(result) == 2
+        assistant_content = result[0]["content"]
+        assert isinstance(assistant_content, list)
+        assert all(block.get("type") != "tool_use" for block in assistant_content)
+        assert "Tool calls from compacted history" in assistant_content[0]["text"]
+        assert result[1] == messages[1]
+        mock_logger.warning.assert_called_once()
+
+    def test_tool_use_removed_when_next_user_only_has_orphaned_results(
+        self, mock_logger: Mock
+    ) -> None:
+        """Remove tool_use when next user only includes unrelated tool_results."""
+        messages: list[dict[str, Any]] = [
+            create_assistant_with_tool_use(
+                "Let me check.",
+                [{"id": "tool_keep", "name": "search", "input": {"q": "test"}}],
+            ),
+            create_user_with_tool_result(
+                [{"tool_use_id": "orphan_only", "content": "old result"}]
+            ),
+        ]
+
+        result = _sanitize_tool_results(messages)
+
+        assistant_content = result[0]["content"]
+        assert isinstance(assistant_content, list)
+        assert all(block.get("type") != "tool_use" for block in assistant_content)
+        assert "Tool calls from compacted history" in assistant_content[0]["text"]
+
+        user_content = result[1]["content"]
+        assert len(user_content) == 1
+        assert user_content[0]["type"] == "text"
+        assert "Previous tool results" in user_content[0]["text"]
+
+        assert mock_logger.warning.call_count == 2
+
+    def test_duplicate_tool_use_pruned_to_match_result_count(
+        self, mock_logger: Mock
+    ) -> None:
+        """Remove extra tool_use blocks when tool_result count is lower.
+
+        Scenario: Assistant has duplicate tool_use IDs; user has a single result.
+        Result: Keep only one tool_use and one tool_result.
+        """
+        messages: list[dict[str, Any]] = [
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Calling tool twice."},
+                    {
+                        "type": "tool_use",
+                        "id": "dup_tool",
+                        "name": "search",
+                        "input": {},
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "dup_tool",
+                        "name": "search",
+                        "input": {},
+                    },
+                ],
+            },
+            create_user_with_tool_result(
+                [{"tool_use_id": "dup_tool", "content": "result once"}]
+            ),
+        ]
+
+        result = _sanitize_tool_results(messages)
+
+        assistant_content = result[0]["content"]
+        tool_use_blocks = [b for b in assistant_content if b.get("type") == "tool_use"]
+        assert len(tool_use_blocks) == 1
+
+        user_content = result[1]["content"]
+        tool_result_blocks = [b for b in user_content if b.get("type") == "tool_result"]
+        assert len(tool_result_blocks) == 1
+
+        mock_logger.warning.assert_called_once()
+
+    def test_tool_use_removed_when_result_not_immediately_after(
+        self, mock_logger: Mock
+    ) -> None:
+        """Remove tool_use when tool_result is not in the next message."""
+        messages = [
+            create_assistant_with_tool_use(
+                "Calling a tool.",
+                [{"id": "tool_1", "name": "lookup", "input": {"q": "test"}}],
+            ),
+            create_assistant_text_message("Continuing without result."),
+            create_user_with_tool_result(
+                [{"tool_use_id": "tool_1", "content": "late result"}]
+            ),
+        ]
+
+        result = _sanitize_tool_results(messages)
+
+        assert len(result) == 3
+        assistant_content = result[0]["content"]
+        assert isinstance(assistant_content, list)
+        assert all(block.get("type") != "tool_use" for block in assistant_content)
+        assert "Tool calls from compacted history" in assistant_content[0]["text"]
+
+        user_content = result[2]["content"]
+        assert len(user_content) == 1
+        assert user_content[0]["type"] == "text"
+        assert "Previous tool results" in user_content[0]["text"]
+        mock_logger.warning.assert_called()
 
     def test_conversation_compaction_scenario(self, mock_logger: Mock) -> None:
         """Test the real bug scenario: conversation compaction leaves orphaned results.
@@ -275,16 +413,10 @@ class TestSanitizeToolResults:
         assert len(result) == 3
         user_content = result[2]["content"]
 
-        # Should have text block (orphaned) + valid tool_result
-        assert len(user_content) == 2
-
-        # First is text with orphaned info
-        assert user_content[0]["type"] == "text"
-        assert "original_tool" in user_content[0]["text"]
-
-        # Second is valid tool_result
-        assert user_content[1]["type"] == "tool_result"
-        assert user_content[1]["tool_use_id"] == "new_tool"
+        # Only the valid tool_result should remain
+        assert len(user_content) == 1
+        assert user_content[0]["type"] == "tool_result"
+        assert user_content[0]["tool_use_id"] == "new_tool"
 
         # Should log warning
         mock_logger.warning.assert_called_once()
@@ -521,7 +653,7 @@ class TestSanitizeToolResults:
         Scenario: Multiple results, only some have matching tool_use
         - Assistant with tool_use(id="valid_1") and tool_use(id="valid_2")
         - User with results for "valid_1", "orphan_3", "valid_2"
-        Result: valid_1 and valid_2 kept, orphan_3 converted to text
+        Result: valid_1 and valid_2 kept, orphan_3 dropped
         """
         messages = [
             create_assistant_with_tool_use(
@@ -543,18 +675,12 @@ class TestSanitizeToolResults:
         result = _sanitize_tool_results(messages)
 
         user_content = result[1]["content"]
-        # Should have text block + 2 valid results
-        assert len(user_content) == 3
-
-        # First is text with orphaned info
-        assert user_content[0]["type"] == "text"
-        assert "orphan_3" in user_content[0]["text"]
-
-        # Other two are valid results
+        # Only the valid tool_results should remain
+        assert len(user_content) == 2
+        assert user_content[0]["type"] == "tool_result"
+        assert user_content[0]["tool_use_id"] == "valid_1"
         assert user_content[1]["type"] == "tool_result"
-        assert user_content[1]["tool_use_id"] == "valid_1"
-        assert user_content[2]["type"] == "tool_result"
-        assert user_content[2]["tool_use_id"] == "valid_2"
+        assert user_content[1]["tool_use_id"] == "valid_2"
 
     def test_assistant_with_string_content_no_tool_use(self, mock_logger: Mock) -> None:
         """Test assistant message with string content (no tool_use blocks).
@@ -611,3 +737,63 @@ class TestSanitizeToolResults:
         assert "result one" in text_block
         assert "result two" in text_block
         assert "result three" in text_block
+
+    def test_assistant_dict_content_tool_use_removed(self, mock_logger: Mock) -> None:
+        """Handle assistant content supplied as a dict (single tool_use block).
+
+        Scenario: Non-list content with tool_use and no following tool_result
+        Result: tool_use should be converted to text and content normalized to list
+        """
+        messages: list[dict[str, Any]] = [
+            {
+                "role": "assistant",
+                "content": {
+                    "type": "tool_use",
+                    "id": "tool_dict",
+                    "name": "glob",
+                    "input": {"pattern": "*.py"},
+                },
+            },
+            {"role": "user", "content": "continue"},
+        ]
+
+        result = _sanitize_tool_results(messages)
+
+        assistant_content = result[0]["content"]
+        assert isinstance(assistant_content, list)
+        assert all(block.get("type") != "tool_use" for block in assistant_content)
+        assert any(
+            block.get("type") == "text"
+            for block in assistant_content
+            if isinstance(block, dict)
+        )
+
+        mock_logger.warning.assert_called_once()
+
+    def test_user_dict_content_tool_result_converted(self, mock_logger: Mock) -> None:
+        """Handle user content supplied as a dict (single tool_result block).
+
+        Scenario: Orphaned tool_result provided as a dict
+        Result: tool_result should be converted to text and content normalized to list
+        """
+        messages: list[dict[str, Any]] = [
+            {"role": "assistant", "content": "No tools here"},
+            {
+                "role": "user",
+                "content": {
+                    "type": "tool_result",
+                    "tool_use_id": "orphan_dict",
+                    "content": "old result",
+                },
+            },
+        ]
+
+        result = _sanitize_tool_results(messages)
+
+        user_content = result[1]["content"]
+        assert isinstance(user_content, list)
+        assert len(user_content) == 1
+        assert user_content[0]["type"] == "text"
+        assert "orphan_dict" in user_content[0]["text"]
+
+        mock_logger.warning.assert_called_once()
