@@ -14,7 +14,9 @@ from starlette.responses import Response, StreamingResponse
 from ccproxy.config.utils import OPENAI_CHAT_COMPLETIONS_PATH
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.request_context import RequestContext
+from ccproxy.llms.formatters.openai_to_anthropic.requests import _sanitize_tool_results
 from ccproxy.llms.streaming import OpenAIStreamProcessor
+from ccproxy.llms.utils import get_max_input_tokens, truncate_to_fit
 from ccproxy.services.adapters.chain_composer import compose_from_chain
 from ccproxy.services.adapters.format_adapter import FormatAdapterProtocol
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
@@ -234,6 +236,34 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
         # Extract parameters for SDK handler
         messages = request_data.get("messages", [])
         model = request_data.get("model", "claude-3-opus-20240229")
+
+        # Auto-truncate context if request exceeds model limits
+        # IMPORTANT: Truncation must happen BEFORE sanitization because truncation
+        # can create orphaned tool blocks by removing messages with tool_use while
+        # keeping messages with tool_result
+        max_input = get_max_input_tokens(model)
+        if max_input:
+            request_data, was_truncated = truncate_to_fit(
+                request_data,
+                max_input_tokens=max_input,
+                preserve_recent=getattr(self.config, "preserve_recent_messages", 10),
+                safety_margin=getattr(self.config, "context_safety_margin", 0.9),
+            )
+            if was_truncated:
+                logger.info(
+                    "request_truncated_for_context_limit",
+                    model=model,
+                    max_input_tokens=max_input,
+                    category="context_management",
+                )
+                # Update messages reference after truncation
+                messages = request_data.get("messages", [])
+
+        # Sanitize tool_result blocks to remove orphaned references
+        # This fixes "unexpected tool_use_id" errors from conversation compaction
+        # Must run AFTER truncation to catch orphans created by truncation
+        messages = _sanitize_tool_results(messages)
+        request_data["messages"] = messages
         temperature = request_data.get("temperature")
         max_tokens = request_data.get("max_tokens")
         stream = request_data.get("stream", False)
