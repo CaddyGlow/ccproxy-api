@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -429,6 +430,7 @@ ANTHROPIC_CHAT_CASES = [
         {
             "expected_finish": "tool_calls",
             "text_snippet": "weather information",
+            "tool_names": {"get_weather", "calculate_distance"},
         },
     ),
 ]
@@ -451,6 +453,13 @@ def test_anthropic_message_to_openai_chat(
     content = choice.message.content or ""
     if isinstance(content, str) and expect.get("text_snippet"):
         assert expect["text_snippet"] in content
+
+    if expect.get("tool_names"):
+        tool_calls = choice.message.tool_calls or []
+        tool_names = {tool_call.function.name for tool_call in tool_calls}
+        assert tool_names == expect["tool_names"]
+        for tool_call in tool_calls:
+            assert json.loads(tool_call.function.arguments)
 
 
 @pytest.mark.unit

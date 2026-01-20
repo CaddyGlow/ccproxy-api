@@ -27,10 +27,9 @@ from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
 from ccproxy.llms.streaming.accumulators import ClaudeAccumulator
 
+from ._helpers import build_openai_tool_call
 from .requests import _build_responses_payload_from_anthropic_request
-from .responses import (
-    convert__anthropic_usage_to_openai_responses__usage,
-)
+from .responses import convert__anthropic_usage_to_openai_responses__usage
 
 
 logger = ccproxy.core.logging.get_logger(__name__)
@@ -100,22 +99,15 @@ def _build_openai_tool_call(
         function_payload = (
             tool_call.get("function", {}) if isinstance(tool_call, dict) else {}
         )
-        name = function_payload.get("name") or tool_call.get("name") or "function"
+        tool_name = function_payload.get("name") or tool_call.get("name")
         arguments = function_payload.get("arguments")
-        if not isinstance(arguments, str) or not arguments:
-            try:
-                arguments = json.dumps(tool_call.get("input", {}), ensure_ascii=False)
-            except Exception:
-                arguments = json.dumps(tool_call.get("input", {}))
 
-        tool_id = tool_call.get("id") or f"call_{block_index}"
-
-        return openai_models.ToolCall(
-            id=str(tool_id),
-            function=openai_models.FunctionCall(
-                name=str(name),
-                arguments=str(arguments),
-            ),
+        return build_openai_tool_call(
+            tool_id=tool_call.get("id"),
+            tool_name=tool_name,
+            tool_input=tool_call.get("input", {}),
+            arguments=arguments,
+            fallback_index=block_index,
         )
 
     return None
