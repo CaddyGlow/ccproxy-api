@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -101,6 +102,8 @@ def convert__anthropic_message_to_openai_chat__response(
     """Convert Anthropic MessageResponse to an OpenAI ChatCompletionResponse."""
     content_blocks = response.content
     parts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+
     for block in content_blocks:
         btype = getattr(block, "type", None)
         if btype == "text":
@@ -117,8 +120,21 @@ def convert__anthropic_message_to_openai_chat__response(
                     else ""
                 )
                 parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
+        elif btype == "tool_use":
+            # Convert Anthropic tool_use to OpenAI tool_calls format
+            tool_id = getattr(block, "id", f"call_{len(tool_calls)}")
+            tool_name = getattr(block, "name", "unknown")
+            tool_input = getattr(block, "input", {}) or {}
+            tool_calls.append({
+                "id": tool_id,
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "arguments": json.dumps(tool_input) if isinstance(tool_input, dict) else str(tool_input),
+                }
+            })
 
-    content_text = "".join(parts)
+    content_text = "".join(parts) if parts else None
 
     stop_reason = response.stop_reason
     finish_reason = ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
@@ -127,12 +143,16 @@ def convert__anthropic_message_to_openai_chat__response(
 
     usage_model = convert__anthropic_usage_to_openai_completion__usage(response.usage)
 
+    message_dict: dict[str, Any] = {"role": "assistant", "content": content_text}
+    if tool_calls:
+        message_dict["tool_calls"] = tool_calls
+
     payload = {
         "id": response.id,
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": content_text},
+                "message": message_dict,
                 "finish_reason": finish_reason,
             }
         ],
