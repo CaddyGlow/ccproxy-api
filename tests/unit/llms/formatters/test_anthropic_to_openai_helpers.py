@@ -37,6 +37,42 @@ async def test_convert__anthropic_message_to_openai_chat__response_basic() -> No
 
 
 @pytest.mark.asyncio
+async def test_convert__anthropic_message_to_openai_chat__response_tool_use() -> None:
+    resp = anthropic_models.MessageResponse(
+        id="msg_tool_1",
+        type="message",
+        role="assistant",
+        model="claude-3",
+        content=[
+            anthropic_models.ToolUseBlock(
+                type="tool_use",
+                id="tool_123",
+                name="get_weather",
+                input={"location": "Boston", "units": "metric"},
+            )
+        ],
+        stop_reason="tool_use",
+        stop_sequence=None,
+        usage=anthropic_models.Usage(input_tokens=3, output_tokens=4),
+    )
+
+    out = convert__anthropic_message_to_openai_chat__response(resp)
+    assert isinstance(out, openai_models.ChatCompletionResponse)
+    assert out.choices[0].finish_reason == "tool_calls"
+    assert out.choices[0].message.content is None
+
+    tool_calls = out.choices[0].message.tool_calls
+    assert tool_calls and len(tool_calls) == 1
+    tool_call = tool_calls[0]
+    assert tool_call.id == "tool_123"
+    assert tool_call.function.name == "get_weather"
+    assert json.loads(tool_call.function.arguments) == {
+        "location": "Boston",
+        "units": "metric",
+    }
+
+
+@pytest.mark.asyncio
 async def test_convert__anthropic_message_to_openai_responses__stream_minimal() -> None:
     register_request(
         anthropic_models.CreateMessageRequest(

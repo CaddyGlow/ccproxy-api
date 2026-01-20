@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any
 
@@ -14,6 +13,8 @@ from ccproxy.llms.formatters.common import (
 from ccproxy.llms.formatters.constants import ANTHROPIC_TO_OPENAI_FINISH_REASON
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
+
+from ._helpers import build_openai_tool_call
 
 
 logger = ccproxy.core.logging.get_logger(__name__)
@@ -102,7 +103,7 @@ def convert__anthropic_message_to_openai_chat__response(
     """Convert Anthropic MessageResponse to an OpenAI ChatCompletionResponse."""
     content_blocks = response.content
     parts: list[str] = []
-    tool_calls: list[dict[str, Any]] = []
+    tool_calls: list[openai_models.ToolCall] = []
 
     for block in content_blocks:
         btype = getattr(block, "type", None)
@@ -121,18 +122,14 @@ def convert__anthropic_message_to_openai_chat__response(
                 )
                 parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
         elif btype == "tool_use":
-            # Convert Anthropic tool_use to OpenAI tool_calls format
-            tool_id = getattr(block, "id", f"call_{len(tool_calls)}")
-            tool_name = getattr(block, "name", "unknown")
-            tool_input = getattr(block, "input", {}) or {}
-            tool_calls.append({
-                "id": tool_id,
-                "type": "function",
-                "function": {
-                    "name": tool_name,
-                    "arguments": json.dumps(tool_input) if isinstance(tool_input, dict) else str(tool_input),
-                }
-            })
+            tool_calls.append(
+                build_openai_tool_call(
+                    tool_id=getattr(block, "id", None),
+                    tool_name=getattr(block, "name", None),
+                    tool_input=getattr(block, "input", {}) or {},
+                    fallback_index=len(tool_calls),
+                )
+            )
 
     content_text = "".join(parts) if parts else None
 
@@ -145,7 +142,7 @@ def convert__anthropic_message_to_openai_chat__response(
 
     message_dict: dict[str, Any] = {"role": "assistant", "content": content_text}
     if tool_calls:
-        message_dict["tool_calls"] = tool_calls
+        message_dict["tool_calls"] = [call.model_dump() for call in tool_calls]
 
     payload = {
         "id": response.id,
