@@ -85,6 +85,11 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Always set Authorization from OAuth-managed access token
         filtered_headers["authorization"] = f"Bearer {token_value}"
 
+        # PATCH: Add Computer Use beta headers for Anthropic API
+        # These are required for browser automation tools to work
+        filtered_headers["anthropic-version"] = "2023-06-01"
+        filtered_headers["anthropic-beta"] = "computer-use-2025-01-24"
+
         # Add CLI headers if available, but never allow overriding auth
         cli_headers = self._collect_cli_headers()
         if cli_headers:
