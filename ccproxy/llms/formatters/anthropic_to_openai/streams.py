@@ -73,13 +73,11 @@ def _anthropic_delta_to_text(
     block_type = block_meta.get("type")
 
     if block_type == "thinking":
+        # Return just the thinking text - tags handled by block start/stop events
         thinking_text = delta.get("thinking")
-        if not isinstance(thinking_text, str) or not thinking_text:
-            return None
-        signature = block_meta.get("signature")
-        if isinstance(signature, str) and signature:
-            return f'<thinking signature="{signature}">{thinking_text}</thinking>'
-        return f"<thinking>{thinking_text}</thinking>"
+        if isinstance(thinking_text, str) and thinking_text:
+            return thinking_text
+        return None
 
     text_val = delta.get("text")
     if isinstance(text_val, str) and text_val:
@@ -1378,6 +1376,34 @@ class AnthropicToOpenAIChatStreamAdapter:
                 if not message_started:
                     continue
 
+                if event_type == "content_block_start":
+                    content_block = (
+                        event_payload.get("content_block", {})
+                        if isinstance(event_payload, dict)
+                        else {}
+                    )
+                    if (
+                        isinstance(content_block, dict)
+                        and content_block.get("type") == "thinking"
+                    ):
+                        # Emit opening <think> tag
+                        yield openai_models.ChatCompletionChunk(
+                            id="chatcmpl-stream",
+                            object="chat.completion.chunk",
+                            created=0,
+                            model=model_id,
+                            choices=[
+                                openai_models.StreamingChoice(
+                                    index=0,
+                                    delta=openai_models.DeltaMessage(
+                                        role="assistant", content="<think>"
+                                    ),
+                                    finish_reason=None,
+                                )
+                            ],
+                        )
+                    continue
+
                 if event_type == "content_block_delta":
                     block_index = int(event_payload.get("index", 0))
                     text_delta = _anthropic_delta_to_text(
@@ -1409,7 +1435,28 @@ class AnthropicToOpenAIChatStreamAdapter:
                     if not block_info:
                         continue
                     _, block_meta = block_info
-                    if block_meta.get("type") != "tool_use":
+                    block_type = block_meta.get("type")
+
+                    if block_type == "thinking":
+                        # Emit closing </think> tag
+                        yield openai_models.ChatCompletionChunk(
+                            id="chatcmpl-stream",
+                            object="chat.completion.chunk",
+                            created=0,
+                            model=model_id,
+                            choices=[
+                                openai_models.StreamingChoice(
+                                    index=0,
+                                    delta=openai_models.DeltaMessage(
+                                        role="assistant", content="</think>"
+                                    ),
+                                    finish_reason=None,
+                                )
+                            ],
+                        )
+                        continue
+
+                    if block_type != "tool_use":
                         continue
                     if block_index in emitted_tool_indices:
                         continue
