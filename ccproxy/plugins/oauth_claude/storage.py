@@ -37,7 +37,13 @@ async def _read_from_macos_keychain() -> dict[str, Any] | None:
     def read_keychain() -> dict[str, Any] | None:
         try:
             result = subprocess.run(
-                ["security", "find-generic-password", "-s", MACOS_KEYCHAIN_SERVICE, "-w"],
+                [
+                    "security",
+                    "find-generic-password",
+                    "-s",
+                    MACOS_KEYCHAIN_SERVICE,
+                    "-w",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=5,
