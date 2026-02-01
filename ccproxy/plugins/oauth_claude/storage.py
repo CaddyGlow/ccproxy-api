@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import platform
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, cast
@@ -13,6 +15,44 @@ from .models import ClaudeCredentials, ClaudeProfileInfo
 
 
 logger = get_plugin_logger()
+
+
+# macOS Keychain service name used by Claude Code
+MACOS_KEYCHAIN_SERVICE = "Claude Code-credentials"
+
+
+async def _read_from_macos_keychain() -> dict[str, Any] | None:
+    """Read Claude credentials from macOS Keychain.
+
+    Claude Code stores OAuth credentials in macOS Keychain and intentionally
+    deletes the plain text ~/.claude/.credentials.json file for security.
+    See: https://github.com/anthropics/claude-code/issues/1414
+
+    Returns:
+        Parsed credentials dict or None if not found/not on macOS
+    """
+    if platform.system() != "Darwin":
+        return None
+
+    def read_keychain() -> dict[str, Any] | None:
+        try:
+            result = subprocess.run(
+                ["security", "find-generic-password", "-s", MACOS_KEYCHAIN_SERVICE, "-w"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return cast(dict[str, Any], json.loads(result.stdout.strip()))
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+            logger.debug(
+                "macos_keychain_read_failed",
+                error=str(e),
+                category="auth",
+            )
+        return None
+
+    return await asyncio.to_thread(read_keychain)
 
 
 class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
@@ -61,24 +101,47 @@ class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
             return False
 
     async def load(self) -> ClaudeCredentials | None:
-        """Load Claude credentials.
+        """Load Claude credentials from file or macOS Keychain.
+
+        Claude Code stores credentials in macOS Keychain and intentionally
+        deletes the plain text file for security. This method tries file first
+        (for non-macOS or manual setups), then falls back to Keychain on macOS.
 
         Returns:
             Stored credentials or None
         """
         try:
-            # Use parent class's read method
+            # Try file first (works on all platforms, manual setups)
             data = await self._read_json()
-            if not data:
-                return None
+            if data:
+                credentials = ClaudeCredentials.model_validate(data)
+                logger.debug(
+                    "claude_oauth_credentials_loaded",
+                    has_oauth=bool(credentials.claude_ai_oauth),
+                    source="file",
+                    category="auth",
+                )
+                return credentials
 
-            credentials = ClaudeCredentials.model_validate(data)
+            # Fallback to macOS Keychain (where Claude Code stores credentials)
+            keychain_data = await _read_from_macos_keychain()
+            if keychain_data:
+                credentials = ClaudeCredentials.model_validate(keychain_data)
+                logger.info(
+                    "claude_oauth_credentials_loaded_from_keychain",
+                    has_oauth=bool(credentials.claude_ai_oauth),
+                    source="keychain",
+                    category="auth",
+                )
+                return credentials
+
             logger.debug(
-                "claude_oauth_credentials_loaded",
-                has_oauth=bool(credentials.claude_ai_oauth),
+                "claude_oauth_credentials_not_found",
+                checked_file=str(self.file_path),
+                checked_keychain=platform.system() == "Darwin",
                 category="auth",
             )
-            return credentials
+            return None
         except Exception as e:
             logger.error(
                 "claude_oauth_credentials_load_error",
