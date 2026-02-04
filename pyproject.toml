@@ -92,6 +92,7 @@ dev = [
   "bandit",
   "types-aiofiles>=24.0.0",
   "types-PyYAML>=6.0.12.12",
+  "keyring>=25.0.0",
 ]
 
 [project.optional-dependencies]
