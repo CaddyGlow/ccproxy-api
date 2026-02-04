@@ -2,8 +2,6 @@
 
 import asyncio
 import json
-import platform
-import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, cast
@@ -17,43 +15,70 @@ from .models import ClaudeCredentials, ClaudeProfileInfo
 logger = get_plugin_logger()
 
 
-# macOS Keychain service name used by Claude Code
-MACOS_KEYCHAIN_SERVICE = "Claude Code-credentials"
+# Keychain service name used by Claude Code
+KEYCHAIN_SERVICE = "Claude Code"
+KEYCHAIN_ACCOUNT = "credentials"
 
 
-async def _read_from_macos_keychain() -> dict[str, Any] | None:
-    """Read Claude credentials from macOS Keychain.
+def _is_keyring_available() -> bool:
+    """Check if keyring library is available."""
+    try:
+        import keyring  # noqa: F401
 
-    Claude Code stores OAuth credentials in macOS Keychain and intentionally
+        return True
+    except ImportError:
+        return False
+
+
+async def _read_from_keychain() -> dict[str, Any] | None:
+    """Read Claude credentials from system keychain.
+
+    Claude Code stores OAuth credentials in the system keychain and intentionally
     deletes the plain text ~/.claude/.credentials.json file for security.
     See: https://github.com/anthropics/claude-code/issues/1414
 
+    Uses the keyring library which supports:
+    - macOS Keychain
+    - Windows Credential Manager
+    - Linux Secret Service (GNOME Keyring, KDE Wallet)
+
     Returns:
-        Parsed credentials dict or None if not found/not on macOS
+        Parsed credentials dict or None if not found or keyring unavailable
     """
-    if platform.system() != "Darwin":
+    if not _is_keyring_available():
+        logger.debug(
+            "keyring_not_available",
+            hint="Install keyring package for system keychain support",
+            category="auth",
+        )
         return None
 
     def read_keychain() -> dict[str, Any] | None:
         try:
-            result = subprocess.run(
-                [
-                    "security",
-                    "find-generic-password",
-                    "-s",
-                    MACOS_KEYCHAIN_SERVICE,
-                    "-w",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return cast(dict[str, Any], json.loads(result.stdout.strip()))
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception) as e:
+            import keyring
+
+            password = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+            if password:
+                parsed = json.loads(password)
+                if isinstance(parsed, dict):
+                    return parsed
+                logger.debug(
+                    "keychain_invalid_format",
+                    expected="dict",
+                    got=type(parsed).__name__,
+                    category="auth",
+                )
+        except json.JSONDecodeError as e:
             logger.debug(
-                "macos_keychain_read_failed",
+                "keychain_json_decode_error",
                 error=str(e),
+                category="auth",
+            )
+        except Exception as e:
+            logger.debug(
+                "keychain_read_error",
+                error=str(e),
+                error_type=type(e).__name__,
                 category="auth",
             )
         return None
@@ -107,11 +132,12 @@ class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
             return False
 
     async def load(self) -> ClaudeCredentials | None:
-        """Load Claude credentials from file or macOS Keychain.
+        """Load Claude credentials from file or system keychain.
 
-        Claude Code stores credentials in macOS Keychain and intentionally
-        deletes the plain text file for security. This method tries file first
-        (for non-macOS or manual setups), then falls back to Keychain on macOS.
+        Claude Code stores credentials in the system keychain and intentionally
+        deletes the plain text file for security. This method tries file first,
+        then falls back to the system keychain (macOS Keychain, Windows Credential
+        Manager, or Linux Secret Service).
 
         Returns:
             Stored credentials or None
@@ -129,12 +155,12 @@ class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
                 )
                 return credentials
 
-            # Fallback to macOS Keychain (where Claude Code stores credentials)
-            keychain_data = await _read_from_macos_keychain()
+            # Fallback to system keychain (where Claude Code stores credentials)
+            keychain_data = await _read_from_keychain()
             if keychain_data:
                 credentials = ClaudeCredentials.model_validate(keychain_data)
-                logger.info(
-                    "claude_oauth_credentials_loaded_from_keychain",
+                logger.debug(
+                    "claude_oauth_credentials_loaded",
                     has_oauth=bool(credentials.claude_ai_oauth),
                     source="keychain",
                     category="auth",
@@ -144,7 +170,7 @@ class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
             logger.debug(
                 "claude_oauth_credentials_not_found",
                 checked_file=str(self.file_path),
-                checked_keychain=platform.system() == "Darwin",
+                checked_keychain=_is_keyring_available(),
                 category="auth",
             )
             return None
