@@ -15,6 +15,77 @@ from .models import ClaudeCredentials, ClaudeProfileInfo
 logger = get_plugin_logger()
 
 
+# Keychain service name used by Claude Code
+KEYCHAIN_SERVICE = "Claude Code"
+KEYCHAIN_ACCOUNT = "credentials"
+
+
+def _is_keyring_available() -> bool:
+    """Check if keyring library is available."""
+    try:
+        import keyring  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+async def _read_from_keychain() -> dict[str, Any] | None:
+    """Read Claude credentials from system keychain.
+
+    Claude Code stores OAuth credentials in the system keychain and intentionally
+    deletes the plain text ~/.claude/.credentials.json file for security.
+    See: https://github.com/anthropics/claude-code/issues/1414
+
+    Uses the keyring library which supports:
+    - macOS Keychain
+    - Windows Credential Manager
+    - Linux Secret Service (GNOME Keyring, KDE Wallet)
+
+    Returns:
+        Parsed credentials dict or None if not found or keyring unavailable
+    """
+    if not _is_keyring_available():
+        logger.debug(
+            "keyring_not_available",
+            hint="Install keyring package for system keychain support",
+            category="auth",
+        )
+        return None
+
+    def read_keychain() -> dict[str, Any] | None:
+        try:
+            import keyring
+
+            password = keyring.get_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+            if password:
+                parsed = json.loads(password)
+                if isinstance(parsed, dict):
+                    return parsed
+                logger.debug(
+                    "keychain_invalid_format",
+                    expected="dict",
+                    got=type(parsed).__name__,
+                    category="auth",
+                )
+        except json.JSONDecodeError as e:
+            logger.debug(
+                "keychain_json_decode_error",
+                error=str(e),
+                category="auth",
+            )
+        except Exception as e:
+            logger.debug(
+                "keychain_read_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                category="auth",
+            )
+        return None
+
+    return await asyncio.to_thread(read_keychain)
+
+
 class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
     """Claude OAuth-specific token storage implementation."""
 
@@ -61,24 +132,48 @@ class ClaudeOAuthStorage(BaseJsonStorage[ClaudeCredentials]):
             return False
 
     async def load(self) -> ClaudeCredentials | None:
-        """Load Claude credentials.
+        """Load Claude credentials from file or system keychain.
+
+        Claude Code stores credentials in the system keychain and intentionally
+        deletes the plain text file for security. This method tries file first,
+        then falls back to the system keychain (macOS Keychain, Windows Credential
+        Manager, or Linux Secret Service).
 
         Returns:
             Stored credentials or None
         """
         try:
-            # Use parent class's read method
+            # Try file first (works on all platforms, manual setups)
             data = await self._read_json()
-            if not data:
-                return None
+            if data:
+                credentials = ClaudeCredentials.model_validate(data)
+                logger.debug(
+                    "claude_oauth_credentials_loaded",
+                    has_oauth=bool(credentials.claude_ai_oauth),
+                    source="file",
+                    category="auth",
+                )
+                return credentials
 
-            credentials = ClaudeCredentials.model_validate(data)
+            # Fallback to system keychain (where Claude Code stores credentials)
+            keychain_data = await _read_from_keychain()
+            if keychain_data:
+                credentials = ClaudeCredentials.model_validate(keychain_data)
+                logger.debug(
+                    "claude_oauth_credentials_loaded",
+                    has_oauth=bool(credentials.claude_ai_oauth),
+                    source="keychain",
+                    category="auth",
+                )
+                return credentials
+
             logger.debug(
-                "claude_oauth_credentials_loaded",
-                has_oauth=bool(credentials.claude_ai_oauth),
+                "claude_oauth_credentials_not_found",
+                checked_file=str(self.file_path),
+                checked_keychain=_is_keyring_available(),
                 category="auth",
             )
-            return credentials
+            return None
         except Exception as e:
             logger.error(
                 "claude_oauth_credentials_load_error",

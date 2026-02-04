@@ -60,7 +60,7 @@ repos:
           - structlog>=24.1.0
           # Claude SDK (from git source)
           - claude-agent-sdk>=0.0.14
-          - keyring>=24.0.0
+          - keyring>=25.0.0
           - aiosqlite>=0.21.0
           - sqlmodel>=0.0.24
           - duckdb-engine>=0.17.0

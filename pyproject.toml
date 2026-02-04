@@ -92,10 +92,11 @@ dev = [
   "bandit",
   "types-aiofiles>=24.0.0",
   "types-PyYAML>=6.0.12.12",
+  "keyring>=25.0.0",
 ]
 
 [project.optional-dependencies]
-plugins-claude = ["claude-agent-sdk>=0.1.0", "qrcode>=8.2"]
+plugins-claude = ["claude-agent-sdk>=0.1.0", "qrcode>=8.2", "keyring>=25.0.0"]
 plugins-codex = ["qrcode>=8.2", "pyjwt>=2.10.1"]
 plugins-storage = [
   "sqlmodel>=0.0.24",
