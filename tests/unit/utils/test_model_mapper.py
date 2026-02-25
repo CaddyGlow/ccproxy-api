@@ -58,13 +58,15 @@ def test_restore_model_aliases_updates_nested_payloads() -> None:
 def test_default_claude_mapping_prefers_latest_sonnet_and_opus() -> None:
     mapper = ModelMapper(DEFAULT_CLAUDE_MODEL_MAPPINGS)
 
-    assert mapper.map("gpt-4o").mapped == "claude-sonnet-4-5-20250929"
-    assert mapper.map("gpt-5").mapped == "claude-sonnet-4-5-20250929"
-    assert mapper.map("o1-preview").mapped == "claude-opus-4-1-20250805"
-    assert mapper.map("o3-mini").mapped == "claude-opus-4-1-20250805"
+    assert mapper.map("gpt-4o").mapped == "claude-sonnet-4-6"
+    assert mapper.map("gpt-5").mapped == "claude-sonnet-4-6"
+    assert mapper.map("o1-preview").mapped == "claude-opus-4-6"
+    assert mapper.map("o3-mini").mapped == "claude-opus-4-6"
+    assert mapper.map("sonnet").mapped == "claude-sonnet-4-6"
+    assert mapper.map("opus").mapped == "claude-opus-4-6"
 
 
 def test_default_codex_mapping_keeps_latest_codex_model() -> None:
     mapper = ModelMapper(DEFAULT_CODEX_MODEL_MAPPINGS)
 
-    assert mapper.map("gpt-5-codex").mapped == "gpt-5-codex"
+    assert mapper.map("gpt-5-codex").mapped == "gpt-5.3-codex"
