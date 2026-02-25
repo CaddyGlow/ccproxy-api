@@ -105,7 +105,7 @@ DEFAULT_CLAUDE_MODEL_MAPPINGS: list[ModelMappingRule] = [
     ),
     ModelMappingRule(
         match="gpt-4o",
-        target="claude-3-7-sonnet-20250219",
+        target="claude-sonnet-4-5-20250929",
         kind="prefix",
     ),
     ModelMappingRule(
@@ -125,17 +125,17 @@ DEFAULT_CLAUDE_MODEL_MAPPINGS: list[ModelMappingRule] = [
     ),
     ModelMappingRule(
         match="o1",
-        target="claude-opus-4-20250514",
+        target="claude-opus-4-1-20250805",
         kind="prefix",
     ),
     ModelMappingRule(
         match="o3-mini",
-        target="claude-opus-4-20250514",
+        target="claude-opus-4-1-20250805",
         kind="exact",
     ),
     ModelMappingRule(
         match="gpt-5",
-        target="claude-sonnet-4-20250514",
+        target="claude-sonnet-4-5-20250929",
         kind="prefix",
     ),
     ModelMappingRule(
