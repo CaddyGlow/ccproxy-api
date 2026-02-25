@@ -77,7 +77,7 @@ async def test_model_alias_restored_in_response(
     resp = await codex_client.post("/codex/v1/chat/completions", json=request_payload)
     assert resp.status_code == 200, resp.text
     data: dict[str, Any] = resp.json()
-    assert data.get("model") == "gpt-5-nano"
+    assert data.get("model") == "gpt-5"
 
 
 @pytest.mark.asyncio
