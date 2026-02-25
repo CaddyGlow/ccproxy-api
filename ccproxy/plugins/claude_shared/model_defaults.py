@@ -7,11 +7,11 @@ from ccproxy.models.provider import ModelCard, ModelMappingRule
 
 DEFAULT_CLAUDE_MODEL_CARDS: list[ModelCard] = [
     ModelCard(
-        id="claude-sonnet-4-5-20250929",
+        id="claude-sonnet-4-6",
         created=1722816000,
         owned_by="anthropic",
         permission=[],
-        root="claude-sonnet-4-5-20250929",
+        root="claude-sonnet-4-6",
         parent=None,
     ),
     ModelCard(
@@ -23,11 +23,11 @@ DEFAULT_CLAUDE_MODEL_CARDS: list[ModelCard] = [
         parent=None,
     ),
     ModelCard(
-        id="claude-opus-4-1-20250805",
+        id="claude-opus-4-6",
         created=1722816000,
         owned_by="anthropic",
         permission=[],
-        root="claude-opus-4-1-20250805",
+        root="claude-opus-4-6",
         parent=None,
     ),
     ModelCard(
@@ -105,7 +105,7 @@ DEFAULT_CLAUDE_MODEL_MAPPINGS: list[ModelMappingRule] = [
     ),
     ModelMappingRule(
         match="gpt-4o",
-        target="claude-3-7-sonnet-20250219",
+        target="claude-sonnet-4-6",
         kind="prefix",
     ),
     ModelMappingRule(
@@ -125,19 +125,22 @@ DEFAULT_CLAUDE_MODEL_MAPPINGS: list[ModelMappingRule] = [
     ),
     ModelMappingRule(
         match="o1",
-        target="claude-opus-4-20250514",
+        target="claude-opus-4-6",
         kind="prefix",
     ),
     ModelMappingRule(
         match="o3-mini",
-        target="claude-opus-4-20250514",
+        target="claude-opus-4-6",
         kind="exact",
     ),
     ModelMappingRule(
         match="gpt-5",
-        target="claude-sonnet-4-20250514",
+        target="claude-sonnet-4-6",
         kind="prefix",
     ),
+    ModelMappingRule(match="sonnet", target="claude-sonnet-4-6"),
+    ModelMappingRule(match="opus", target="claude-opus-4-6"),
+    ModelMappingRule(match="haiku", target="claude-haiku-4-5-20251001"),
     ModelMappingRule(
         match="claude-3-5-sonnet-latest",
         target="claude-3-5-sonnet-20241022",

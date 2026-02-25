@@ -7,29 +7,30 @@ from ccproxy.models.provider import ModelCard, ModelMappingRule
 
 DEFAULT_CODEX_MODEL_CARDS: list[ModelCard] = [
     ModelCard(
-        id="gpt-5",
+        id="gpt-5.3-codex",
         created=1723075200,
         owned_by="openai",
         permission=[],
-        root="gpt-5",
+        root="gpt-5.3-codex",
         parent=None,
     ),
     ModelCard(
-        id="gpt-5-codex",
+        id="gpt-5.2-codex",
         created=1726444800,
         owned_by="openai",
         permission=[],
-        root="gpt-5-codex",
+        root="gpt-5.2-codex",
         parent=None,
     ),
 ]
 
 
 DEFAULT_CODEX_MODEL_MAPPINGS: list[ModelMappingRule] = [
-    ModelMappingRule(match="gpt-", target="gpt-5", kind="prefix"),
-    ModelMappingRule(match="o3-", target="gpt-5", kind="prefix"),
-    ModelMappingRule(match="o1-", target="gpt-5", kind="prefix"),
-    ModelMappingRule(match="claude-", target="gpt-5", kind="prefix"),
+    ModelMappingRule(match="gpt-5-codex", target="gpt-5.3-codex", kind="prefix"),
+    ModelMappingRule(match="gpt-", target="gpt-5.3-codex", kind="prefix"),
+    ModelMappingRule(match="o3-", target="gpt-5.3-codex", kind="prefix"),
+    ModelMappingRule(match="o1-", target="gpt-5.3-codex", kind="prefix"),
+    ModelMappingRule(match="claude-", target="gpt-5.3-codex", kind="prefix"),
 ]
 
 
