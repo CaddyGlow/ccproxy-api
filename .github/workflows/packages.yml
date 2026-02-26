@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       has_debian: ${{ steps.inspect.outputs.has_debian }}
+      debian_arches: ${{ steps.inspect.outputs.debian_arches }}
       has_alpine: ${{ steps.inspect.outputs.has_alpine }}
       has_termux: ${{ steps.inspect.outputs.has_termux }}
       debian_reason: ${{ steps.inspect.outputs.debian_reason }}
@@ -69,12 +70,14 @@ jobs:
           RELEASE_TAG="${{ needs.prepare.outputs.release_tag }}"
           TOOL="ccproxy"
 
-          GNU_ASSET="${TOOL}-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz"
+          GNU_AMD64_ASSET="${TOOL}-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz"
+          GNU_ARM64_ASSET="${TOOL}-${RELEASE_TAG}-aarch64-unknown-linux-gnu.tar.gz"
           MUSL_X86_ASSET="${TOOL}-${RELEASE_TAG}-x86_64-unknown-linux-musl.tar.gz"
           MUSL_ARM_ASSET="${TOOL}-${RELEASE_TAG}-aarch64-unknown-linux-musl.tar.gz"
           ANDROID_ASSET="${TOOL}-${RELEASE_TAG}-aarch64-linux-android.tar.gz"
 
           HAS_DEBIAN="false"
+          DEBIAN_ARCHES="[]"
           HAS_ALPINE="false"
           HAS_TERMUX="false"
           DEBIAN_REASON="release_not_found"
@@ -89,11 +92,24 @@ jobs:
               printf '%s\n' "$ASSET_NAMES" | grep -Fxq "$expected"
             }
 
-            if has_asset "$GNU_ASSET"; then
+            DEBIAN_FOUND=()
+            if has_asset "$GNU_AMD64_ASSET"; then
+              DEBIAN_FOUND+=("amd64")
+            fi
+            if has_asset "$GNU_ARM64_ASSET"; then
+              DEBIAN_FOUND+=("arm64")
+            fi
+
+            if [ "${#DEBIAN_FOUND[@]}" -gt 0 ]; then
               HAS_DEBIAN="true"
-              DEBIAN_REASON="ready"
+              if [ "${#DEBIAN_FOUND[@]}" -eq 1 ]; then
+                DEBIAN_REASON="ready_${DEBIAN_FOUND[0]}"
+              else
+                DEBIAN_REASON="ready_all"
+              fi
+              DEBIAN_ARCHES="$(printf '%s\n' "${DEBIAN_FOUND[@]}" | jq -R . | jq -s -c .)"
             else
-              DEBIAN_REASON="missing_${GNU_ASSET}"
+              DEBIAN_REASON="missing_${GNU_AMD64_ASSET}_and_${GNU_ARM64_ASSET}"
             fi
 
             if has_asset "$MUSL_X86_ASSET" && has_asset "$MUSL_ARM_ASSET"; then
@@ -112,6 +128,7 @@ jobs:
           fi
 
           echo "has_debian=${HAS_DEBIAN}" >> "$GITHUB_OUTPUT"
+          echo "debian_arches=${DEBIAN_ARCHES}" >> "$GITHUB_OUTPUT"
           echo "has_alpine=${HAS_ALPINE}" >> "$GITHUB_OUTPUT"
           echo "has_termux=${HAS_TERMUX}" >> "$GITHUB_OUTPUT"
           echo "debian_reason=${DEBIAN_REASON}" >> "$GITHUB_OUTPUT"
@@ -121,7 +138,8 @@ jobs:
           {
             echo "### Package asset preflight"
             echo "- release tag: \\`${RELEASE_TAG}\\`"
-            echo "- debian source \\`${GNU_ASSET}\\`: ${HAS_DEBIAN} (${DEBIAN_REASON})"
+            echo "- debian sources \\`${GNU_AMD64_ASSET}\\`, \\`${GNU_ARM64_ASSET}\\`: ${HAS_DEBIAN} (${DEBIAN_REASON})"
+            echo "- debian selected arches: \\`${DEBIAN_ARCHES}\\`"
             echo "- alpine sources \\`${MUSL_X86_ASSET}\\`, \\`${MUSL_ARM_ASSET}\\`: ${HAS_ALPINE} (${ALPINE_REASON})"
             echo "- termux source \\`${ANDROID_ASSET}\\`: ${HAS_TERMUX} (${TERMUX_REASON})"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -135,6 +153,7 @@ jobs:
     with:
       tool: ccproxy
       version: ${{ needs.prepare.outputs.version }}
+      architectures: ${{ needs.preflight.outputs.debian_arches }}
       repository: ${{ github.repository }}
       release_tag: ${{ needs.prepare.outputs.release_tag }}
 
