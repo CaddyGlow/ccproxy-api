@@ -153,7 +153,6 @@ jobs:
     with:
       tool: ccproxy
       version: ${{ needs.prepare.outputs.version }}
-      architectures: ${{ needs.preflight.outputs.debian_arches }}
       repository: ${{ github.repository }}
       release_tag: ${{ needs.prepare.outputs.release_tag }}
 
@@ -166,6 +165,7 @@ jobs:
     with:
       tool: ccproxy
       version: ${{ needs.prepare.outputs.version }}
+      architectures: ${{ needs.preflight.outputs.debian_arches }}
       repository: ${{ github.repository }}
       release_tag: ${{ needs.prepare.outputs.release_tag }}
 
