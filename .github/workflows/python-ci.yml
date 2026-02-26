@@ -51,6 +51,7 @@ jobs:
       ref: ${{ inputs.ref || '' }}
       binary_name: ccproxy
       entry_point: 'ccproxy.cli.main:main'
+      extra_smoke_command: 'plugins list'
       assets: '["README.md", "LICENSE"]'
       target_preset: ${{ inputs.target_preset || 'all' }}
       python_version: '3.11'

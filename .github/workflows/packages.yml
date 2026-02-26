@@ -1,15 +1,9 @@
 name: Build Distribution Packages
 
 on:
-  # Trigger after Python CI workflow completes successfully and releases are created
-  workflow_run:
-    workflows: ["Python CI"]
-    types:
-      - completed
-    branches:
-      - main
+  release:
+    types: [published]
 
-  # Allow manual triggering
   workflow_dispatch:
     inputs:
       version:
@@ -21,48 +15,166 @@ permissions:
   contents: write
 
 jobs:
-  # Build Alpine Linux packages (.apk for x86_64 and aarch64)
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.normalize.outputs.version }}
+      release_tag: ${{ steps.normalize.outputs.release_tag }}
+    steps:
+      - name: Normalize version and release tag
+        id: normalize
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "release" ]; then
+            RAW_VALUE="${{ github.event.release.tag_name }}"
+          else
+            RAW_VALUE="${{ inputs.version }}"
+          fi
+
+          RAW_VALUE="${RAW_VALUE#refs/tags/}"
+          NORMALIZED_VERSION="${RAW_VALUE#v}"
+
+          if [ -z "$NORMALIZED_VERSION" ]; then
+            echo "::error::Unable to resolve version input"
+            exit 1
+          fi
+
+          RELEASE_TAG="v${NORMALIZED_VERSION}"
+
+          echo "version=${NORMALIZED_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+
+  preflight:
+    needs: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      has_debian: ${{ steps.inspect.outputs.has_debian }}
+      has_alpine: ${{ steps.inspect.outputs.has_alpine }}
+      has_termux: ${{ steps.inspect.outputs.has_termux }}
+      debian_reason: ${{ steps.inspect.outputs.debian_reason }}
+      alpine_reason: ${{ steps.inspect.outputs.alpine_reason }}
+      termux_reason: ${{ steps.inspect.outputs.termux_reason }}
+    steps:
+      - name: Inspect release assets
+        id: inspect
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          REPO="${{ github.repository }}"
+          RELEASE_TAG="${{ needs.prepare.outputs.release_tag }}"
+          TOOL="ccproxy"
+
+          GNU_ASSET="${TOOL}-${RELEASE_TAG}-x86_64-unknown-linux-gnu.tar.gz"
+          MUSL_X86_ASSET="${TOOL}-${RELEASE_TAG}-x86_64-unknown-linux-musl.tar.gz"
+          MUSL_ARM_ASSET="${TOOL}-${RELEASE_TAG}-aarch64-unknown-linux-musl.tar.gz"
+          ANDROID_ASSET="${TOOL}-${RELEASE_TAG}-aarch64-linux-android.tar.gz"
+
+          HAS_DEBIAN="false"
+          HAS_ALPINE="false"
+          HAS_TERMUX="false"
+          DEBIAN_REASON="release_not_found"
+          ALPINE_REASON="release_not_found"
+          TERMUX_REASON="release_not_found"
+
+          if gh release view "$RELEASE_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            ASSET_NAMES="$(gh release view "$RELEASE_TAG" --repo "$REPO" --json assets --jq '.assets[].name')"
+
+            has_asset() {
+              local expected="$1"
+              printf '%s\n' "$ASSET_NAMES" | grep -Fxq "$expected"
+            }
+
+            if has_asset "$GNU_ASSET"; then
+              HAS_DEBIAN="true"
+              DEBIAN_REASON="ready"
+            else
+              DEBIAN_REASON="missing_${GNU_ASSET}"
+            fi
+
+            if has_asset "$MUSL_X86_ASSET" && has_asset "$MUSL_ARM_ASSET"; then
+              HAS_ALPINE="true"
+              ALPINE_REASON="ready"
+            else
+              ALPINE_REASON="missing_${MUSL_X86_ASSET}_or_${MUSL_ARM_ASSET}"
+            fi
+
+            if has_asset "$ANDROID_ASSET"; then
+              HAS_TERMUX="true"
+              TERMUX_REASON="ready"
+            else
+              TERMUX_REASON="missing_${ANDROID_ASSET}"
+            fi
+          fi
+
+          echo "has_debian=${HAS_DEBIAN}" >> "$GITHUB_OUTPUT"
+          echo "has_alpine=${HAS_ALPINE}" >> "$GITHUB_OUTPUT"
+          echo "has_termux=${HAS_TERMUX}" >> "$GITHUB_OUTPUT"
+          echo "debian_reason=${DEBIAN_REASON}" >> "$GITHUB_OUTPUT"
+          echo "alpine_reason=${ALPINE_REASON}" >> "$GITHUB_OUTPUT"
+          echo "termux_reason=${TERMUX_REASON}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Package asset preflight"
+            echo "- release tag: \\`${RELEASE_TAG}\\`"
+            echo "- debian source \\`${GNU_ASSET}\\`: ${HAS_DEBIAN} (${DEBIAN_REASON})"
+            echo "- alpine sources \\`${MUSL_X86_ASSET}\\`, \\`${MUSL_ARM_ASSET}\\`: ${HAS_ALPINE} (${ALPINE_REASON})"
+            echo "- termux source \\`${ANDROID_ASSET}\\`: ${HAS_TERMUX} (${TERMUX_REASON})"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   alpine:
-    # Only run if CI completed successfully and was triggered by a tag push
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
+    needs: [prepare, preflight]
+    if: ${{ needs.preflight.outputs.has_alpine == 'true' }}
     uses: CaddyGlow/homebrew-packages/.github/workflows/package-alpine.yml@main
     permissions:
       contents: write
     with:
       tool: ccproxy
-      version: ${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
+      version: ${{ needs.prepare.outputs.version }}
       repository: ${{ github.repository }}
-      release_tag: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.event.workflow_run.head_branch }}
+      release_tag: ${{ needs.prepare.outputs.release_tag }}
 
-  # Build Debian/Ubuntu packages (.deb for amd64 and arm64)
   debian:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
+    needs: [prepare, preflight]
+    if: ${{ needs.preflight.outputs.has_debian == 'true' }}
     uses: CaddyGlow/homebrew-packages/.github/workflows/package-debian.yml@main
     permissions:
       contents: write
     with:
       tool: ccproxy
-      version: ${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
+      version: ${{ needs.prepare.outputs.version }}
       repository: ${{ github.repository }}
-      release_tag: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.event.workflow_run.head_branch }}
+      release_tag: ${{ needs.prepare.outputs.release_tag }}
 
-  # Build Termux/Android packages (.deb for android-aarch64)
   termux:
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
+    needs: [prepare, preflight]
+    if: ${{ needs.preflight.outputs.has_termux == 'true' }}
     uses: CaddyGlow/homebrew-packages/.github/workflows/package-termux.yml@main
     permissions:
       contents: write
     with:
       tool: ccproxy
-      version: ${{ github.event.inputs.version || github.event.workflow_run.head_branch }}
+      version: ${{ needs.prepare.outputs.version }}
       repository: ${{ github.repository }}
-      release_tag: ${{ github.event.inputs.version && format('v{0}', github.event.inputs.version) || github.event.workflow_run.head_branch }}
+      release_tag: ${{ needs.prepare.outputs.release_tag }}
+
+  summary:
+    needs: [prepare, preflight, alpine, debian, termux]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize package workflow
+        shell: bash
+        run: |
+          {
+            echo "### Distribution packaging summary"
+            echo "- version: \\`${{ needs.prepare.outputs.version }}\\`"
+            echo "- release tag: \\`${{ needs.prepare.outputs.release_tag }}\\`"
+            echo "- debian job: ${{ needs.debian.result }} (${{ needs.preflight.outputs.debian_reason }})"
+            echo "- alpine job: ${{ needs.alpine.result }} (${{ needs.preflight.outputs.alpine_reason }})"
+            echo "- termux job: ${{ needs.termux.result }} (${{ needs.preflight.outputs.termux_reason }})"
+          } >> "$GITHUB_STEP_SUMMARY"
