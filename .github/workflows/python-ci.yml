@@ -56,12 +56,40 @@ jobs:
       target_preset: ${{ inputs.target_preset || 'all' }}
       python_version: '3.11'
 
+  package:
+    needs: [test]
+    if: |
+      always() &&
+      !cancelled() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || '' }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Build Python distribution
+        run: ./Taskfile build
+
+      - name: Upload Python package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/*
+
   release:
-    needs: [build]
+    needs: [build, package]
     if: |
       always() &&
       !cancelled() &&
       needs.build.result == 'success' &&
+      needs.package.result == 'success' &&
       (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && startsWith(inputs.ref, 'v')))
     uses: CaddyGlow/homebrew-packages/.github/workflows/python-release.yml@main
     with:
