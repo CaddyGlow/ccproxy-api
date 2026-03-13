@@ -124,6 +124,13 @@ class CodexSettings(ProviderConfig):
     enable_format_registry: bool = Field(
         default=True, description="Whether to enable format adapter registry"
     )
+    inject_detection_payload: bool = Field(
+        default=True,
+        description=(
+            "Whether to inject the captured Codex CLI instructions/template into "
+            "provider requests. Disable this for generic OpenAI-compatible API usage."
+        ),
+    )
 
     # Detection configuration
     detection_home_mode: Literal["temp", "home"] = Field(

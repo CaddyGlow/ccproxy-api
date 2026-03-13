@@ -64,6 +64,8 @@ test = [
   "pytest-env",
   "pytest-httpx",
   "pytest-xdist",
+  "agent-framework-core>=1.0.0rc4,<2",
+  "agent-framework-orchestrations>=1.0.0b260311,<2",
 ]
 
 docs = [

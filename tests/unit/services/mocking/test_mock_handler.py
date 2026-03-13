@@ -1,9 +1,12 @@
 """Tests for the mock response handler."""
 
 import asyncio
+import json
+from unittest.mock import MagicMock
 
 import pytest
 
+from ccproxy.core.constants import FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_CHAT
 from ccproxy.core.request_context import RequestContext
 from ccproxy.services.mocking.mock_handler import MockResponseHandler
 
@@ -36,12 +39,42 @@ def test_extract_message_type(body: bytes, expected: str) -> None:
     assert handler.extract_message_type(body) == expected
 
 
+def test_extract_prompt_text_collects_nested_values() -> None:
+    handler = MockResponseHandler(DummyGenerator())  # type: ignore[arg-type]
+    body = json.dumps(
+        {
+            "instructions": "Top level instructions",
+            "input": [
+                {
+                    "content": [
+                        {"text": "First prompt"},
+                        {"text": "Second prompt"},
+                    ]
+                }
+            ],
+        }
+    ).encode()
+
+    assert handler.extract_prompt_text(body) == (
+        "Top level instructions\nFirst prompt\nSecond prompt"
+    )
+
+
+def test_extract_prompt_text_limits_deep_nesting() -> None:
+    handler = MockResponseHandler(DummyGenerator())  # type: ignore[arg-type]
+    nested: dict[str, object] = {"text": "too deep"}
+    for _ in range(12):
+        nested = {"input": [nested]}
+
+    body = json.dumps(nested).encode()
+
+    assert handler.extract_prompt_text(body) == ""
+
+
 @pytest.mark.asyncio
 async def test_generate_standard_response_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from unittest.mock import MagicMock
-
     handler = MockResponseHandler(DummyGenerator(), error_rate=0.0)  # type: ignore[arg-type]
     monkeypatch.setattr(handler, "should_simulate_error", lambda: False)
     monkeypatch.setattr("random.uniform", lambda *args, **kwargs: 0)
@@ -54,7 +87,10 @@ async def test_generate_standard_response_success(
     mock_logger = MagicMock()
     ctx = RequestContext(request_id="req", start_time=0, logger=mock_logger)  # type: ignore[arg-type]
     status, headers, body = await handler.generate_standard_response(
-        model="m1", is_openai_format=False, ctx=ctx, message_type="short"
+        model="m1",
+        target_format=FORMAT_ANTHROPIC_MESSAGES,
+        ctx=ctx,
+        message_type="short",
     )
 
     assert status == 200
@@ -67,8 +103,6 @@ async def test_generate_standard_response_success(
 async def test_generate_standard_response_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from unittest.mock import MagicMock
-
     handler = MockResponseHandler(DummyGenerator(), error_rate=1.0)  # type: ignore[arg-type]
     monkeypatch.setattr(handler, "should_simulate_error", lambda: True)
 
@@ -80,7 +114,10 @@ async def test_generate_standard_response_error(
     mock_logger = MagicMock()
     mock_ctx = RequestContext(request_id="req", start_time=0, logger=mock_logger)  # type: ignore[arg-type]
     status, headers, body = await handler.generate_standard_response(
-        model="m1", is_openai_format=True, ctx=mock_ctx, message_type="short"
+        model="m1",
+        target_format=FORMAT_OPENAI_CHAT,
+        ctx=mock_ctx,
+        message_type="short",
     )
 
     assert status == 429
@@ -89,14 +126,12 @@ async def test_generate_standard_response_error(
 
 @pytest.mark.asyncio
 async def test_generate_streaming_response(monkeypatch: pytest.MonkeyPatch) -> None:
-    from unittest.mock import MagicMock
-
     handler = MockResponseHandler(DummyGenerator(), error_rate=0.0)  # type: ignore[arg-type]
     mock_logger = MagicMock()
     ctx = RequestContext(request_id="req", start_time=0, logger=mock_logger)  # type: ignore[arg-type]
 
     stream = await handler.generate_streaming_response(
-        model="m1", is_openai_format=True, ctx=ctx
+        model="m1", target_format=FORMAT_OPENAI_CHAT, ctx=ctx
     )
 
     chunks = []

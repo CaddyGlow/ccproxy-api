@@ -90,6 +90,25 @@ class TestCodexAdapter:
             http_pool_manager=mock_http_pool_manager,
         )
 
+    @pytest.fixture
+    def adapter_with_disabled_detection(
+        self,
+        mock_detection_service: Mock,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
+    ) -> CodexAdapter:
+        """Create CodexAdapter with detection payload injection disabled."""
+        mock_config = Mock()
+        mock_config.base_url = "https://chat.openai.com/backend-anon"
+        mock_config.inject_detection_payload = False
+
+        return CodexAdapter(
+            detection_service=mock_detection_service,
+            config=mock_config,
+            auth_manager=mock_auth_manager,
+            http_pool_manager=mock_http_pool_manager,
+        )
+
     @pytest.mark.asyncio
     async def test_get_target_url(self, adapter: CodexAdapter) -> None:
         """Test target URL generation."""
@@ -218,6 +237,25 @@ class TestCodexAdapter:
         assert result_data["stream"] is True
 
     @pytest.mark.asyncio
+    async def test_prepare_provider_request_removes_max_completion_tokens(
+        self, adapter: CodexAdapter
+    ) -> None:
+        body_dict = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "model": "gpt-4",
+            "max_completion_tokens": 321,
+        }
+        body = json.dumps(body_dict).encode()
+
+        result_body, _ = await adapter.prepare_provider_request(
+            body, {"content-type": "application/json"}, "/responses"
+        )
+
+        result_data = json.loads(result_body.decode())
+        assert "max_output_tokens" not in result_data
+        assert "max_completion_tokens" not in result_data
+
+    @pytest.mark.asyncio
     async def test_prepare_provider_request_preserves_encoded_body(
         self, adapter: CodexAdapter
     ) -> None:
@@ -290,6 +328,95 @@ class TestCodexAdapter:
         assert result_data["tools"] == [{"type": "function", "name": "exec_command"}]
         assert result_data["prompt_cache_key"] != "template-cache-key"
         assert result_data["input"][0]["type"] == "message"
+
+    @pytest.mark.asyncio
+    async def test_prepare_provider_request_skips_detection_payload_when_disabled(
+        self,
+        adapter_with_disabled_detection: CodexAdapter,
+        mock_detection_service: Mock,
+    ) -> None:
+        """Verify that detection payload is not injected when disabled in config."""
+        template = {
+            "instructions": "You are a Python expert.",
+            "include": ["reasoning.encrypted_content"],
+            "parallel_tool_calls": True,
+            "reasoning": {"effort": "medium"},
+            "tool_choice": "auto",
+            "tools": [{"type": "function", "name": "exec_command"}],
+        }
+        prompts = DetectedPrompts.from_body(template)
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.instructions_payload()
+        )
+
+        body = json.dumps(
+            {
+                "model": "gpt-5",
+                "instructions": "User supplied instructions",
+                "input": [{"role": "user", "content": [{"type": "input_text"}]}],
+            }
+        ).encode()
+
+        result_body, _ = await adapter_with_disabled_detection.prepare_provider_request(
+            body, {}, "/responses"
+        )
+        result_data = json.loads(result_body.decode())
+
+        # When detection is disabled, user instructions are preserved
+        assert result_data["instructions"] == "User supplied instructions"
+        # Template fields should not be injected
+        assert "include" not in result_data
+        assert "parallel_tool_calls" not in result_data
+        assert "reasoning" not in result_data
+        assert "tool_choice" not in result_data
+        assert "tools" not in result_data
+        # Input type normalization still occurs
+        assert result_data["input"][0]["type"] == "message"
+
+    @pytest.mark.asyncio
+    async def test_prepare_provider_request_keeps_msaf_reasoning_when_detection_disabled(
+        self, adapter_with_disabled_detection: CodexAdapter
+    ) -> None:
+        """Verify that user-supplied reasoning is preserved when detection is disabled.
+
+        This ensures that even with detection disabled, legitimate MSAF reasoning
+        parameters from the user are not stripped.
+        """
+        body = json.dumps(
+            {
+                "model": "gpt-5",
+                "instructions": "Workshop instructions",
+                "reasoning": {"effort": "medium", "summary": "auto"},
+                "temperature": 0.2,
+                "max_tokens": 128,
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": "Draft login form requirements.",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ).encode()
+
+        result_body, _ = await adapter_with_disabled_detection.prepare_provider_request(
+            body, {}, "/responses"
+        )
+        result_data = json.loads(result_body.decode())
+
+        assert result_data["instructions"] == "Workshop instructions"
+        assert result_data["reasoning"] == {"effort": "medium", "summary": "auto"}
+        assert result_data["stream"] is True
+        assert result_data["store"] is False
+        # Provider-specific params are normalized/removed
+        assert "temperature" not in result_data
+        assert "max_tokens" not in result_data
 
     @pytest.mark.asyncio
     async def test_process_provider_response(self, adapter: CodexAdapter) -> None:
