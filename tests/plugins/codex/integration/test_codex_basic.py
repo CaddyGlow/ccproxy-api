@@ -30,9 +30,15 @@ async def test_models_endpoint_available_when_enabled(
     data: dict[str, Any] = resp.json()
     assert data.get("object") == "list"
     models = data.get("data")
+    cli_models = data.get("models")
     assert isinstance(models, list)
     assert len(models) > 0
+    assert isinstance(cli_models, list)
+    assert len(cli_models) > 0
     assert {"id", "object", "created", "owned_by"}.issubset(models[0].keys())
+    assert models[0].get("slug") == models[0]["id"]
+    assert models[0].get("display_name") == models[0]["id"]
+    assert cli_models[0].get("slug")
 
 
 @pytest.mark.asyncio

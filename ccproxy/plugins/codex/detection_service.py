@@ -43,6 +43,7 @@ class CodexDetectionService:
     ignores_header: list[str] = [
         "host",
         "content-length",
+        "content-encoding",
         "authorization",
         "x-api-key",
         "session_id",
@@ -133,17 +134,46 @@ class CodexDetectionService:
         """Return cached headers as structured data."""
 
         data = self.get_cached_data()
-        if not data:
-            return DetectedHeaders()
-        return data.headers
+        headers = data.headers if data else DetectedHeaders()
+
+        required_headers = {
+            "accept",
+            "content-type",
+            "openai-beta",
+            "originator",
+            "version",
+        }
+        missing_required = [key for key in required_headers if not headers.get(key)]
+        if not missing_required:
+            return headers
+
+        fallback = self._safe_fallback_data()
+        if fallback is None:
+            return headers
+
+        merged_headers = fallback.headers.as_dict()
+        merged_headers.update(
+            {key: value for key, value in headers.as_dict().items() if value}
+        )
+        return DetectedHeaders(merged_headers)
 
     def get_detected_prompts(self) -> DetectedPrompts:
         """Return cached prompt metadata as structured data."""
 
         data = self.get_cached_data()
-        if not data:
-            return DetectedPrompts()
-        return data.prompts
+        prompts = data.prompts if data else DetectedPrompts()
+        if prompts.has_instructions() or prompts.has_system():
+            return prompts
+
+        fallback = self._safe_fallback_data()
+        if fallback is None:
+            return prompts
+
+        fallback_prompts = fallback.prompts
+        if fallback_prompts.has_instructions() or fallback_prompts.has_system():
+            return fallback_prompts
+
+        return prompts
 
     def get_ignored_headers(self) -> list[str]:
         """Headers that should be ignored when forwarding CLI values."""
@@ -495,6 +525,13 @@ class CodexDetectionService:
         with package_data_file.open("r") as f:
             fallback_data_dict = json.load(f)
             return CodexCacheData.model_validate(fallback_data_dict)
+
+    def _safe_fallback_data(self) -> CodexCacheData | None:
+        """Best-effort fallback data loader for partial detection caches."""
+        try:
+            return self._get_fallback_data()
+        except Exception:
+            return None
 
     def invalidate_cache(self) -> None:
         """Clear all cached detection data."""

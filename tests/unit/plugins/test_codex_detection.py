@@ -48,3 +48,7 @@ async def test_codex_detection_falls_back_when_cli_missing(tmp_path: Path) -> No
     mock_save.assert_not_called()
     assert result is expected_fallback
     assert service.get_cached_data() is expected_fallback
+
+
+def test_codex_detection_ignores_content_encoding_header() -> None:
+    assert "content-encoding" in CodexDetectionService.ignores_header
