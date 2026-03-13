@@ -12,6 +12,7 @@ import structlog
 from fastapi import APIRouter
 
 from ccproxy.models.provider import ProviderConfig
+from ccproxy.services.adapters.mock_adapter import MockAdapter
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.interfaces import (
@@ -215,6 +216,23 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         Returns:
             Adapter instance
         """
+        settings = context.get("settings")
+        service_container = context.get("service_container")
+        if settings and getattr(settings.server, "bypass_mode", False):
+            if not service_container:
+                raise RuntimeError(
+                    f"Cannot initialize plugin '{self.plugin_name}' in bypass mode: "
+                    "service container is required to create mock adapter. "
+                    "This is likely a configuration issue."
+                )
+            logger.warning(
+                "plugin_bypass_mode_enabled",
+                plugin=self.plugin_name,
+                adapter=self.adapter_class.__name__,
+                category="lifecycle",
+            )
+            return MockAdapter(service_container.get_mock_handler())
+
         # Extract services from context (one-time extraction)
         http_pool_manager: HTTPPoolManager | None = cast(
             "HTTPPoolManager | None", context.get("http_pool_manager")
@@ -232,7 +250,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         config = context.get("config")
 
         # Get all adapter dependencies from service container
-        service_container = context.get("service_container")
         if not service_container:
             raise RuntimeError("Service container is required for adapter services")
 

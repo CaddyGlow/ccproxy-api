@@ -1,4 +1,5 @@
 import contextlib
+import copy
 import json
 import uuid
 from typing import Any, cast
@@ -63,12 +64,7 @@ class CodexAdapter(BaseHTTPAdapter):
         headers = extract_request_headers(request)
 
         # Determine client streaming intent from body flag (fallback to False)
-        wants_stream = False
-        try:
-            data = json.loads(body.decode()) if body else {}
-            wants_stream = bool(data.get("stream", False))
-        except Exception:  # Malformed/missing JSON -> assume non-streaming
-            wants_stream = False
+        wants_stream = self._detect_streaming_intent(body, headers)
         logger.trace(
             "codex_adapter_request_intent",
             wants_stream=wants_stream,
@@ -256,37 +252,43 @@ class CodexAdapter(BaseHTTPAdapter):
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str
     ) -> tuple[bytes, dict[str, str]]:
-        token_value = await self._resolve_access_token()
+        filtered_headers = await self.prepare_provider_headers(headers)
 
-        # Get profile to extract chatgpt_account_id
-        profile = await self.token_manager.get_profile_quick()
-        chatgpt_account_id = (
-            getattr(profile, "chatgpt_account_id", None) if profile else None
-        )
+        if self._request_body_is_encoded(headers):
+            return body, filtered_headers
 
         # Parse body (format conversion is now handled by format chain)
         body_data = json.loads(body.decode()) if body else {}
+        if self._should_apply_detection_payload():
+            body_data = self._apply_request_template(body_data)
+        else:
+            body_data = self._normalize_input_messages(body_data)
 
-        # Inject instructions mandatory for being allow to
-        # to used the Codex API endpoint
-        # Fetch detected instructions from detection service
-        instructions = self._get_instructions()
+        detected_instructions = (
+            self._get_instructions() if self._should_apply_detection_payload() else ""
+        )
 
         existing_instructions = body_data.get("instructions")
         if isinstance(existing_instructions, str) and existing_instructions:
-            if instructions:
-                instructions = instructions + "\n" + existing_instructions
-            else:
-                instructions = existing_instructions
+            instructions = (
+                detected_instructions + "\n" + existing_instructions
+                if detected_instructions
+                else existing_instructions
+            )
+        else:
+            instructions = detected_instructions
 
-        body_data["instructions"] = instructions
+        if instructions:
+            body_data["instructions"] = instructions
+        else:
+            body_data.pop("instructions", None)
 
         # Codex backend requires stream=true, always override
         body_data["stream"] = True
         body_data["store"] = False
 
         # Remove unsupported keys for Codex
-        for key in ("max_output_tokens", "max_completion_tokens", "temperature"):
+        for key in ("max_output_tokens", "max_completion_tokens", "max_tokens", "temperature"):
             body_data.pop(key, None)
 
         list_input = body_data.get("input", [])
@@ -299,8 +301,20 @@ class CodexAdapter(BaseHTTPAdapter):
         # Remove any prefixed metadata fields that shouldn't be sent to the API
         body_data = self._remove_metadata_fields(body_data)
 
-        # Filter and add headers
+        return json.dumps(body_data).encode(), filtered_headers
+
+    async def prepare_provider_headers(self, headers: dict[str, str]) -> dict[str, str]:
+        token_value = await self._resolve_access_token()
+
+        profile = await self.token_manager.get_profile_quick()
+        chatgpt_account_id = (
+            getattr(profile, "chatgpt_account_id", None) if profile else None
+        )
+
         filtered_headers = filter_request_headers(headers, preserve_auth=False)
+        content_encoding = headers.get("content-encoding")
+        if content_encoding:
+            filtered_headers["content-encoding"] = content_encoding
 
         session_id = filtered_headers.get("session_id") or str(uuid.uuid4())
         conversation_id = filtered_headers.get("conversation_id") or str(uuid.uuid4())
@@ -318,10 +332,10 @@ class CodexAdapter(BaseHTTPAdapter):
         filtered_headers.update(base_headers)
 
         cli_headers = self._collect_cli_headers()
-        if cli_headers:
-            filtered_headers.update(cli_headers)
+        for key, value in cli_headers.items():
+            filtered_headers.setdefault(key, value)
 
-        return json.dumps(body_data).encode(), filtered_headers
+        return filtered_headers
 
     async def process_provider_response(
         self, response: httpx.Response, endpoint: str
@@ -581,6 +595,74 @@ class CodexAdapter(BaseHTTPAdapter):
 
         return cleaned_data
 
+    def _apply_request_template(self, data: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(data, dict):
+            return data
+
+        template = self._get_request_template()
+        if not template:
+            return self._normalize_input_messages(data)
+
+        merged = copy.deepcopy(data)
+
+        for key in ("include", "parallel_tool_calls", "reasoning", "tool_choice"):
+            if key not in merged and key in template:
+                merged[key] = copy.deepcopy(template[key])
+
+        if not merged.get("tools") and isinstance(template.get("tools"), list):
+            merged["tools"] = copy.deepcopy(template["tools"])
+
+        if "prompt_cache_key" not in merged:
+            prompt_cache_key = template.get("prompt_cache_key")
+            if isinstance(prompt_cache_key, str) and prompt_cache_key:
+                merged["prompt_cache_key"] = str(uuid.uuid4())
+
+        return self._normalize_input_messages(merged)
+
+    def _normalize_input_messages(self, data: dict[str, Any]) -> dict[str, Any]:
+        input_items = data.get("input")
+        if not isinstance(input_items, list):
+            return data
+
+        normalized_items: list[Any] = []
+        for item in input_items:
+            if (
+                isinstance(item, dict)
+                and "type" not in item
+                and "role" in item
+                and "content" in item
+            ):
+                normalized_item = dict(item)
+                normalized_item["type"] = "message"
+                normalized_items.append(normalized_item)
+                continue
+
+            normalized_items.append(item)
+
+        data["input"] = normalized_items
+        return data
+
+    def _request_body_is_encoded(self, headers: dict[str, str]) -> bool:
+        encoding = headers.get("content-encoding", "").strip().lower()
+        return bool(encoding and encoding != "identity")
+
+    def _detect_streaming_intent(
+        self, body: bytes, headers: dict[str, str]
+    ) -> bool:
+        if self._request_body_is_encoded(headers):
+            accept = headers.get("accept", "").lower()
+            return "text/event-stream" in accept
+
+        try:
+            data = json.loads(body.decode()) if body else {}
+            return bool(data.get("stream", False))
+        except Exception:
+            accept = headers.get("accept", "").lower()
+            return "text/event-stream" in accept
+
+    def _should_apply_detection_payload(self) -> bool:
+        return bool(getattr(self.config, "inject_detection_payload", True))
+
     def _get_instructions(self) -> str:
         if not self.detection_service:
             return ""
@@ -600,6 +682,16 @@ class CodexAdapter(BaseHTTPAdapter):
             return fallback
 
         return ""
+
+    def _get_request_template(self) -> dict[str, Any]:
+        if not self.detection_service:
+            return {}
+
+        prompts = self.detection_service.get_detected_prompts()
+        if isinstance(prompts.raw, dict) and prompts.raw:
+            return prompts.raw
+
+        return {}
 
     def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
         """Convert Codex error format to appropriate API error format.
