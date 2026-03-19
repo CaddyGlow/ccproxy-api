@@ -4,6 +4,7 @@ import asyncio
 import json
 import random
 from collections.abc import AsyncGenerator
+from time import time
 from typing import Any, Literal, TypeAlias
 
 import structlog
@@ -28,11 +29,7 @@ logger = structlog.get_logger(__name__)
 PROMPT_EXTRACTION_KEYS = ("instructions", "content", "text", "input", "messages")
 MAX_PROMPT_EXTRACTION_DEPTH = 10
 
-TargetFormat = Literal[
-    FORMAT_ANTHROPIC_MESSAGES,
-    FORMAT_OPENAI_CHAT,
-    FORMAT_OPENAI_RESPONSES,
-]
+TargetFormat: TypeAlias = str
 PromptValue: TypeAlias = str | list[Any] | dict[str, Any] | int | float | bool | None
 
 
@@ -279,7 +276,10 @@ class MockResponseHandler:
 - Do not rely only on color to communicate invalid fields or failed authentication."""
             return self._make_text_response(text, model)
 
-        if "securityanalyst" in prompt_lower or "focus on password handling" in prompt_lower:
+        if (
+            "securityanalyst" in prompt_lower
+            or "focus on password handling" in prompt_lower
+        ):
             text = """- Use generic auth failure messages to prevent account enumeration.
 - Enforce HTTPS, secure session handling, rate limiting, and temporary lockout or throttling after repeated failures.
 - Never log plaintext passwords or return sensitive backend error details to the UI.
@@ -327,9 +327,7 @@ class MockResponseHandler:
                     model=model
                 )
             else:
-                mock_response = self.mock_generator.generate_short_response(
-                    model=model
-                )
+                mock_response = self.mock_generator.generate_short_response(model=model)
 
         # Convert to OpenAI format if needed
         if target_format == FORMAT_OPENAI_CHAT and message_type != "tool_use":
@@ -393,6 +391,12 @@ class MockResponseHandler:
             words = text_content.split()
             chunk_size = 3  # Words per chunk
 
+            response_id = f"resp_{ctx.request_id if ctx else 'mock'}"
+            msg_id = f"msg_{ctx.request_id if ctx else 'mock'}"
+            used_model = model or "claude-3-opus-20240229"
+            created_at = int(time())
+            sequence_number = 0
+
             # Send initial event
             if target_format == FORMAT_OPENAI_CHAT:
                 initial_event = {
@@ -409,14 +413,21 @@ class MockResponseHandler:
                     ],
                 }
                 yield f"data: {json.dumps(initial_event)}\n\n".encode()
+            elif target_format == FORMAT_OPENAI_RESPONSES:
+                yield f"data: {json.dumps({'type': 'response.created', 'sequence_number': sequence_number, 'response': {'id': response_id, 'object': 'response', 'created_at': created_at, 'status': 'in_progress', 'model': used_model, 'output': [], 'parallel_tool_calls': False}})}\n\n".encode()
+                sequence_number += 1
+                yield f"data: {json.dumps({'type': 'response.output_item.added', 'sequence_number': sequence_number, 'output_index': 0, 'item': {'type': 'message', 'id': msg_id, 'status': 'in_progress', 'role': 'assistant', 'content': []}})}\n\n".encode()
+                sequence_number += 1
+                yield f"data: {json.dumps({'type': 'response.content_part.added', 'sequence_number': sequence_number, 'item_id': msg_id, 'output_index': 0, 'content_index': 0, 'part': {'type': 'output_text', 'text': ''}})}\n\n".encode()
+                sequence_number += 1
             else:
                 initial_event = {
                     "type": "message_start",
                     "message": {
-                        "id": f"msg_{ctx.request_id if ctx else 'mock'}",
+                        "id": msg_id,
                         "type": "message",
                         "role": "assistant",
-                        "model": model or "claude-3-opus-20240229",
+                        "model": used_model,
                         "content": [],
                         "usage": {"input_tokens": 10, "output_tokens": 0},
                     },
@@ -446,6 +457,16 @@ class MockResponseHandler:
                             }
                         ],
                     }
+                elif target_format == FORMAT_OPENAI_RESPONSES:
+                    chunk_event = {
+                        "type": "response.output_text.delta",
+                        "sequence_number": sequence_number,
+                        "item_id": msg_id,
+                        "output_index": 0,
+                        "content_index": 0,
+                        "delta": chunk_text,
+                    }
+                    sequence_number += 1
                 else:
                     chunk_event = {
                         "type": "content_block_delta",
@@ -465,6 +486,15 @@ class MockResponseHandler:
                     "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                 }
                 yield f"data: {json.dumps(final_event)}\n\n".encode()
+            elif target_format == FORMAT_OPENAI_RESPONSES:
+                output_tokens = len(text_content.split())
+                yield f"data: {json.dumps({'type': 'response.output_text.done', 'sequence_number': sequence_number, 'item_id': msg_id, 'output_index': 0, 'content_index': 0, 'text': text_content})}\n\n".encode()
+                sequence_number += 1
+                yield f"data: {json.dumps({'type': 'response.content_part.done', 'sequence_number': sequence_number, 'item_id': msg_id, 'output_index': 0, 'content_index': 0, 'part': {'type': 'output_text', 'text': text_content}})}\n\n".encode()
+                sequence_number += 1
+                yield f"data: {json.dumps({'type': 'response.output_item.done', 'sequence_number': sequence_number, 'output_index': 0, 'item': {'type': 'message', 'id': msg_id, 'status': 'completed', 'role': 'assistant', 'content': [{'type': 'output_text', 'text': text_content}]}})}\n\n".encode()
+                sequence_number += 1
+                yield f"data: {json.dumps({'type': 'response.completed', 'sequence_number': sequence_number, 'response': {'id': response_id, 'object': 'response', 'created_at': created_at, 'status': 'completed', 'model': used_model, 'output': [{'type': 'message', 'id': msg_id, 'status': 'completed', 'role': 'assistant', 'content': [{'type': 'output_text', 'text': text_content}]}], 'parallel_tool_calls': False, 'usage': {'input_tokens': 10, 'output_tokens': output_tokens, 'total_tokens': 10 + output_tokens}}})}\n\n".encode()
             else:
                 final_event = {
                     "type": "message_stop",
