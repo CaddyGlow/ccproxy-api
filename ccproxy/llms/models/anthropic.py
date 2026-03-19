@@ -356,6 +356,7 @@ class ThinkingConfigAdaptive(ThinkingConfigBase):
     """Configuration for adaptive thinking (Claude 4-6+)."""
 
     type: Literal["adaptive"] = Field(default="adaptive", alias="type")
+    display: Literal["summarized", "omitted"] | None = None
 
 
 ThinkingConfig = Annotated[
