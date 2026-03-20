@@ -155,8 +155,10 @@ async def _authenticate_websocket(websocket: WebSocket) -> None:
 
     expected = settings.security.auth_token.get_secret_value()
     auth_header = websocket.headers.get("authorization", "")
-    if auth_header.lower().startswith("bearer "):
-        token = auth_header[7:]
+    scheme, _, credentials = auth_header.partition(" ")
+    if scheme.lower() == "bearer":
+        credentials = credentials.strip()
+        token = credentials.split()[0] if credentials else ""
     else:
         token = ""
 
