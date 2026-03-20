@@ -105,6 +105,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
     cli_commands: list[CliCommandSpec] = []
     cli_arguments: list[CliArgumentSpec] = []
     tool_accumulator_class: type | None = None
+    use_mock_adapter_in_bypass_mode: bool = True
 
     def __init__(self) -> None:
         """Initialize factory with manifest built from class attributes."""
@@ -231,7 +232,8 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 adapter=self.adapter_class.__name__,
                 category="lifecycle",
             )
-            return MockAdapter(service_container.get_mock_handler())
+            if self.use_mock_adapter_in_bypass_mode:
+                return MockAdapter(service_container.get_mock_handler())
 
         # Extract services from context (one-time extraction)
         http_pool_manager: HTTPPoolManager | None = cast(
@@ -285,6 +287,8 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 if hasattr(context, "get")
                 else None,
             }
+            if settings and getattr(settings.server, "bypass_mode", False):
+                adapter_kwargs["mock_handler"] = service_container.get_mock_handler()
             if self.tool_accumulator_class:
                 adapter_kwargs["tool_accumulator_class"] = self.tool_accumulator_class
 
@@ -319,6 +323,9 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "context": context,
                 "model_mapper": context.get("model_mapper")
                 if hasattr(context, "get")
+                else None,
+                "mock_handler": service_container.get_mock_handler()
+                if settings and getattr(settings.server, "bypass_mode", False)
                 else None,
             }
             if self.tool_accumulator_class:

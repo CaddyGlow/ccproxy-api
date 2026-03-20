@@ -20,6 +20,7 @@ class BaseAdapter(ABC):
             **kwargs: Additional keyword arguments for subclasses
         """
         self.config = config
+        self.mock_handler = kwargs.pop("mock_handler", None)
         self.tool_accumulator_class = kwargs.pop("tool_accumulator_class", None)
 
     @abstractmethod

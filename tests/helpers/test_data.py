@@ -286,6 +286,64 @@ E2E_ENDPOINT_CONFIGURATIONS = [
 ]
 
 
+# WebSocket Endpoint Test Data
+WS_ENDPOINT_CONFIGURATIONS = [
+    {
+        "name": "codex_ws_responses_stream",
+        "endpoint": "/codex/v1/responses",
+        "model": "gpt-5",
+        "description": "Codex WebSocket responses streaming",
+    },
+    {
+        "name": "codex_ws_responses_legacy_stream",
+        "endpoint": "/codex/responses",
+        "model": "gpt-5",
+        "description": "Codex WebSocket responses legacy streaming",
+    },
+]
+
+
+def create_ws_codex_request(
+    content: str = "Hello",
+    model: str = "gpt-5",
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Create a Codex WebSocket request payload (response.create envelope)."""
+    request: dict[str, Any] = {
+        "type": "response.create",
+        "model": model,
+        "input": [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": content}],
+            }
+        ],
+    }
+    request.update(kwargs)
+    return request
+
+
+def create_ws_codex_warmup_request(model: str = "gpt-5") -> dict[str, Any]:
+    """Create a Codex WebSocket warmup request (empty input)."""
+    return {
+        "type": "response.create",
+        "model": model,
+        "input": [],
+    }
+
+
+# Expected WebSocket event types for Codex streaming
+CODEX_WS_STREAMING_EVENT_TYPES = [
+    "response.created",
+    "response.output_text.delta",
+    "response.output_text.done",
+    "response.completed",
+]
+
+CODEX_WS_TERMINAL_EVENT_TYPES = {"response.completed", "response.failed"}
+
+
 def create_openai_request(
     content: str = "Hello",
     model: str = CLAUDE_SONNET_MODEL,
