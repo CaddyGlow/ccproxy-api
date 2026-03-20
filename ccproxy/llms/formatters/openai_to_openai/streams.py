@@ -27,16 +27,14 @@ from ccproxy.llms.formatters.context import (
     get_last_instructions,
     get_last_request,
     get_last_request_tools,
+    get_openai_thinking_xml,
     register_request,
     register_request_tools,
 )
 from ccproxy.llms.models import openai as openai_models
 from ccproxy.llms.streaming.accumulators import OpenAIAccumulator
 
-from ._helpers import (
-    _convert_tools_chat_to_responses,
-    _get_attr,
-)
+from ._helpers import _convert_tools_chat_to_responses, _get_attr
 from .requests import _build_responses_payload_from_chat_request
 from .responses import (
     _collect_reasoning_segments,
@@ -61,6 +59,10 @@ class OpenAIResponsesToChatStreamAdapter:
         async def generator() -> AsyncGenerator[
             openai_models.ChatCompletionChunk, None
         ]:
+            include_thinking = get_openai_thinking_xml()
+            if include_thinking is None:
+                include_thinking = True
+
             model_id = ""
             role_sent = False
 
@@ -537,7 +539,7 @@ class OpenAIResponsesToChatStreamAdapter:
                             for entry in summary_list:
                                 text = _get_attr(entry, "text")
                                 signature = _get_attr(entry, "signature")
-                                if isinstance(text, str) and text:
+                                if include_thinking and isinstance(text, str) and text:
                                     chunk_text = _wrap_thinking(signature, text)
                                     sequence_counter += 1
                                     yield openai_models.ChatCompletionChunk(

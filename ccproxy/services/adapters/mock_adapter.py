@@ -10,6 +10,11 @@ from fastapi.responses import Response
 from starlette.responses import StreamingResponse
 
 from ccproxy.core import logging
+from ccproxy.core.constants import (
+    FORMAT_ANTHROPIC_MESSAGES,
+    FORMAT_OPENAI_CHAT,
+    FORMAT_OPENAI_RESPONSES,
+)
 from ccproxy.core.request_context import RequestContext
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.mocking.mock_handler import MockResponseHandler
@@ -25,6 +30,44 @@ class MockAdapter(BaseAdapter):
     def __init__(self, mock_handler: MockResponseHandler) -> None:
         self.mock_handler = mock_handler
 
+    async def cleanup(self) -> None:
+        """Release adapter resources."""
+        return None
+
+    def _detect_format_from_endpoint(self, endpoint: str | None) -> str | None:
+        """Map known route patterns to the expected output format."""
+
+        if not endpoint:
+            return None
+
+        endpoint_lower = endpoint.lower()
+        if "chat/completions" in endpoint_lower:
+            return FORMAT_OPENAI_CHAT
+        if "responses" in endpoint_lower:
+            return FORMAT_OPENAI_RESPONSES
+        return None
+
+    def _resolve_target_format(self, request: Request, endpoint: str) -> str:
+        """Infer the response format expected by the current route."""
+
+        ctx = getattr(request.state, "context", None)
+        format_chain = getattr(ctx, "format_chain", None)
+        if isinstance(format_chain, list) and format_chain:
+            first: str = format_chain[0]
+            if first in {
+                FORMAT_OPENAI_CHAT,
+                FORMAT_OPENAI_RESPONSES,
+                FORMAT_ANTHROPIC_MESSAGES,
+            }:
+                return first
+
+        for candidate in (endpoint, getattr(request.url, "path", None)):
+            detected_format = self._detect_format_from_endpoint(candidate)
+            if detected_format:
+                return detected_format
+
+        return FORMAT_ANTHROPIC_MESSAGES
+
     def _extract_stream_flag(self, body: bytes) -> bool:
         """Check if request asks for streaming."""
         try:
@@ -37,7 +80,6 @@ class MockAdapter(BaseAdapter):
             pass
         except Exception as e:
             logger.debug("stream_flag_extraction_error", error=str(e))
-            pass
         return False
 
     async def handle_request(
@@ -46,6 +88,7 @@ class MockAdapter(BaseAdapter):
         """Handle request using mock handler."""
         body = await request.body()
         message_type = self.mock_handler.extract_message_type(body)
+        prompt_text = self.mock_handler.extract_prompt_text(body)
 
         # Get endpoint from context or request URL
         endpoint = request.url.path
@@ -53,7 +96,7 @@ class MockAdapter(BaseAdapter):
             ctx = request.state.context
             endpoint = ctx.metadata.get("endpoint", request.url.path)
 
-        is_openai = "openai" in endpoint
+        target_format = self._resolve_target_format(request, endpoint)
         model = "unknown"
         try:
             body_json = json.loads(body) if body else {}
@@ -64,7 +107,6 @@ class MockAdapter(BaseAdapter):
             pass
         except Exception as e:
             logger.debug("stream_flag_extraction_error", error=str(e))
-            pass
 
         # Create request context
         ctx = RequestContext(
@@ -75,7 +117,7 @@ class MockAdapter(BaseAdapter):
 
         if self._extract_stream_flag(body):
             return await self.mock_handler.generate_streaming_response(
-                model, is_openai, ctx, message_type
+                model, target_format, ctx, message_type, prompt_text
             )
         else:
             (
@@ -83,7 +125,7 @@ class MockAdapter(BaseAdapter):
                 headers,
                 response_body,
             ) = await self.mock_handler.generate_standard_response(
-                model, is_openai, ctx, message_type
+                model, target_format, ctx, message_type, prompt_text
             )
             return Response(content=response_body, status_code=status, headers=headers)
 
@@ -93,7 +135,8 @@ class MockAdapter(BaseAdapter):
         """Handle a streaming request."""
         body = await request.body()
         message_type = self.mock_handler.extract_message_type(body)
-        is_openai = "openai" in endpoint
+        prompt_text = self.mock_handler.extract_prompt_text(body)
+        target_format = self._resolve_target_format(request, endpoint)
         model = "unknown"
         try:
             body_json = json.loads(body) if body else {}
@@ -104,7 +147,6 @@ class MockAdapter(BaseAdapter):
             pass
         except Exception as e:
             logger.debug("stream_flag_extraction_error", error=str(e))
-            pass
 
         # Create request context
         ctx = RequestContext(
@@ -114,5 +156,5 @@ class MockAdapter(BaseAdapter):
         )
 
         return await self.mock_handler.generate_streaming_response(
-            model, is_openai, ctx, message_type
+            model, target_format, ctx, message_type, prompt_text
         )

@@ -23,6 +23,7 @@ from ccproxy.services.adapters.format_adapter import DictFormatAdapter
 from ccproxy.services.adapters.format_registry import FormatRegistry
 from ccproxy.services.adapters.simple_converters import (
     convert_anthropic_to_openai_response,
+    convert_anthropic_to_openai_responses_response,
 )
 from ccproxy.services.auth_registry import AuthManagerRegistry
 from ccproxy.services.cache import ResponseCache
@@ -127,16 +128,25 @@ class ConcreteServiceFactory:
             response=convert_anthropic_to_openai_response,
             name="mock_anthropic_to_openai",
         )
+        openai_responses_adapter = DictFormatAdapter(
+            response=convert_anthropic_to_openai_responses_response,
+            name="mock_anthropic_to_openai_responses",
+        )
         # Configure streaming settings if needed
         openai_thinking_xml = getattr(
             getattr(settings, "llm", object()), "openai_thinking_xml", True
         )
         if hasattr(openai_adapter, "configure_streaming"):
             openai_adapter.configure_streaming(openai_thinking_xml=openai_thinking_xml)
+        if hasattr(openai_responses_adapter, "configure_streaming"):
+            openai_responses_adapter.configure_streaming(
+                openai_thinking_xml=openai_thinking_xml
+            )
 
         handler = MockResponseHandler(
             mock_generator=mock_generator,
             openai_adapter=openai_adapter,
+            openai_responses_adapter=openai_responses_adapter,
             error_rate=0.05,
             latency_range=(0.5, 2.0),
         )
@@ -342,6 +352,12 @@ class ConcreteServiceFactory:
         ]
 
         # Register each core adapter
+        openai_thinking_xml = True
+        if settings is not None:
+            openai_thinking_xml = getattr(
+                getattr(settings, "llm", object()), "openai_thinking_xml", True
+            )
+
         for spec in core_adapter_specs:
             adapter = DictFormatAdapter(
                 request=spec["request"],
@@ -350,6 +366,8 @@ class ConcreteServiceFactory:
                 error=spec["error"],
                 name=spec["name"],
             )
+            if hasattr(adapter, "configure_streaming"):
+                adapter.configure_streaming(openai_thinking_xml=openai_thinking_xml)
             registry.register(
                 from_format=spec["from_format"],
                 to_format=spec["to_format"],

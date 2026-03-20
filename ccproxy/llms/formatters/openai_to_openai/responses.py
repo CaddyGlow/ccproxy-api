@@ -15,6 +15,7 @@ from ccproxy.llms.formatters.common import (
     convert_openai_responses_usage_to_completion_usage,
     merge_thinking_segments,
 )
+from ccproxy.llms.formatters.context import get_openai_thinking_xml
 from ccproxy.llms.models import openai as openai_models
 
 from ._helpers import (
@@ -333,6 +334,10 @@ def convert__openai_responses_to_openai_chat__response(
     response: openai_models.ResponseObject,
 ) -> openai_models.ChatCompletionResponse:
     """Convert an OpenAI ResponseObject to a ChatCompletionResponse."""
+    include_thinking = get_openai_thinking_xml()
+    if include_thinking is None:
+        include_thinking = True
+
     text_segments: list[str] = []
     added_reasoning: set[tuple[str, str]] = set()
     tool_calls: list[openai_models.ToolCall] = []
@@ -353,7 +358,7 @@ def convert__openai_responses_to_openai_chat__response(
                     if thinking_text and len(thinking_text) > 30
                     else thinking_text,
                 )
-                if thinking_text:
+                if include_thinking and thinking_text:
                     key = (signature or "", thinking_text)
                     if key not in added_reasoning:
                         text_segments.append(_wrap_thinking(signature, thinking_text))

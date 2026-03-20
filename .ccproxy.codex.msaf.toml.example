@@ -1,0 +1,64 @@
+# Example ccproxy config for Microsoft Agent Framework clients over Codex.
+
+enable_plugins = true
+enabled_plugins = ["oauth_codex", "codex"]
+
+[server]
+bypass_mode = false
+
+[llm]
+# Keep OpenAI-compatible responses free from <thinking>...</thinking> blocks.
+openai_thinking_xml = false
+
+[plugins.codex]
+enabled = true
+name = "codex"
+base_url = "https://chatgpt.com/backend-api/codex"
+requires_auth = true
+auth_type = "oauth"
+supports_streaming = true
+preferred_upstream_mode = "streaming"
+buffer_non_streaming = true
+enable_format_registry = true
+
+# Microsoft Agent Framework sends its own instructions/reasoning payloads.
+# Do not prepend captured Codex CLI templates to generic OpenAI-compatible calls.
+inject_detection_payload = false
+
+supported_input_formats = [
+  "openai.responses",
+  "openai.chat_completions",
+  "anthropic.messages",
+]
+
+detection_home_mode = "temp"
+
+[[plugins.codex.models_endpoint]]
+id = "gpt-5.4"
+object = "model"
+created = 1735689600
+owned_by = "openai"
+root = "gpt-5.4"
+permission = []
+
+[plugins.codex.oauth]
+base_url = "https://auth.openai.com"
+client_id = "app_EMoamEEZ73f0CkXaXp7hrann"
+scopes = ["openid", "profile", "email", "offline_access"]
+
+[plugins.oauth_codex]
+enabled = true
+base_url = "https://auth.openai.com"
+authorize_url = "https://auth.openai.com/oauth/authorize"
+token_url = "https://auth.openai.com/oauth/token"
+profile_url = "https://api.openai.com/oauth/profile"
+client_id = "app_EMoamEEZ73f0CkXaXp7hrann"
+redirect_uri = "http://localhost:1455/auth/callback"
+callback_port = 1455
+scopes = ["openid", "profile", "email", "offline_access"]
+audience = "https://api.openai.com/v1"
+user_agent = "Codex-Code/1.0.43"
+headers = { User-Agent = "Codex-Code/1.0.43" }
+request_timeout = 30
+callback_timeout = 300
+use_pkce = true
