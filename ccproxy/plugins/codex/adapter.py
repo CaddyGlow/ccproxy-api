@@ -290,6 +290,13 @@ class CodexAdapter(BaseHTTPAdapter):
         else:
             body_data.pop("instructions", None)
 
+        body_data = self._sanitize_provider_body(body_data)
+
+        return json.dumps(body_data).encode(), filtered_headers
+
+    def _sanitize_provider_body(self, body_data: dict[str, Any]) -> dict[str, Any]:
+        """Apply Codex-specific payload sanitization shared by all request paths."""
+
         # Codex backend requires stream=true, always override
         body_data["stream"] = True
         body_data["store"] = False
@@ -309,11 +316,10 @@ class CodexAdapter(BaseHTTPAdapter):
             input for input in list_input if input.get("type") != "item_reference"
         ]
 
-        #
         # Remove any prefixed metadata fields that shouldn't be sent to the API
         body_data = self._remove_metadata_fields(body_data)
 
-        return json.dumps(body_data).encode(), filtered_headers
+        return body_data
 
     async def prepare_provider_headers(self, headers: dict[str, str]) -> dict[str, str]:
         token_value = await self._resolve_access_token()

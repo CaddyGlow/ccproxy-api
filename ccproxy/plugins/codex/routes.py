@@ -268,8 +268,7 @@ async def _prepare_mock_websocket_payload(
     else:
         payload.pop("instructions", None)
 
-    payload["stream"] = True
-    payload["store"] = False
+    payload = adapter._sanitize_provider_body(payload)
     return payload
 
 
