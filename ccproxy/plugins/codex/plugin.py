@@ -222,6 +222,7 @@ class CodexFactory(BaseProviderPluginFactory):
     """Factory for Codex provider plugin."""
 
     cli_safe = False  # Heavy provider plugin - not safe for CLI
+    use_mock_adapter_in_bypass_mode = False
 
     # Plugin configuration via class attributes
     plugin_name = "codex"

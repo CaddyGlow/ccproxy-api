@@ -2,7 +2,7 @@
 
 import json
 import time
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from fastapi import Request
@@ -116,8 +116,11 @@ class MockAdapter(BaseAdapter):
         )
 
         if self._extract_stream_flag(body):
-            return await self.mock_handler.generate_streaming_response(
-                model, target_format, ctx, message_type, prompt_text
+            return cast(
+                StreamingResponse | DeferredStreaming,
+                await self.mock_handler.generate_streaming_response(
+                    model, target_format, ctx, message_type, prompt_text
+                ),
             )
         else:
             (
@@ -155,6 +158,9 @@ class MockAdapter(BaseAdapter):
             logger=structlog.get_logger(__name__),
         )
 
-        return await self.mock_handler.generate_streaming_response(
-            model, target_format, ctx, message_type, prompt_text
+        return cast(
+            StreamingResponse,
+            await self.mock_handler.generate_streaming_response(
+                model, target_format, ctx, message_type, prompt_text
+            ),
         )

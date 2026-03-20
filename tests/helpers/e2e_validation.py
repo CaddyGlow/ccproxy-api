@@ -281,6 +281,123 @@ def get_validation_model_for_format(
     return None
 
 
+# --- WebSocket validation helpers ---
+
+
+def validate_ws_codex_event_sequence(
+    events: list[dict[str, Any]],
+) -> tuple[bool, list[str]]:
+    """Validate that a Codex WebSocket event sequence is well-formed.
+
+    Checks:
+    - At least one event received
+    - Terminal event (response.completed or response.failed) is present
+    - Terminal event is last
+    - response.completed carries required fields
+    """
+    errors: list[str] = []
+
+    if not events:
+        errors.append("No WebSocket events received")
+        return False, errors
+
+    terminal_types = {"response.completed", "response.failed"}
+    event_types = [e.get("type") for e in events]
+
+    has_terminal = any(t in terminal_types for t in event_types)
+    if not has_terminal:
+        errors.append(f"No terminal event found; got types: {event_types}")
+
+    last_type = event_types[-1]
+    if last_type not in terminal_types:
+        errors.append(f"Last event should be terminal, got: {last_type}")
+
+    terminal_event = events[-1]
+    response_obj = terminal_event.get("response")
+    if not isinstance(response_obj, dict):
+        errors.append("Terminal event missing 'response' object")
+    else:
+        for field in ("id", "object", "status"):
+            if field not in response_obj:
+                errors.append(f"Terminal response missing field: {field}")
+
+    return len(errors) == 0, errors
+
+
+def validate_ws_codex_streaming_content(
+    events: list[dict[str, Any]],
+) -> tuple[str, list[str]]:
+    """Extract and validate text content from a Codex WebSocket event stream.
+
+    Returns:
+        Tuple of (assembled_text, errors)
+    """
+    errors: list[str] = []
+    deltas: list[str] = []
+
+    for event in events:
+        if event.get("type") == "response.output_text.delta":
+            delta = event.get("delta")
+            if isinstance(delta, str):
+                deltas.append(delta)
+            else:
+                errors.append(f"Delta event has non-string delta: {type(delta)}")
+
+    text = "".join(deltas)
+
+    done_events = [e for e in events if e.get("type") == "response.output_text.done"]
+    if done_events:
+        done_text = done_events[-1].get("text", "")
+        if done_text and done_text != text:
+            errors.append(
+                f"Assembled deltas ({text!r}) differ from done text ({done_text!r})"
+            )
+
+    return text, errors
+
+
+def validate_ws_codex_warmup_response(event: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Validate a warmup (empty input) response event."""
+    errors: list[str] = []
+
+    if event.get("type") != "response.completed":
+        errors.append(f"Expected response.completed, got: {event.get('type')}")
+
+    response_obj = event.get("response", {})
+    if response_obj.get("status") != "completed":
+        errors.append(f"Expected status=completed, got: {response_obj.get('status')}")
+
+    if response_obj.get("output") != []:
+        errors.append(
+            f"Warmup output should be empty list, got: {response_obj.get('output')}"
+        )
+
+    if not isinstance(response_obj.get("id"), str) or not response_obj["id"]:
+        errors.append("Warmup response missing id")
+
+    return len(errors) == 0, errors
+
+
+def validate_ws_codex_error_response(event: dict[str, Any]) -> tuple[bool, list[str]]:
+    """Validate an error terminal event from WebSocket."""
+    errors: list[str] = []
+
+    if event.get("type") != "response.completed":
+        errors.append(f"Expected response.completed, got: {event.get('type')}")
+
+    response_obj = event.get("response", {})
+    if response_obj.get("status") != "failed":
+        errors.append(f"Expected status=failed, got: {response_obj.get('status')}")
+
+    error_obj = response_obj.get("error")
+    if not isinstance(error_obj, dict):
+        errors.append("Error response missing 'error' object")
+    elif "type" not in error_obj:
+        errors.append("Error object missing 'type' field")
+
+    return len(errors) == 0, errors
+
+
 # Format normalization helper
 def _normalize_format(format_type: str) -> str:
     alias_map = {
