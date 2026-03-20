@@ -218,6 +218,122 @@ class TestCodexAdapter:
         assert result_data["stream"] is True
 
     @pytest.mark.asyncio
+    async def test_prepare_provider_request_removes_max_completion_tokens(
+        self, adapter: CodexAdapter
+    ) -> None:
+        body_dict = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "model": "gpt-4",
+            "max_completion_tokens": 321,
+        }
+        body = json.dumps(body_dict).encode()
+
+        result_body, _ = await adapter.prepare_provider_request(
+            body, {"content-type": "application/json"}, "/responses"
+        )
+
+        result_data = json.loads(result_body.decode())
+        assert "max_output_tokens" not in result_data
+        assert "max_completion_tokens" not in result_data
+
+    @pytest.mark.asyncio
+    async def test_prepare_provider_request_preserves_encoded_body(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """Encoded request bodies should pass through unchanged."""
+        body = b"\x28\xb5\x2f\xfdcompressed-request"
+        headers = {
+            "content-type": "application/json",
+            "content-encoding": "zstd",
+            "accept": "application/json, text/event-stream",
+            "authorization": "Bearer old-token",
+            "session_id": "existing-session",
+        }
+
+        result_body, result_headers = await adapter.prepare_provider_request(
+            body, headers, "/responses"
+        )
+
+        assert result_body == body
+        assert result_headers["content-encoding"] == "zstd"
+        assert result_headers["authorization"] == "Bearer test-token"
+        assert result_headers["session_id"] == "existing-session"
+        assert "conversation_id" in result_headers
+
+    @pytest.mark.asyncio
+    async def test_prepare_provider_request_strips_content_encoding_for_plain_body(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """When body is not encoded, content-encoding must not be forwarded."""
+        body_dict = {
+            "input": [{"type": "message", "role": "user", "content": "Hello"}],
+            "model": "gpt-4",
+        }
+        body = json.dumps(body_dict).encode()
+        headers = {
+            "content-type": "application/json",
+            "content-encoding": "identity",
+        }
+
+        result_body, result_headers = await adapter.prepare_provider_request(
+            body, headers, "/responses"
+        )
+
+        result_data = json.loads(result_body.decode())
+        assert result_data["stream"] is True
+        assert "content-encoding" not in result_headers
+
+    @pytest.mark.asyncio
+    async def test_prepare_provider_request_applies_codex_template_defaults(
+        self,
+        mock_detection_service: Mock,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
+    ) -> None:
+        template = {
+            "instructions": "You are a Python expert.",
+            "include": ["reasoning.encrypted_content"],
+            "parallel_tool_calls": True,
+            "reasoning": {"effort": "medium"},
+            "tool_choice": "auto",
+            "tools": [{"type": "function", "name": "exec_command"}],
+            "prompt_cache_key": "template-cache-key",
+        }
+        prompts = DetectedPrompts.from_body(template)
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.instructions_payload()
+        )
+
+        mock_config = Mock()
+        mock_config.base_url = "https://chat.openai.com/backend-anon"
+
+        adapter = CodexAdapter(
+            detection_service=mock_detection_service,
+            config=mock_config,
+            auth_manager=mock_auth_manager,
+            http_pool_manager=mock_http_pool_manager,
+        )
+
+        body = json.dumps(
+            {
+                "model": "gpt-5",
+                "input": [{"role": "user", "content": [{"type": "input_text"}]}],
+            }
+        ).encode()
+
+        result_body, _ = await adapter.prepare_provider_request(body, {}, "/responses")
+        result_data = json.loads(result_body.decode())
+
+        assert result_data["include"] == ["reasoning.encrypted_content"]
+        assert result_data["parallel_tool_calls"] is True
+        assert result_data["reasoning"] == {"effort": "medium"}
+        assert result_data["tool_choice"] == "auto"
+        assert result_data["tools"] == [{"type": "function", "name": "exec_command"}]
+        assert result_data["prompt_cache_key"] != "template-cache-key"
+        assert result_data["input"][0]["type"] == "message"
+
+    @pytest.mark.asyncio
     async def test_process_provider_response(self, adapter: CodexAdapter) -> None:
         """Test response processing and format conversion."""
         # Mock Codex response format
