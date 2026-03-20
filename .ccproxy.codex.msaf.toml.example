@@ -21,6 +21,7 @@ preferred_upstream_mode = "streaming"
 buffer_non_streaming = true
 enable_format_registry = true
 
+
 # Microsoft Agent Framework sends its own instructions/reasoning payloads.
 # Do not prepend captured Codex CLI templates to generic OpenAI-compatible calls.
 inject_detection_payload = false
