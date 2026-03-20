@@ -288,7 +288,12 @@ class CodexAdapter(BaseHTTPAdapter):
         body_data["store"] = False
 
         # Remove unsupported keys for Codex
-        for key in ("max_output_tokens", "max_completion_tokens", "max_tokens", "temperature"):
+        for key in (
+            "max_output_tokens",
+            "max_completion_tokens",
+            "max_tokens",
+            "temperature",
+        ):
             body_data.pop(key, None)
 
         list_input = body_data.get("input", [])
@@ -639,16 +644,15 @@ class CodexAdapter(BaseHTTPAdapter):
 
             normalized_items.append(item)
 
-        data["input"] = normalized_items
-        return data
+        result = dict(data)
+        result["input"] = normalized_items
+        return result
 
     def _request_body_is_encoded(self, headers: dict[str, str]) -> bool:
         encoding = headers.get("content-encoding", "").strip().lower()
         return bool(encoding and encoding != "identity")
 
-    def _detect_streaming_intent(
-        self, body: bytes, headers: dict[str, str]
-    ) -> bool:
+    def _detect_streaming_intent(self, body: bytes, headers: dict[str, str]) -> bool:
         if self._request_body_is_encoded(headers):
             accept = headers.get("accept", "").lower()
             return "text/event-stream" in accept

@@ -531,6 +531,9 @@ class CodexDetectionService:
         try:
             return self._get_fallback_data()
         except Exception:
+            logger.debug(
+                "safe_fallback_data_load_failed", exc_info=True, category="plugin"
+            )
             return None
 
     def invalidate_cache(self) -> None:

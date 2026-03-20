@@ -5,13 +5,12 @@ import json
 import random
 from collections.abc import AsyncGenerator
 from time import time
-from typing import Any, Literal, TypeAlias
+from typing import Any, TypeAlias
 
 import structlog
 from fastapi.responses import StreamingResponse
 
 from ccproxy.core.constants import (
-    FORMAT_ANTHROPIC_MESSAGES,
     FORMAT_OPENAI_CHAT,
     FORMAT_OPENAI_RESPONSES,
 )

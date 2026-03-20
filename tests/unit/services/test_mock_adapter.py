@@ -86,7 +86,7 @@ async def test_handle_request_returns_standard_response() -> None:
 
     assert response.status_code == 202
     assert response.headers["X-Test"] == "yes"
-    assert json.loads(response.body)["format"] == FORMAT_OPENAI_RESPONSES
+    assert json.loads(bytes(response.body))["format"] == FORMAT_OPENAI_RESPONSES
     assert handler.calls[0][0] == "extract"
     assert handler.calls[1][0] == "prompt"
     assert handler.calls[2][0] == "standard"
@@ -120,7 +120,7 @@ async def test_handle_request_prefers_context_format_chain() -> None:
     response = await adapter.handle_request(request)
 
     assert response.status_code == 202
-    assert json.loads(response.body)["format"] == FORMAT_OPENAI_CHAT
+    assert json.loads(bytes(response.body))["format"] == FORMAT_OPENAI_CHAT
 
 
 @pytest.mark.asyncio
@@ -135,7 +135,7 @@ async def test_handle_request_falls_back_to_chat_endpoint_detection() -> None:
     response = await adapter.handle_request(request)
 
     assert response.status_code == 202
-    assert json.loads(response.body)["format"] == FORMAT_OPENAI_CHAT
+    assert json.loads(bytes(response.body))["format"] == FORMAT_OPENAI_CHAT
 
 
 @pytest.mark.asyncio
@@ -150,7 +150,7 @@ async def test_handle_request_falls_back_to_responses_endpoint_detection() -> No
     response = await adapter.handle_request(request)
 
     assert response.status_code == 202
-    assert json.loads(response.body)["format"] == FORMAT_OPENAI_RESPONSES
+    assert json.loads(bytes(response.body))["format"] == FORMAT_OPENAI_RESPONSES
 
 
 @pytest.mark.asyncio
@@ -166,7 +166,7 @@ async def test_handle_request_ignores_unknown_format_chain_and_uses_endpoint() -
     response = await adapter.handle_request(request)
 
     assert response.status_code == 202
-    assert json.loads(response.body)["format"] == FORMAT_OPENAI_CHAT
+    assert json.loads(bytes(response.body))["format"] == FORMAT_OPENAI_CHAT
 
 
 @pytest.mark.asyncio
@@ -181,7 +181,7 @@ async def test_handle_request_defaults_to_anthropic_for_unknown_endpoint() -> No
     response = await adapter.handle_request(request)
 
     assert response.status_code == 202
-    assert json.loads(response.body)["format"] == FORMAT_ANTHROPIC_MESSAGES
+    assert json.loads(bytes(response.body))["format"] == FORMAT_ANTHROPIC_MESSAGES
 
 
 @pytest.mark.asyncio

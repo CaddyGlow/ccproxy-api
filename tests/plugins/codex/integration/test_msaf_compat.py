@@ -25,7 +25,7 @@ from ccproxy.plugins.codex.models import CodexCacheData
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 DETECTED_CLI_INSTRUCTIONS = "Detected Codex CLI instructions"
-MSAF_CHAT_COMPLETIONS_REQUEST = {
+MSAF_CHAT_COMPLETIONS_REQUEST: dict[str, Any] = {
     "model": "gpt-5.4",
     "messages": [
         {
@@ -72,7 +72,7 @@ async def codex_msaf_client() -> AsyncGenerator[AsyncClient, None]:
             "analytics": {"enabled": False},
             "metrics": {"enabled": False},
         },
-        llm={"openai_thinking_xml": False},
+        llm=Settings.LLMSettings(openai_thinking_xml=False),
     )
     service_container = create_service_container(settings)
     app = create_app(service_container)

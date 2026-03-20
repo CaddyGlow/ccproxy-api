@@ -1,3 +1,10 @@
+"""Tests for MSAF-style sequential agent workflows through the Codex proxy.
+
+Validates that multi-step agent patterns (analyst -> editor) work correctly
+without requiring the agent_framework library, using plain httpx calls to
+simulate the same request flow.
+"""
+
 from __future__ import annotations
 
 import json
@@ -11,10 +18,8 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 import pytest_asyncio
-from agent_framework import Message
-from agent_framework.openai import OpenAIChatClient
-from openai import AsyncOpenAI
 from pytest_httpx import HTTPXMock
+from tests.helpers.assertions import assert_openai_responses_format
 
 from ccproxy.api.app import create_app, initialize_plugins_startup, shutdown_plugins
 from ccproxy.api.bootstrap import create_service_container
@@ -91,10 +96,21 @@ def _build_codex_response(
     }
 
 
+def _extract_message_text(data: dict[str, Any]) -> str:
+    """Extract assistant message text from an OpenAI chat completions response."""
+    choices = data.get("choices", [])
+    if choices:
+        message = choices[0].get("message", {})
+        content = message.get("content", "")
+        if isinstance(content, str):
+            return content
+    return ""
+
+
 @pytest_asyncio.fixture
 async def msaf_codex_client(
     httpx_mock: HTTPXMock,
-) -> AsyncGenerator[tuple[OpenAIChatClient, list[dict[str, Any]]], None]:
+) -> AsyncGenerator[tuple[httpx.AsyncClient, list[dict[str, Any]]], None]:
     upstream_payloads: list[dict[str, Any]] = []
     response_bodies = [
         _build_codex_response(
@@ -151,7 +167,7 @@ async def msaf_codex_client(
             "analytics": {"enabled": False},
             "metrics": {"enabled": False},
         },
-        llm={"openai_thinking_xml": False},
+        llm=Settings.LLMSettings(openai_thinking_xml=False),
     )
     service_container = create_service_container(settings)
     app = create_app(service_container)
@@ -163,11 +179,10 @@ async def msaf_codex_client(
     profile_stub = SimpleNamespace(chatgpt_account_id="test-account-id")
     detection_data = _build_detection_data()
 
-    async def init_detection_stub(self):  # type: ignore[no-untyped-def]
+    async def init_detection_stub(self: Any) -> CodexCacheData:
         self._cached_data = detection_data
         return detection_data
 
-    http_client: httpx.AsyncClient | None = None
     async with AsyncExitStack() as stack:
         stack.enter_context(
             patch(
@@ -199,97 +214,120 @@ async def msaf_codex_client(
                 new=init_detection_stub,
             )
         )
+        await initialize_plugins_startup(app, settings)
+        transport = httpx.ASGITransport(app=app)
+        client = httpx.AsyncClient(transport=transport, base_url="http://test")
         try:
-            await initialize_plugins_startup(app, settings)
-            transport = httpx.ASGITransport(app=app)
-            http_client = httpx.AsyncClient(
-                transport=transport,
-                base_url="http://test",
-            )
-            async_client = AsyncOpenAI(
-                api_key="ccproxy",
-                base_url="http://test/codex/v1",
-                http_client=http_client,
-            )
-            client = OpenAIChatClient(
-                model_id="gpt-5.4",
-                async_client=async_client,
-            )
             yield client, upstream_payloads
         finally:
-            if http_client is not None:
-                await http_client.aclose()
+            await client.aclose()
             await shutdown_plugins(app)
             await service_container.close()
 
 
-async def test_msaf_real_library_agent_runs_through_codex_proxy(
-    msaf_codex_client: tuple[OpenAIChatClient, list[dict[str, Any]]],
+async def test_msaf_agent_runs_through_codex_proxy(
+    msaf_codex_client: tuple[httpx.AsyncClient, list[dict[str, Any]]],
 ) -> None:
+    """Single agent-style call verifies no CLI injection, proper flags, no thinking XML."""
     client, upstream_payloads = msaf_codex_client
-    response = await client.get_response(
-        [Message("user", ["Составьте требования для формы логина."])],
-        options={
-            "instructions": (
-                f"{COMMON_INSTRUCTIONS} "
-                "Focus on fields, validations, and success criteria. "
-                "Output at most 5 bullets."
-            )
+    response = await client.post(
+        "/codex/v1/chat/completions",
+        json={
+            "model": "gpt-5.4",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        f"{COMMON_INSTRUCTIONS} "
+                        "Focus on fields, validations, and success criteria. "
+                        "Output at most 5 bullets."
+                    ),
+                },
+                {"role": "user", "content": "Составьте требования для формы логина."},
+            ],
+            "reasoning_effort": "medium",
+            "max_completion_tokens": 256,
         },
     )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert_openai_responses_format(data)
 
     assert len(upstream_payloads) == 1
-    assert all(
-        DETECTED_CLI_INSTRUCTIONS not in payload.get("instructions", "")
-        for payload in upstream_payloads
-    )
-    assert all(payload.get("stream") is True for payload in upstream_payloads)
-    assert all(payload.get("store") is False for payload in upstream_payloads)
-    assert "Detected Codex CLI instructions" not in upstream_payloads[0].get(
-        "instructions", ""
-    )
-    assert "<thinking>" not in response.text
-    assert "Email" in response.text
-    assert "Password" in response.text
+    payload = upstream_payloads[0]
+    assert DETECTED_CLI_INSTRUCTIONS not in payload.get("instructions", "")
+    assert payload.get("stream") is True
+    assert payload.get("store") is False
+    assert "<thinking>" not in json.dumps(data, ensure_ascii=False)
+
+    text = _extract_message_text(data)
+    assert "Email" in text
+    assert "Password" in text
 
 
-async def test_msaf_real_library_sequential_agents_keep_clean_messages(
-    msaf_codex_client: tuple[OpenAIChatClient, list[dict[str, Any]]],
+async def test_msaf_sequential_agents_keep_clean_messages(
+    msaf_codex_client: tuple[httpx.AsyncClient, list[dict[str, Any]]],
 ) -> None:
+    """Two sequential agent calls (analyst -> editor) keep reasoning hidden and output clean."""
     client, upstream_payloads = msaf_codex_client
-    analyst_response = await client.get_response(
-        [Message("user", ["Составьте требования для формы логина."])],
-        options={
-            "instructions": (
-                f"{COMMON_INSTRUCTIONS} "
-                "Focus on fields, validations, and success criteria. "
-                "Output at most 5 bullets."
-            )
+
+    # Step 1: analyst call
+    analyst_response = await client.post(
+        "/codex/v1/chat/completions",
+        json={
+            "model": "gpt-5.4",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        f"{COMMON_INSTRUCTIONS} "
+                        "Focus on fields, validations, and success criteria. "
+                        "Output at most 5 bullets."
+                    ),
+                },
+                {"role": "user", "content": "Составьте требования для формы логина."},
+            ],
+            "reasoning_effort": "medium",
         },
     )
-    editor_response = await client.get_response(
-        [
-            Message("user", ["Составьте требования для формы логина."], author_name="user"),
-            Message(
-                "assistant",
-                [analyst_response.text],
-                author_name="ProductAnalyst",
-            ),
-        ],
-        options={
-            "instructions": (
-                "You are the final editor for login form requirements. "
-                "Reply in the same language as the user request. "
-                "Produce one clean Markdown document with sections "
-                "Goal, Functional Requirements, Validation Rules, Acceptance Criteria."
-            )
+    assert analyst_response.status_code == 200, analyst_response.text
+    analyst_data = analyst_response.json()
+    analyst_text = _extract_message_text(analyst_data)
+
+    # Step 2: editor call, feeding analyst output as context
+    editor_response = await client.post(
+        "/codex/v1/chat/completions",
+        json={
+            "model": "gpt-5.4",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are the final editor for login form requirements. "
+                        "Reply in the same language as the user request. "
+                        "Produce one clean Markdown document with sections "
+                        "Goal, Functional Requirements, Validation Rules, Acceptance Criteria."
+                    ),
+                },
+                {"role": "user", "content": "Составьте требования для формы логина."},
+                {
+                    "role": "assistant",
+                    "content": analyst_text,
+                    "name": "ProductAnalyst",
+                },
+            ],
+            "reasoning_effort": "medium",
         },
     )
+    assert editor_response.status_code == 200, editor_response.text
+    editor_data = editor_response.json()
+    editor_text = _extract_message_text(editor_data)
 
     assert len(upstream_payloads) == 2
-    assert "Hidden analyst reasoning" not in analyst_response.text
-    assert "Hidden editor reasoning" not in editor_response.text
-    assert "<thinking>" not in analyst_response.text
-    assert "<thinking>" not in editor_response.text
-    assert "## Goal" in editor_response.text
-    assert "## Functional Requirements" in editor_response.text
+    assert "Hidden analyst reasoning" not in analyst_text
+    assert "Hidden editor reasoning" not in editor_text
+    assert "<thinking>" not in analyst_text
+    assert "<thinking>" not in editor_text
+    assert "## Goal" in editor_text
+    assert "## Functional Requirements" in editor_text

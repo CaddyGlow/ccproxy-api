@@ -53,7 +53,7 @@ class MockAdapter(BaseAdapter):
         ctx = getattr(request.state, "context", None)
         format_chain = getattr(ctx, "format_chain", None)
         if isinstance(format_chain, list) and format_chain:
-            first = format_chain[0]
+            first: str = format_chain[0]
             if first in {
                 FORMAT_OPENAI_CHAT,
                 FORMAT_OPENAI_RESPONSES,
@@ -80,7 +80,6 @@ class MockAdapter(BaseAdapter):
             pass
         except Exception as e:
             logger.debug("stream_flag_extraction_error", error=str(e))
-            pass
         return False
 
     async def handle_request(
@@ -108,7 +107,6 @@ class MockAdapter(BaseAdapter):
             pass
         except Exception as e:
             logger.debug("stream_flag_extraction_error", error=str(e))
-            pass
 
         # Create request context
         ctx = RequestContext(
@@ -149,7 +147,6 @@ class MockAdapter(BaseAdapter):
             pass
         except Exception as e:
             logger.debug("stream_flag_extraction_error", error=str(e))
-            pass
 
         # Create request context
         ctx = RequestContext(

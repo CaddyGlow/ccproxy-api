@@ -55,7 +55,7 @@ async def test_llm_openai_thinking_xml_env_disables_thinking_serialization(monke
 
 
 def test_format_registry_propagates_openai_thinking_xml_setting() -> None:
-    settings = Settings(llm={"openai_thinking_xml": False})
+    settings = Settings(llm=Settings.LLMSettings(openai_thinking_xml=False))
     container = create_service_container(settings)
 
     registry = container.get_format_registry()
@@ -73,5 +73,5 @@ async def test_openai_thinking_xml_contextvar_is_isolated_per_task() -> None:
 
     results = await asyncio.gather(worker(True), worker(False))
 
-    assert results == [True, False]
+    assert list(results) == [True, False]
     assert get_openai_thinking_xml() is None

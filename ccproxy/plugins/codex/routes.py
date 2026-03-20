@@ -1,12 +1,15 @@
 """Codex plugin routes."""
 
+import contextlib
 import json
+from collections import deque
 from pathlib import Path
 from time import time
 from typing import TYPE_CHECKING, Annotated, Any, cast
 from urllib.parse import urlparse
 from uuid import uuid4
 
+import anyio
 from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect
 from starlette.responses import Response, StreamingResponse
 from starlette.websockets import WebSocketState
@@ -17,6 +20,7 @@ from ccproxy.api.dependencies import (
     get_provider_config_dependency,
 )
 from ccproxy.auth.dependencies import ConditionalAuthDep
+from ccproxy.config.settings import Settings
 from ccproxy.core.constants import (
     FORMAT_ANTHROPIC_MESSAGES,
     FORMAT_OPENAI_CHAT,
@@ -25,6 +29,7 @@ from ccproxy.core.constants import (
     UPSTREAM_ENDPOINT_OPENAI_CHAT_COMPLETIONS,
     UPSTREAM_ENDPOINT_OPENAI_RESPONSES,
 )
+from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import PluginRegistry, ProviderPluginRuntime
 from ccproxy.streaming import DeferredStreaming
 from ccproxy.streaming.sse_parser import SSEStreamParser
@@ -33,7 +38,11 @@ from .config import CodexSettings
 
 
 if TYPE_CHECKING:
-    pass
+    from .adapter import CodexAdapter
+
+logger = get_plugin_logger()
+
+_MAX_LOCAL_RESPONSE_IDS = 256
 
 CodexAdapterDep = Annotated[Any, Depends(get_plugin_adapter("codex"))]
 CodexConfigDep = Annotated[
@@ -62,7 +71,7 @@ async def _codex_responses_handler(
     return await handle_codex_request(request, adapter)
 
 
-def _get_codex_websocket_adapter(websocket: WebSocket) -> Any:
+def _get_codex_websocket_adapter(websocket: WebSocket) -> "CodexAdapter":
     if not hasattr(websocket.app.state, "plugin_registry"):
         raise RuntimeError("Plugin registry not initialized")
 
@@ -75,7 +84,7 @@ def _get_codex_websocket_adapter(websocket: WebSocket) -> Any:
     if not runtime.adapter:
         raise RuntimeError("Codex adapter not available")
 
-    return runtime.adapter
+    return cast("CodexAdapter", runtime.adapter)
 
 
 def _prepare_websocket_headers(websocket: WebSocket) -> dict[str, str]:
@@ -106,7 +115,7 @@ def _make_websocket_terminal_event(
     *,
     error: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    response_payload = {
+    response_payload: dict[str, Any] = {
         "id": f"resp_ws_{uuid4().hex}",
         "object": "response",
         "created_at": int(time()),
@@ -125,6 +134,49 @@ def _is_websocket_warmup_request(provider_payload: dict[str, Any]) -> bool:
     return isinstance(input_items, list) and len(input_items) == 0
 
 
+async def _authenticate_websocket(websocket: WebSocket) -> None:
+    """Enforce bearer auth on WebSocket connections when auth is configured.
+
+    Mirrors the ConditionalAuthDep logic: if security.auth_token is set,
+    the client must provide a matching Authorization header. Closes the
+    connection with 1008 (Policy Violation) on failure.
+    """
+    container = getattr(websocket.app.state, "service_container", None)
+    settings: Settings | None = None
+    if container is not None:
+        with contextlib.suppress(ValueError):
+            settings = container.get_service(Settings)
+    if settings is None:
+        with contextlib.suppress(Exception):
+            settings = Settings()
+
+    if settings is None or not settings.security.auth_token:
+        return
+
+    expected = settings.security.auth_token.get_secret_value()
+    auth_header = websocket.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:]
+    else:
+        token = ""
+
+    if token != expected:
+        await websocket.close(code=1008, reason="Authentication required")
+        raise WebSocketDisconnect(code=1008)
+
+
+async def _sanitize_websocket_payload(
+    adapter: "CodexAdapter", provider_payload: dict[str, Any], headers: dict[str, str]
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """Run the same request normalization used by HTTP routes on a WS payload."""
+    body_bytes = json.dumps(provider_payload).encode("utf-8")
+    prepared_body, prepared_headers = await adapter.prepare_provider_request(
+        body_bytes, headers, UPSTREAM_ENDPOINT_OPENAI_RESPONSES
+    )
+    sanitized_payload = json.loads(prepared_body.decode("utf-8"))
+    return sanitized_payload, prepared_headers
+
+
 def _serialize_codex_models(config: CodexSettings) -> list[dict[str, Any]]:
     models: list[dict[str, Any]] = []
     for card in config.models_endpoint:
@@ -137,13 +189,14 @@ def _serialize_codex_models(config: CodexSettings) -> list[dict[str, Any]]:
     return models
 
 
-def _load_codex_cli_models_cache() -> list[dict[str, Any]]:
-    cache_file = Path.home() / ".codex" / "models_cache.json"
-    if not cache_file.exists():
+async def _load_codex_cli_models_cache() -> list[dict[str, Any]]:
+    cache_path = anyio.Path(Path.home() / ".codex" / "models_cache.json")
+    if not await cache_path.exists():
         return []
 
     try:
-        payload = json.loads(cache_file.read_text())
+        content = await cache_path.read_text()
+        payload = json.loads(content)
     except Exception:
         return []
 
@@ -154,9 +207,11 @@ def _load_codex_cli_models_cache() -> list[dict[str, Any]]:
     return [model for model in models if isinstance(model, dict)]
 
 
-def _serialize_codex_cli_models(config: CodexSettings) -> list[dict[str, Any]]:
+async def _serialize_codex_cli_models(config: CodexSettings) -> list[dict[str, Any]]:
     configured_ids = {
-        card.id for card in config.models_endpoint if isinstance(getattr(card, "id", None), str)
+        card.id
+        for card in config.models_endpoint
+        if isinstance(getattr(card, "id", None), str)
     }
     configured_ids.update(
         {
@@ -166,12 +221,13 @@ def _serialize_codex_cli_models(config: CodexSettings) -> list[dict[str, Any]]:
         }
     )
 
-    cached_models = _load_codex_cli_models_cache()
+    cached_models = await _load_codex_cli_models_cache()
     if cached_models and configured_ids:
         matched = [
             model
             for model in cached_models
-            if model.get("slug") in configured_ids or model.get("display_name") in configured_ids
+            if model.get("slug") in configured_ids
+            or model.get("display_name") in configured_ids
         ]
         if matched:
             return matched
@@ -181,13 +237,13 @@ def _serialize_codex_cli_models(config: CodexSettings) -> list[dict[str, Any]]:
 
 async def _stream_websocket_response(
     websocket: WebSocket,
-    adapter: Any,
+    adapter: "CodexAdapter",
     provider_payload: dict[str, Any],
 ) -> None:
     request_headers = _prepare_websocket_headers(websocket)
-    provider_payload["stream"] = True
-    provider_payload["store"] = False
-    provider_headers = await adapter.prepare_provider_headers(request_headers)
+    provider_payload, provider_headers = await _sanitize_websocket_payload(
+        adapter, provider_payload, request_headers
+    )
     target_url = await adapter.get_target_url(UPSTREAM_ENDPOINT_OPENAI_RESPONSES)
     parsed_url = urlparse(target_url)
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -200,7 +256,7 @@ async def _stream_websocket_response(
         target_url,
         headers=provider_headers,
         content=json.dumps(provider_payload).encode("utf-8"),
-        ) as upstream_response:
+    ) as upstream_response:
         if upstream_response.status_code >= 400:
             error_body = await upstream_response.aread()
             try:
@@ -265,10 +321,12 @@ async def codex_responses(
 @router.websocket("/v1/responses")
 async def codex_responses_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
+    await _authenticate_websocket(websocket)
 
     try:
         adapter = _get_codex_websocket_adapter(websocket)
-        local_response_ids: set[str] = set()
+        local_response_ids: deque[str] = deque(maxlen=_MAX_LOCAL_RESPONSE_IDS)
+        logger.debug("websocket_connected", client=str(websocket.client))
         while True:
             raw_message = await websocket.receive_text()
             provider_payload = _parse_websocket_request(raw_message)
@@ -276,23 +334,33 @@ async def codex_responses_websocket(websocket: WebSocket) -> None:
                 warmup_event = _make_websocket_terminal_event(provider_payload)
                 response_id = warmup_event.get("response", {}).get("id")
                 if isinstance(response_id, str) and response_id:
-                    local_response_ids.add(response_id)
+                    local_response_ids.append(response_id)
                 await websocket.send_text(
                     json.dumps(warmup_event, separators=(",", ":"))
                 )
+                logger.debug("websocket_warmup_handled", response_id=response_id)
                 continue
             previous_response_id = provider_payload.get("previous_response_id")
-            if isinstance(previous_response_id, str) and previous_response_id in local_response_ids:
+            if (
+                isinstance(previous_response_id, str)
+                and previous_response_id in local_response_ids
+            ):
                 provider_payload.pop("previous_response_id", None)
+            logger.debug(
+                "websocket_streaming_request", model=provider_payload.get("model")
+            )
             await _stream_websocket_response(websocket, adapter, provider_payload)
     except WebSocketDisconnect:
+        logger.debug("websocket_disconnected", client=str(websocket.client))
         return
     except ValueError as exc:
+        logger.warning("websocket_value_error", error=str(exc))
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close(code=1008, reason=str(exc))
-    except Exception as exc:
+    except Exception:
+        logger.warning("websocket_unexpected_error", exc_info=True)
         if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.close(code=1011, reason=str(exc))
+            await websocket.close(code=1011, reason="Internal server error")
 
 
 @router.post("/responses", response_model=None, include_in_schema=False)
@@ -333,7 +401,7 @@ async def list_models(
 ) -> dict[str, Any]:
     """List available Codex models."""
     openai_models = _serialize_codex_models(config)
-    codex_models = _serialize_codex_cli_models(config)
+    codex_models = await _serialize_codex_cli_models(config)
     return {"object": "list", "data": openai_models, "models": codex_models}
 
 

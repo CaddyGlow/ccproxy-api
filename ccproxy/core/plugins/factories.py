@@ -12,9 +12,9 @@ import structlog
 from fastapi import APIRouter
 
 from ccproxy.models.provider import ProviderConfig
-from ccproxy.services.adapters.mock_adapter import MockAdapter
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
+from ccproxy.services.adapters.mock_adapter import MockAdapter
 from ccproxy.services.interfaces import (
     IMetricsCollector,
     IRequestTracer,

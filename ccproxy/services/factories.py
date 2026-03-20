@@ -367,9 +367,7 @@ class ConcreteServiceFactory:
                 name=spec["name"],
             )
             if hasattr(adapter, "configure_streaming"):
-                adapter.configure_streaming(
-                    openai_thinking_xml=openai_thinking_xml
-                )
+                adapter.configure_streaming(openai_thinking_xml=openai_thinking_xml)
             registry.register(
                 from_format=spec["from_format"],
                 to_format=spec["to_format"],
