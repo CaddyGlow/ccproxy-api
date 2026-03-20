@@ -115,7 +115,9 @@ def _make_websocket_terminal_event(
     provider_payload: dict[str, Any],
     *,
     error: dict[str, Any] | None = None,
+    sequence_number: int = 0,
 ) -> dict[str, Any]:
+    event_type = "response.failed" if error else "response.completed"
     response_payload: dict[str, Any] = {
         "id": f"resp_ws_{uuid4().hex}",
         "object": "response",
@@ -127,7 +129,11 @@ def _make_websocket_terminal_event(
         "error": error,
         "incomplete_details": None,
     }
-    return {"type": "response.completed", "response": response_payload}
+    return {
+        "type": event_type,
+        "sequence_number": sequence_number,
+        "response": response_payload,
+    }
 
 
 def _is_websocket_warmup_request(provider_payload: dict[str, Any]) -> bool:

@@ -267,7 +267,7 @@ def test_codex_websocket_returns_terminal_event_on_upstream_error(
         event = websocket.receive_json()
         websocket.close()
 
-    assert event["type"] == "response.completed"
+    assert event["type"] == "response.failed"
     assert event["response"]["status"] == "failed"
     assert event["response"]["error"]["type"] == "invalid_request_error"
 

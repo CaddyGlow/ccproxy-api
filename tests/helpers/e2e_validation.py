@@ -382,8 +382,8 @@ def validate_ws_codex_error_response(event: dict[str, Any]) -> tuple[bool, list[
     """Validate an error terminal event from WebSocket."""
     errors: list[str] = []
 
-    if event.get("type") != "response.completed":
-        errors.append(f"Expected response.completed, got: {event.get('type')}")
+    if event.get("type") != "response.failed":
+        errors.append(f"Expected response.failed, got: {event.get('type')}")
 
     response_obj = event.get("response", {})
     if response_obj.get("status") != "failed":
