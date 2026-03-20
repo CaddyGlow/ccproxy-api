@@ -1,5 +1,14 @@
+import asyncio
+
 import pytest
 
+from ccproxy.api.bootstrap import create_service_container
+from ccproxy.config.settings import Settings
+from ccproxy.core.constants import FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES
+from ccproxy.llms.formatters.context import (
+    get_openai_thinking_xml,
+    register_openai_thinking_xml,
+)
 from ccproxy.llms.streaming.processors import OpenAIStreamProcessor
 
 
@@ -43,3 +52,26 @@ async def test_llm_openai_thinking_xml_env_disables_thinking_serialization(monke
             delta = c["choices"][0].get("delta") or {}
             if isinstance(delta, dict) and "content" in delta:
                 assert "<thinking" not in delta["content"]
+
+
+def test_format_registry_propagates_openai_thinking_xml_setting() -> None:
+    settings = Settings(llm=Settings.LLMSettings(openai_thinking_xml=False))
+    container = create_service_container(settings)
+
+    registry = container.get_format_registry()
+    adapter = registry.get(FORMAT_OPENAI_RESPONSES, FORMAT_OPENAI_CHAT)
+
+    assert getattr(adapter, "_openai_thinking_xml", None) is False
+
+
+@pytest.mark.asyncio
+async def test_openai_thinking_xml_contextvar_is_isolated_per_task() -> None:
+    async def worker(value: bool) -> bool | None:
+        register_openai_thinking_xml(value)
+        await asyncio.sleep(0)
+        return get_openai_thinking_xml()
+
+    results = await asyncio.gather(worker(True), worker(False))
+
+    assert list(results) == [True, False]
+    assert get_openai_thinking_xml() is None
