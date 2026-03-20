@@ -106,7 +106,7 @@ class MockAdapter(BaseAdapter):
         except UnicodeDecodeError:
             pass
         except Exception as e:
-            logger.debug("stream_flag_extraction_error", error=str(e))
+            logger.debug("model_extraction_error", error=str(e), endpoint=endpoint)
 
         # Create request context
         ctx = RequestContext(
