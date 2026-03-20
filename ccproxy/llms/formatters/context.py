@@ -11,6 +11,9 @@ _INSTRUCTIONS_VAR: ContextVar[str | None] = ContextVar(
     "formatter_instructions", default=None
 )
 _TOOLS_VAR: ContextVar[list[Any] | None] = ContextVar("formatter_tools", default=None)
+_OPENAI_THINKING_XML_VAR: ContextVar[bool | None] = ContextVar(
+    "formatter_openai_thinking_xml", default=None
+)
 
 
 def register_request(request: Any | None, instructions: str | None = None) -> None:
@@ -114,3 +117,24 @@ def get_last_request_tools() -> list[Any] | None:
 
     cached = _TOOLS_VAR.get()
     return list(cached) if cached else None
+
+
+def register_openai_thinking_xml(enabled: bool | None) -> None:
+    """Cache OpenAI thinking serialization preference for active conversions.
+
+    Args:
+        enabled: Whether thinking blocks should be serialized with XML wrappers.
+            ``None`` means downstream conversion logic should use its default.
+
+    Note:
+        The value is stored in a ``ContextVar``, so concurrent async requests
+        keep independent preferences without leaking into each other.
+    """
+
+    _OPENAI_THINKING_XML_VAR.set(enabled)
+
+
+def get_openai_thinking_xml() -> bool | None:
+    """Return the OpenAI thinking serialization preference for active conversions."""
+
+    return _OPENAI_THINKING_XML_VAR.get()

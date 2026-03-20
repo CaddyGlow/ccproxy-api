@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -5,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from pydantic import TypeAdapter
 from tests.helpers.assertions import (
     assert_codex_response_format,
     assert_openai_responses_format,
@@ -14,6 +16,7 @@ from tests.helpers.test_data import (
     STANDARD_OPENAI_REQUEST,
 )
 
+from ccproxy.llms.models import openai as openai_models
 from ccproxy.models.detection import DetectedHeaders, DetectedPrompts
 from ccproxy.plugins.codex.models import CodexCacheData
 
@@ -112,6 +115,50 @@ async def test_openai_chat_completions_streaming(
     assert any(chunk.startswith("data: ") for chunk in chunks)
 
 
+@pytest.mark.asyncio
+@pytest.mark.integration
+@pytest.mark.codex
+async def test_codex_bypass_responses_streaming_emits_valid_openai_response_events(
+    codex_bypass_client: Any,
+) -> None:
+    resp = await codex_bypass_client.post(
+        "/codex/v1/responses",
+        json={
+            "model": "gpt-5",
+            "stream": True,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": "Reply with exactly OK"}
+                    ],
+                }
+            ],
+        },
+    )
+    raw_body = await resp.aread()
+
+    assert resp.status_code == 200, raw_body
+    assert resp.headers["content-type"].startswith("text/event-stream")
+
+    body = raw_body.decode()
+    events: list[dict[str, Any]] = []
+    validator = TypeAdapter(openai_models.AnyStreamEvent)
+    for line in body.splitlines():
+        if not line.startswith("data: "):
+            continue
+        payload = line[6:].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        event = json.loads(payload)
+        events.append(event)
+        validator.validate_python(event)
+
+    assert events[0]["type"] == "response.created"
+    assert events[-1]["type"] == "response.completed"
+    assert body.strip().endswith("data: [DONE]")
+
+
 # Module-scoped client to avoid per-test startup cost
 # Use module-level async loop for all tests here
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -185,6 +232,68 @@ async def codex_client() -> Any:  # type: ignore[misc]
         new=init_detection_stub,
     )
     with load_patch, profile_patch, detection_patch:
+        await initialize_plugins_startup(app, settings)
+
+        transport = ASGITransport(app=app)
+        runtime = app.state.plugin_registry.get_runtime("codex")
+        assert runtime and runtime.adapter, "Codex plugin failed to initialize"
+        client = AsyncClient(transport=transport, base_url="http://test")
+        try:
+            yield client
+        finally:
+            await client.aclose()
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
+async def codex_bypass_client() -> Any:  # type: ignore[misc]
+    from httpx import ASGITransport, AsyncClient
+
+    from ccproxy.api.app import create_app, initialize_plugins_startup
+    from ccproxy.api.bootstrap import create_service_container
+    from ccproxy.config.core import ServerSettings
+    from ccproxy.config.settings import Settings
+    from ccproxy.core.logging import setup_logging
+
+    setup_logging(json_logs=False, log_level_name="ERROR")
+    settings = Settings(
+        enable_plugins=True,
+        server=ServerSettings(bypass_mode=True),
+        plugins={
+            "codex": {"enabled": True},
+            "oauth_codex": {"enabled": True},
+            "duckdb_storage": {"enabled": False},
+            "analytics": {"enabled": False},
+            "metrics": {"enabled": False},
+        },
+        enabled_plugins=["codex", "oauth_codex"],
+        plugins_disable_local_discovery=False,
+    )
+    service_container = create_service_container(settings)
+    app = create_app(service_container)
+
+    prompts = DetectedPrompts.from_body(
+        {"instructions": "You are a helpful coding assistant."}
+    )
+    detection_data = CodexCacheData(
+        codex_version="fallback",
+        headers=DetectedHeaders({}),
+        prompts=prompts,
+        body_json=prompts.raw,
+        method="POST",
+        url="https://chatgpt.com/backend-codex/responses",
+        path="/api/backend-codex/responses",
+        query_params={},
+    )
+
+    async def init_detection_stub(self):  # type: ignore[no-untyped-def]
+        self._cached_data = detection_data
+        return detection_data
+
+    detection_patch = patch(
+        "ccproxy.plugins.codex.detection_service.CodexDetectionService.initialize_detection",
+        new=init_detection_stub,
+    )
+    with detection_patch:
         await initialize_plugins_startup(app, settings)
 
         transport = ASGITransport(app=app)

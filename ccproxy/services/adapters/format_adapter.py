@@ -6,6 +6,8 @@ import inspect
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
+from ccproxy.llms.formatters.context import register_openai_thinking_xml
+
 
 FormatDict = dict[str, Any]
 
@@ -63,6 +65,10 @@ class DictFormatAdapter(FormatAdapterProtocol):
         self._error = error
         self._stream = stream
         self.name = name or self.__class__.__name__
+        self._openai_thinking_xml: bool | None = None
+
+    def configure_streaming(self, *, openai_thinking_xml: bool | None = None) -> None:
+        self._openai_thinking_xml = openai_thinking_xml
 
     async def convert_request(self, data: FormatDict) -> FormatDict:
         return await self._run_stage(self._request, data, stage="request")
@@ -92,6 +98,7 @@ class DictFormatAdapter(FormatAdapterProtocol):
                 f"{self.name} does not implement stream conversion"
             )
 
+        register_openai_thinking_xml(self._openai_thinking_xml)
         handler = self._stream(stream)
         handler = await _maybe_await(handler)
 
@@ -121,6 +128,7 @@ class DictFormatAdapter(FormatAdapterProtocol):
                 f"{self.name} does not implement {stage} conversion"
             )
 
+        register_openai_thinking_xml(self._openai_thinking_xml)
         result = await _maybe_await(func(data))
         if not isinstance(result, dict):
             raise TypeError(

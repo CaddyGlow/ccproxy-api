@@ -262,26 +262,41 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Parse body (format conversion is now handled by format chain)
         body_data = json.loads(body.decode()) if body else {}
-        body_data = self._apply_request_template(body_data)
+        if self._should_apply_detection_payload():
+            body_data = self._apply_request_template(body_data)
+        else:
+            body_data = self._normalize_input_messages(body_data)
 
-        # Fetch detected instructions from detection service
-        instructions = self._get_instructions()
+        detected_instructions = (
+            self._get_instructions() if self._should_apply_detection_payload() else ""
+        )
 
         existing_instructions = body_data.get("instructions")
         if isinstance(existing_instructions, str) and existing_instructions:
-            if instructions:
-                instructions = instructions + "\n" + existing_instructions
-            else:
-                instructions = existing_instructions
+            instructions = (
+                detected_instructions + "\n" + existing_instructions
+                if detected_instructions
+                else existing_instructions
+            )
+        else:
+            instructions = detected_instructions
 
-        body_data["instructions"] = instructions
+        if instructions:
+            body_data["instructions"] = instructions
+        else:
+            body_data.pop("instructions", None)
 
         # Codex backend requires stream=true, always override
         body_data["stream"] = True
         body_data["store"] = False
 
         # Remove unsupported keys for Codex
-        for key in ("max_output_tokens", "max_completion_tokens", "temperature"):
+        for key in (
+            "max_output_tokens",
+            "max_completion_tokens",
+            "max_tokens",
+            "temperature",
+        ):
             body_data.pop(key, None)
 
         list_input = body_data.get("input", [])
@@ -639,6 +654,9 @@ class CodexAdapter(BaseHTTPAdapter):
     def _request_body_is_encoded(self, headers: dict[str, str]) -> bool:
         encoding = headers.get("content-encoding", "").strip().lower()
         return bool(encoding and encoding != "identity")
+
+    def _should_apply_detection_payload(self) -> bool:
+        return bool(getattr(self.config, "inject_detection_payload", True))
 
     def _detect_streaming_intent(self, body: bytes, headers: dict[str, str]) -> bool:
         if self._request_body_is_encoded(headers):
