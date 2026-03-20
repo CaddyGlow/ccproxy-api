@@ -209,7 +209,7 @@ async def test_ws_validation_helpers_work() -> None:
 
     # Error validation
     error_event = {
-        "type": "response.completed",
+        "type": "response.failed",
         "response": {
             "id": "e1",
             "object": "response",
