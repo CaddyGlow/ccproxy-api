@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ccproxy.config.settings import Settings
+from ccproxy.models.detection import DetectedPrompts
 from ccproxy.plugins.codex.detection_service import CodexDetectionService
 
 
@@ -52,3 +53,39 @@ async def test_codex_detection_falls_back_when_cli_missing(tmp_path: Path) -> No
 
 def test_codex_detection_ignores_content_encoding_header() -> None:
     assert "content-encoding" in CodexDetectionService.ignores_header
+
+
+def test_codex_detection_merges_partial_prompt_cache_with_fallback() -> None:
+    settings = MagicMock(spec=Settings)
+    cli_service = MagicMock()
+    service = CodexDetectionService(settings=settings, cli_service=cli_service)
+
+    cached_prompts = DetectedPrompts.from_body(
+        {"tools": [{"type": "function", "name": "exec_command"}]}
+    )
+    fallback_prompts = DetectedPrompts.from_body(
+        {
+            "instructions": "Fallback instructions",
+            "include": ["reasoning.encrypted_content"],
+            "tool_choice": "auto",
+        }
+    )
+
+    with (
+        patch.object(
+            service,
+            "get_cached_data",
+            return_value=SimpleNamespace(prompts=cached_prompts),
+        ),
+        patch.object(
+            service,
+            "_safe_fallback_data",
+            return_value=SimpleNamespace(prompts=fallback_prompts),
+        ),
+    ):
+        prompts = service.get_detected_prompts()
+
+    assert prompts.instructions == "Fallback instructions"
+    assert prompts.raw["tools"] == [{"type": "function", "name": "exec_command"}]
+    assert prompts.raw["include"] == ["reasoning.encrypted_content"]
+    assert prompts.raw["tool_choice"] == "auto"

@@ -163,18 +163,12 @@ class CodexDetectionService:
 
         data = self.get_cached_data()
         prompts = data.prompts if data else DetectedPrompts()
-        if prompts.has_instructions() or prompts.has_system():
-            return prompts
 
         fallback = self._safe_fallback_data()
         if fallback is None:
             return prompts
 
-        fallback_prompts = fallback.prompts
-        if fallback_prompts.has_instructions() or fallback_prompts.has_system():
-            return fallback_prompts
-
-        return prompts
+        return self._merge_detected_prompts(prompts, fallback.prompts)
 
     def get_ignored_headers(self) -> list[str]:
         """Headers that should be ignored when forwarding CLI values."""
@@ -536,6 +530,26 @@ class CodexDetectionService:
                 "safe_fallback_data_load_failed", exc_info=True, category="plugin"
             )
             return None
+
+    @staticmethod
+    def _merge_detected_prompts(
+        prompts: DetectedPrompts, fallback: DetectedPrompts
+    ) -> DetectedPrompts:
+        """Merge partial prompt caches with fallback defaults."""
+
+        prompt_raw = prompts.raw if isinstance(prompts.raw, dict) else {}
+        fallback_raw = fallback.raw if isinstance(fallback.raw, dict) else {}
+        merged_raw = dict(fallback_raw)
+        merged_raw.update(prompt_raw)
+
+        instructions = prompts.instructions or fallback.instructions
+        system = prompts.system if prompts.system is not None else fallback.system
+
+        return DetectedPrompts(
+            instructions=instructions,
+            system=system,
+            raw=merged_raw,
+        )
 
     def invalidate_cache(self) -> None:
         """Clear all cached detection data."""

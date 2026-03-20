@@ -17,6 +17,7 @@ from ccproxy.core.plugins.interfaces import (
 )
 from ccproxy.services.adapters.chain_composer import compose_from_chain
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
+from ccproxy.services.adapters.mock_adapter import MockAdapter
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming import DeferredStreaming, StreamingBufferService
 from ccproxy.utils.headers import (
@@ -58,6 +59,9 @@ class CodexAdapter(BaseHTTPAdapter):
         # Context + request info
         ctx = request.state.context
         self._ensure_tool_accumulator(ctx)
+        if self.mock_handler:
+            return await MockAdapter(self.mock_handler).handle_request(request)
+
         endpoint = ctx.metadata.get("endpoint", "")
         body = await request.body()
         body = await self._map_request_model(ctx, body)
@@ -475,6 +479,10 @@ class CodexAdapter(BaseHTTPAdapter):
         if not self.streaming_handler:
             # Fallback to base behavior
             return await super().handle_streaming(request, endpoint, **kwargs)
+        if self.mock_handler:
+            return await MockAdapter(self.mock_handler).handle_streaming(
+                request, endpoint, **kwargs
+            )
 
         # Get context
         ctx = request.state.context
@@ -655,9 +663,6 @@ class CodexAdapter(BaseHTTPAdapter):
         encoding = headers.get("content-encoding", "").strip().lower()
         return bool(encoding and encoding != "identity")
 
-    def _should_apply_detection_payload(self) -> bool:
-        return bool(getattr(self.config, "inject_detection_payload", True))
-
     def _detect_streaming_intent(self, body: bytes, headers: dict[str, str]) -> bool:
         if self._request_body_is_encoded(headers):
             accept = headers.get("accept", "").lower()
@@ -669,6 +674,9 @@ class CodexAdapter(BaseHTTPAdapter):
         except Exception:
             accept = headers.get("accept", "").lower()
             return "text/event-stream" in accept
+
+    def _should_apply_detection_payload(self) -> bool:
+        return bool(getattr(self.config, "inject_detection_payload", True))
 
     def _get_instructions(self) -> str:
         if not self.detection_service:

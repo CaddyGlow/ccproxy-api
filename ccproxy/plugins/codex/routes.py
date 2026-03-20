@@ -1,6 +1,5 @@
 """Codex plugin routes."""
 
-import contextlib
 import json
 from collections import deque
 from pathlib import Path
@@ -31,8 +30,10 @@ from ccproxy.core.constants import (
 )
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import PluginRegistry, ProviderPluginRuntime
+from ccproxy.core.request_context import RequestContext
 from ccproxy.streaming import DeferredStreaming
 from ccproxy.streaming.sse_parser import SSEStreamParser
+from ccproxy.utils.model_mapper import restore_model_aliases
 
 from .config import CodexSettings
 
@@ -135,46 +136,152 @@ def _is_websocket_warmup_request(provider_payload: dict[str, Any]) -> bool:
 
 
 async def _authenticate_websocket(websocket: WebSocket) -> None:
-    """Enforce bearer auth on WebSocket connections when auth is configured.
-
-    Mirrors the ConditionalAuthDep logic: if security.auth_token is set,
-    the client must provide a matching Authorization header. Closes the
-    connection with 1008 (Policy Violation) on failure.
-    """
-    container = getattr(websocket.app.state, "service_container", None)
-    settings: Settings | None = None
-    if container is not None:
-        with contextlib.suppress(ValueError):
-            settings = container.get_service(Settings)
-    if settings is None:
-        with contextlib.suppress(Exception):
-            settings = Settings()
-
-    if settings is None or not settings.security.auth_token:
+    """Enforce bearer auth on WebSocket connections when auth is configured."""
+    settings = _get_websocket_settings(websocket)
+    expected_token = settings.security.auth_token
+    if expected_token is None:
         return
 
-    expected = settings.security.auth_token.get_secret_value()
+    expected = expected_token.get_secret_value()
     auth_header = websocket.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):
         token = auth_header[7:]
     else:
         token = ""
 
+    if not token:
+        await _deny_websocket_connection(
+            websocket,
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        raise WebSocketDisconnect(code=1008)
+
     if token != expected:
-        await websocket.close(code=1008, reason="Authentication required")
+        await _deny_websocket_connection(
+            websocket,
+            status_code=401,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
         raise WebSocketDisconnect(code=1008)
 
 
+def _get_websocket_settings(websocket: WebSocket) -> Settings:
+    app_settings = getattr(websocket.app.state, "settings", None)
+    if isinstance(app_settings, Settings):
+        return app_settings
+
+    container = getattr(websocket.app.state, "service_container", None)
+    if container is None:
+        raise RuntimeError("Service container not initialized for websocket auth")
+
+    try:
+        settings = container.get_service(Settings)
+    except ValueError as exc:
+        raise RuntimeError("Settings service unavailable for websocket auth") from exc
+
+    if not isinstance(settings, Settings):
+        raise RuntimeError("Settings service returned invalid websocket auth settings")
+
+    return settings
+
+
+async def _deny_websocket_connection(
+    websocket: WebSocket,
+    *,
+    status_code: int,
+    detail: str,
+    headers: dict[str, str] | None = None,
+) -> None:
+    await websocket.send_denial_response(
+        Response(content=detail, status_code=status_code, headers=headers)
+    )
+
+
 async def _sanitize_websocket_payload(
-    adapter: "CodexAdapter", provider_payload: dict[str, Any], headers: dict[str, str]
+    adapter: "CodexAdapter",
+    provider_payload: dict[str, Any],
+    headers: dict[str, str],
+    request_context: RequestContext,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     """Run the same request normalization used by HTTP routes on a WS payload."""
     body_bytes = json.dumps(provider_payload).encode("utf-8")
+    body_bytes = await adapter._map_request_model(request_context, body_bytes)
     prepared_body, prepared_headers = await adapter.prepare_provider_request(
         body_bytes, headers, UPSTREAM_ENDPOINT_OPENAI_RESPONSES
     )
     sanitized_payload = json.loads(prepared_body.decode("utf-8"))
     return sanitized_payload, prepared_headers
+
+
+def _new_websocket_request_context() -> RequestContext:
+    return RequestContext(
+        request_id=f"ws_{uuid4().hex}",
+        start_time=time(),
+        logger=logger,
+        metadata={},
+        format_chain=[FORMAT_OPENAI_RESPONSES],
+    )
+
+
+def _restore_websocket_event_models(
+    event: dict[str, Any], request_context: RequestContext
+) -> dict[str, Any]:
+    metadata = getattr(request_context, "metadata", None)
+    if isinstance(metadata, dict):
+        restore_model_aliases(event, metadata)
+    return event
+
+
+async def _prepare_mock_websocket_payload(
+    adapter: "CodexAdapter",
+    provider_payload: dict[str, Any],
+    request_context: RequestContext,
+) -> dict[str, Any]:
+    body_bytes = json.dumps(provider_payload).encode("utf-8")
+    body_bytes = await adapter._map_request_model(request_context, body_bytes)
+    payload = json.loads(body_bytes.decode("utf-8"))
+
+    if adapter._should_apply_detection_payload():
+        payload = adapter._apply_request_template(payload)
+        detected_instructions = adapter._get_instructions()
+    else:
+        payload = adapter._normalize_input_messages(payload)
+        detected_instructions = ""
+
+    existing_instructions = payload.get("instructions")
+    if isinstance(existing_instructions, str) and existing_instructions:
+        instructions = (
+            f"{detected_instructions}\n{existing_instructions}"
+            if detected_instructions
+            else existing_instructions
+        )
+    else:
+        instructions = detected_instructions
+
+    if instructions:
+        payload["instructions"] = instructions
+    else:
+        payload.pop("instructions", None)
+
+    payload["stream"] = True
+    payload["store"] = False
+    return payload
+
+
+async def _send_websocket_event(
+    websocket: WebSocket,
+    event: dict[str, Any],
+    request_context: RequestContext,
+) -> None:
+    await websocket.send_text(
+        json.dumps(
+            _restore_websocket_event_models(event, request_context),
+            separators=(",", ":"),
+        )
+    )
 
 
 def _serialize_codex_models(config: CodexSettings) -> list[dict[str, Any]]:
@@ -241,9 +348,19 @@ async def _stream_websocket_response(
     provider_payload: dict[str, Any],
 ) -> None:
     request_headers = _prepare_websocket_headers(websocket)
+    request_context = _new_websocket_request_context()
+    if adapter.mock_handler:
+        provider_payload = await _prepare_mock_websocket_payload(
+            adapter, provider_payload, request_context
+        )
+        await _stream_websocket_mock_response(
+            websocket, adapter, provider_payload, request_context
+        )
+        return
     provider_payload, provider_headers = await _sanitize_websocket_payload(
-        adapter, provider_payload, request_headers
+        adapter, provider_payload, request_headers, request_context
     )
+
     target_url = await adapter.get_target_url(UPSTREAM_ENDPOINT_OPENAI_RESPONSES)
     parsed_url = urlparse(target_url)
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
@@ -271,9 +388,12 @@ async def _stream_websocket_response(
                 }
             await websocket.send_text(
                 json.dumps(
-                    _make_websocket_terminal_event(
-                        provider_payload,
-                        error=error_payload.get("error", error_payload),
+                    _restore_websocket_event_models(
+                        _make_websocket_terminal_event(
+                            provider_payload,
+                            error=error_payload.get("error", error_payload),
+                        ),
+                        request_context,
                     ),
                     separators=(",", ":"),
                 )
@@ -284,26 +404,72 @@ async def _stream_websocket_response(
             for event in parser.feed(chunk):
                 if event.get("type") in {"response.completed", "response.failed"}:
                     saw_terminal_event = True
-                await websocket.send_text(json.dumps(event, separators=(",", ":")))
+                await _send_websocket_event(websocket, event, request_context)
 
         for event in parser.flush():
             if event.get("type") in {"response.completed", "response.failed"}:
                 saw_terminal_event = True
-            await websocket.send_text(json.dumps(event, separators=(",", ":")))
+            await _send_websocket_event(websocket, event, request_context)
 
         if not saw_terminal_event:
             await websocket.send_text(
                 json.dumps(
-                    _make_websocket_terminal_event(
-                        provider_payload,
-                        error={
-                            "type": "server_error",
-                            "message": "WebSocket stream ended before response.completed",
-                        },
+                    _restore_websocket_event_models(
+                        _make_websocket_terminal_event(
+                            provider_payload,
+                            error={
+                                "type": "server_error",
+                                "message": "WebSocket stream ended before response.completed",
+                            },
+                        ),
+                        request_context,
                     ),
                     separators=(",", ":"),
                 )
             )
+
+
+async def _stream_websocket_mock_response(
+    websocket: WebSocket,
+    adapter: "CodexAdapter",
+    provider_payload: dict[str, Any],
+    request_context: RequestContext,
+) -> None:
+    body = json.dumps(provider_payload).encode("utf-8")
+    parser = SSEStreamParser()
+    saw_terminal_event = False
+
+    stream_response = await adapter.mock_handler.generate_streaming_response(
+        provider_payload.get("model"),
+        FORMAT_OPENAI_RESPONSES,
+        request_context,
+        adapter.mock_handler.extract_message_type(body),
+        adapter.mock_handler.extract_prompt_text(body),
+    )
+
+    async for chunk in stream_response.body_iterator:
+        for event in parser.feed(chunk):
+            if event.get("type") in {"response.completed", "response.failed"}:
+                saw_terminal_event = True
+            await _send_websocket_event(websocket, event, request_context)
+
+    for event in parser.flush():
+        if event.get("type") in {"response.completed", "response.failed"}:
+            saw_terminal_event = True
+        await _send_websocket_event(websocket, event, request_context)
+
+    if not saw_terminal_event:
+        await _send_websocket_event(
+            websocket,
+            _make_websocket_terminal_event(
+                provider_payload,
+                error={
+                    "type": "server_error",
+                    "message": "Mock WebSocket stream ended before response.completed",
+                },
+            ),
+            request_context,
+        )
 
 
 @router.post("/v1/responses", response_model=None)
@@ -320,10 +486,9 @@ async def codex_responses(
 
 @router.websocket("/v1/responses")
 async def codex_responses_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
-    await _authenticate_websocket(websocket)
-
     try:
+        await _authenticate_websocket(websocket)
+        await websocket.accept()
         adapter = _get_codex_websocket_adapter(websocket)
         local_response_ids: deque[str] = deque(maxlen=_MAX_LOCAL_RESPONSE_IDS)
         logger.debug("websocket_connected", client=str(websocket.client))
