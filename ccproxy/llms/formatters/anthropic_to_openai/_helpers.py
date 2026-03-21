@@ -24,6 +24,7 @@ def build_openai_tool_call(
     tool_input: Any,
     arguments: Any = None,
     fallback_index: int = 0,
+    index: int | None = None,
 ) -> openai_models.ToolCall:
     args_str = (
         arguments
@@ -41,4 +42,5 @@ def build_openai_tool_call(
             name=str(name),
             arguments=str(args_str),
         ),
+        index=index if index is not None else fallback_index,
     )

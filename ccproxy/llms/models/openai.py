@@ -188,6 +188,7 @@ class ToolCall(LlmBaseModel):
     id: str
     type: Literal["function"] = Field(default="function")
     function: FunctionCall
+    index: int | None = None
 
 
 class ChatMessage(LlmBaseModel):

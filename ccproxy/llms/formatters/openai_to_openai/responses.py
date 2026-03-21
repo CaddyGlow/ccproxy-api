@@ -396,16 +396,18 @@ def convert__openai_responses_to_openai_chat__response(
             else:
                 arguments_str = json.dumps(arguments_value or {})
 
+            tool_call_index = len(tool_calls)
             tool_calls.append(
                 openai_models.ToolCall(
                     id=_get_attr(item, "id")
                     or _get_attr(item, "call_id")
-                    or f"call_{len(tool_calls)}",
+                    or f"call_{tool_call_index}",
                     type="function",
                     function=openai_models.FunctionCall(
                         name=name,
                         arguments=arguments_str,
                     ),
+                    index=tool_call_index,
                 )
             )
 

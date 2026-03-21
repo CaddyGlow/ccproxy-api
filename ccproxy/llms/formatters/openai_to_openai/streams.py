@@ -396,6 +396,7 @@ class OpenAIResponsesToChatStreamAdapter:
                                 name=state.name or "",
                                 arguments=arguments or "",
                             ),
+                            index=state.index,
                         )
                         state.emitted = True
                         state.initial_emitted = True
@@ -449,6 +450,7 @@ class OpenAIResponsesToChatStreamAdapter:
                                 name=state.name or "",
                                 arguments=delta_segment,
                             ),
+                            index=state.index,
                         )
 
                         state.emitted = True

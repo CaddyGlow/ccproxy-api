@@ -108,6 +108,7 @@ def _build_openai_tool_call(
             tool_input=tool_call.get("input", {}),
             arguments=arguments,
             fallback_index=block_index,
+            index=tool_call.get("index", block_index),
         )
 
     return None
