@@ -185,10 +185,20 @@ class FunctionCall(LlmBaseModel):
 
 
 class ToolCall(LlmBaseModel):
+    """Non-streaming tool call (ChatCompletionMessageToolCall)."""
+
     id: str
     type: Literal["function"] = Field(default="function")
     function: FunctionCall
-    index: int | None = None
+
+
+class ToolCallChunk(LlmBaseModel):
+    """Streaming tool call delta (ChoiceDeltaToolCall)."""
+
+    index: int
+    id: str | None = None
+    type: Literal["function"] | None = None
+    function: FunctionCall | None = None
 
 
 class ChatMessage(LlmBaseModel):
@@ -310,7 +320,7 @@ class ChatCompletionResponse(LlmBaseModel):
 class DeltaMessage(LlmBaseModel):
     role: Literal["assistant"] | None = None
     content: str | list[Any] | None = None
-    tool_calls: list[ToolCall] | None = None
+    tool_calls: list[ToolCallChunk] | None = None
     audio: dict[str, Any] | None = None
     reasoning: ResponseMessageReasoning | None = None
 

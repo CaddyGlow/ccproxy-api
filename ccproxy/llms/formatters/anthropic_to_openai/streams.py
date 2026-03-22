@@ -27,7 +27,7 @@ from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
 from ccproxy.llms.streaming.accumulators import ClaudeAccumulator
 
-from ._helpers import build_openai_tool_call
+from ._helpers import build_openai_tool_call_chunk
 from .requests import _build_responses_payload_from_anthropic_request
 from .responses import convert__anthropic_usage_to_openai_responses__usage
 
@@ -88,10 +88,10 @@ def _anthropic_delta_to_text(
     return None
 
 
-def _build_openai_tool_call(
+def _build_openai_tool_call_chunk(
     accumulator: ClaudeAccumulator,
     block_index: int,
-) -> openai_models.ToolCall | None:
+) -> openai_models.ToolCallChunk | None:
     for tool_call in accumulator.get_complete_tool_calls():
         if tool_call.get("index") != block_index:
             continue
@@ -102,13 +102,13 @@ def _build_openai_tool_call(
         tool_name = function_payload.get("name") or tool_call.get("name")
         arguments = function_payload.get("arguments")
 
-        return build_openai_tool_call(
+        return build_openai_tool_call_chunk(
+            index=tool_call.get("index", block_index),
             tool_id=tool_call.get("id"),
             tool_name=tool_name,
             tool_input=tool_call.get("input", {}),
             arguments=arguments,
             fallback_index=block_index,
-            index=tool_call.get("index", block_index),
         )
 
     return None
@@ -1414,7 +1414,7 @@ class AnthropicToOpenAIChatStreamAdapter:
                         continue
                     if block_index in emitted_tool_indices:
                         continue
-                    tool_call = _build_openai_tool_call(accumulator, block_index)
+                    tool_call = _build_openai_tool_call_chunk(accumulator, block_index)
                     if tool_call is None:
                         continue
                     emitted_tool_indices.add(block_index)

@@ -17,9 +17,7 @@ from typing import Any
 from ccproxy.llms.models import openai as openai_models
 
 
-def format_openai_tool_call(
-    tool_use: dict[str, Any], index: int = 0
-) -> openai_models.ToolCall:
+def format_openai_tool_call(tool_use: dict[str, Any]) -> openai_models.ToolCall:
     """Convert Anthropic tool use to OpenAI tool call format."""
     tool_input = tool_use.get("input", {})
     if isinstance(tool_input, dict):
@@ -34,7 +32,6 @@ def format_openai_tool_call(
             name=tool_use.get("name", ""),
             arguments=arguments_str,
         ),
-        index=index,
     )
 
 
@@ -89,7 +86,7 @@ def parse_tool_use_sdk_tags(
                     "name": tool_data.get("name", ""),
                     "input": tool_data.get("input", {}),
                 }
-                tool_calls.append(format_openai_tool_call(tool_call_block, index=len(tool_calls)))
+                tool_calls.append(format_openai_tool_call(tool_call_block))
                 return ""  # Remove the XML tag from text
             else:
                 # For streaming: format as readable text
