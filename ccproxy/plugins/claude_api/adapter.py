@@ -304,6 +304,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 continue
             role = msg.get("role")
             content = msg.get("content", "")
+            tool_calls = msg.get("tool_calls")
 
             if role == "system":
                 block = self._normalize_text_block(content)
@@ -312,6 +313,40 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                         system_blocks.extend(block)
                     else:
                         system_blocks.append(block)
+                continue
+
+            if role == "assistant" and tool_calls:
+                # Convert OpenAI tool_calls to Anthropic tool_use blocks
+                blocks: list[dict[str, Any]] = []
+                if content:
+                    blocks.append({"type": "text", "text": str(content)})
+                for tc in tool_calls:
+                    func_info = tc.get("function", {})
+                    import json as _json
+                    try:
+                        tool_input = _json.loads(func_info.get("arguments", "{}"))
+                    except (ValueError, TypeError):
+                        tool_input = {}
+                    blocks.append({
+                        "type": "tool_use",
+                        "id": tc.get("id", ""),
+                        "name": func_info.get("name", ""),
+                        "input": tool_input,
+                    })
+                anthropic_messages.append({"role": "assistant", "content": blocks})
+                continue
+
+            if role == "tool":
+                # Convert OpenAI tool result to Anthropic tool_result block
+                tool_call_id = msg.get("tool_call_id", "")
+                anthropic_messages.append({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": tool_call_id,
+                        "content": str(content) if content else "",
+                    }],
+                })
                 continue
 
             block = self._normalize_text_block(content)
