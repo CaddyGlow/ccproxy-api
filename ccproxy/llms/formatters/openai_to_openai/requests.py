@@ -240,42 +240,87 @@ def _build_responses_payload_from_chat_request(
     if request.max_completion_tokens is not None:
         payload_data["max_output_tokens"] = int(request.max_completion_tokens)
 
-    user_text: str | None = None
-    for msg in reversed(request.messages):
-        if msg.role != "user":
-            continue
-        if isinstance(msg.content, str):
-            user_text = msg.content
-        elif isinstance(msg.content, list):
-            texts: list[str] = []
-            for block in msg.content:
-                if isinstance(block, dict):
-                    if block.get("type") == "text" and isinstance(
-                        block.get("text"), str
-                    ):
-                        texts.append(block.get("text") or "")
-                elif (
-                    getattr(block, "type", None) == "text"
-                    and hasattr(block, "text")
-                    and isinstance(getattr(block, "text", None), str)
-                ):
-                    texts.append(block.text or "")
-            if texts:
-                user_text = " ".join(texts)
-        break
+    # Convert ALL chat messages to Responses API input items.
+    # This preserves the full conversation history including tool calls and results.
+    input_items: list[dict[str, Any]] = []
 
-    if user_text:
-        payload_data["input"] = [
-            {
-                "type": "message",
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": user_text},
-                ],
-            }
-        ]
-    else:
-        payload_data["input"] = []
+    for msg in request.messages or []:
+        role = msg.role
+        content = msg.content
+        tool_calls = getattr(msg, "tool_calls", None)
+
+        if role in ("system", "developer"):
+            # System/developer messages become instructions (handled below)
+            continue
+
+        if role == "user":
+            text = ""
+            if isinstance(content, str):
+                text = content
+            elif isinstance(content, list):
+                texts: list[str] = []
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "text" and isinstance(
+                            block.get("text"), str
+                        ):
+                            texts.append(block.get("text") or "")
+                    elif (
+                        getattr(block, "type", None) == "text"
+                        and hasattr(block, "text")
+                        and isinstance(getattr(block, "text", None), str)
+                    ):
+                        texts.append(block.text or "")
+                text = " ".join(texts)
+            if text:
+                input_items.append({
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": text}],
+                })
+
+        elif role == "assistant":
+            # Add text content if present
+            if content and not tool_calls:
+                input_items.append({
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": str(content)}],
+                })
+            elif content and tool_calls:
+                input_items.append({
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": str(content)}],
+                })
+            # Convert tool_calls to function_call items
+            if tool_calls:
+                for tc in tool_calls:
+                    func_info = getattr(tc, "function", None)
+                    if func_info is None and isinstance(tc, dict):
+                        func_info = tc.get("function", {})
+                    tc_id = getattr(tc, "id", None) or (tc.get("id") if isinstance(tc, dict) else None) or ""
+                    func_name = getattr(func_info, "name", None) or (func_info.get("name") if isinstance(func_info, dict) else None) or ""
+                    func_args = getattr(func_info, "arguments", None) or (func_info.get("arguments") if isinstance(func_info, dict) else None) or "{}"
+                    input_items.append({
+                        "type": "function_call",
+                        "id": str(tc_id),
+                        "call_id": str(tc_id),
+                        "name": str(func_name),
+                        "arguments": str(func_args),
+                    })
+
+        elif role == "tool":
+            # Convert tool result to function_call_output
+            tool_call_id = getattr(msg, "tool_call_id", None) or ""
+            output_text = str(content) if content else ""
+            input_items.append({
+                "type": "function_call_output",
+                "call_id": str(tool_call_id),
+                "output": output_text,
+            })
+
+    payload_data["input"] = input_items
 
     instruction_segments = _collect_chat_instruction_segments(request.messages)
     instructions_text = "\n\n".join(
