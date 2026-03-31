@@ -294,6 +294,31 @@ def strict_parse_tool_arguments(
     return {"arguments": str(arguments)}
 
 
+def stringify_content(content: Any) -> str:
+    """Extract plain text from message content (str, list of content parts, or None)."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        texts: list[str] = []
+        for part in content:
+            if isinstance(part, dict):
+                if part.get("type") in {"text", "input_text"}:
+                    t = part.get("text")
+                    if isinstance(t, str) and t:
+                        texts.append(t)
+            elif hasattr(part, "type") and getattr(part, "type", None) in {
+                "text",
+                "input_text",
+            }:
+                t = getattr(part, "text", None)
+                if isinstance(t, str) and t:
+                    texts.append(t)
+        return " ".join(texts)
+    return str(content)
+
+
 __all__ = [
     "UsageSnapshot",
     "anthropic_usage_snapshot",
@@ -303,4 +328,5 @@ __all__ = [
     "build_obfuscation_token",
     "map_openai_finish_to_anthropic_stop",
     "strict_parse_tool_arguments",
+    "stringify_content",
 ]
