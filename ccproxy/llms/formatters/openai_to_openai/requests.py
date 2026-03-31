@@ -273,52 +273,74 @@ def _build_responses_payload_from_chat_request(
                         texts.append(block.text or "")
                 text = " ".join(texts)
             if text:
-                input_items.append({
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": text}],
-                })
+                input_items.append(
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": text}],
+                    }
+                )
 
         elif role == "assistant":
             # Add text content if present
-            if content and not tool_calls:
-                input_items.append({
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": str(content)}],
-                })
-            elif content and tool_calls:
-                input_items.append({
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": str(content)}],
-                })
+            if content and not tool_calls or content and tool_calls:
+                input_items.append(
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": str(content)}],
+                    }
+                )
             # Convert tool_calls to function_call items
             if tool_calls:
                 for tc in tool_calls:
                     func_info = getattr(tc, "function", None)
                     if func_info is None and isinstance(tc, dict):
                         func_info = tc.get("function", {})
-                    tc_id = getattr(tc, "id", None) or (tc.get("id") if isinstance(tc, dict) else None) or ""
-                    func_name = getattr(func_info, "name", None) or (func_info.get("name") if isinstance(func_info, dict) else None) or ""
-                    func_args = getattr(func_info, "arguments", None) or (func_info.get("arguments") if isinstance(func_info, dict) else None) or "{}"
-                    input_items.append({
-                        "type": "function_call",
-                        "id": str(tc_id),
-                        "call_id": str(tc_id),
-                        "name": str(func_name),
-                        "arguments": str(func_args),
-                    })
+                    tc_id = (
+                        getattr(tc, "id", None)
+                        or (tc.get("id") if isinstance(tc, dict) else None)
+                        or ""
+                    )
+                    func_name = (
+                        getattr(func_info, "name", None)
+                        or (
+                            func_info.get("name")
+                            if isinstance(func_info, dict)
+                            else None
+                        )
+                        or ""
+                    )
+                    func_args = (
+                        getattr(func_info, "arguments", None)
+                        or (
+                            func_info.get("arguments")
+                            if isinstance(func_info, dict)
+                            else None
+                        )
+                        or "{}"
+                    )
+                    input_items.append(
+                        {
+                            "type": "function_call",
+                            "id": str(tc_id),
+                            "call_id": str(tc_id),
+                            "name": str(func_name),
+                            "arguments": str(func_args),
+                        }
+                    )
 
         elif role == "tool":
             # Convert tool result to function_call_output
             tool_call_id = getattr(msg, "tool_call_id", None) or ""
             output_text = str(content) if content else ""
-            input_items.append({
-                "type": "function_call_output",
-                "call_id": str(tool_call_id),
-                "output": output_text,
-            })
+            input_items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": str(tool_call_id),
+                    "output": output_text,
+                }
+            )
 
     payload_data["input"] = input_items
 

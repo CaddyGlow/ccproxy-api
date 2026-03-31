@@ -323,30 +323,37 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 for tc in tool_calls:
                     func_info = tc.get("function", {})
                     import json as _json
+
                     try:
                         tool_input = _json.loads(func_info.get("arguments", "{}"))
                     except (ValueError, TypeError):
                         tool_input = {}
-                    blocks.append({
-                        "type": "tool_use",
-                        "id": tc.get("id", ""),
-                        "name": func_info.get("name", ""),
-                        "input": tool_input,
-                    })
+                    blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.get("id", ""),
+                            "name": func_info.get("name", ""),
+                            "input": tool_input,
+                        }
+                    )
                 anthropic_messages.append({"role": "assistant", "content": blocks})
                 continue
 
             if role == "tool":
                 # Convert OpenAI tool result to Anthropic tool_result block
                 tool_call_id = msg.get("tool_call_id", "")
-                anthropic_messages.append({
-                    "role": "user",
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": tool_call_id,
-                        "content": str(content) if content else "",
-                    }],
-                })
+                anthropic_messages.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_call_id,
+                                "content": str(content) if content else "",
+                            }
+                        ],
+                    }
+                )
                 continue
 
             block = self._normalize_text_block(content)
