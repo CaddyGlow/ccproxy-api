@@ -42,3 +42,33 @@ def build_openai_tool_call(
             arguments=str(args_str),
         ),
     )
+
+
+def build_openai_tool_call_chunk(
+    *,
+    index: int,
+    tool_id: str | None,
+    tool_name: str | None,
+    tool_input: Any,
+    arguments: Any = None,
+    fallback_index: int = 0,
+) -> openai_models.ToolCallChunk:
+    args_str = (
+        arguments
+        if isinstance(arguments, str) and arguments
+        else serialize_tool_arguments(tool_input)
+    )
+    call_id = (
+        tool_id if isinstance(tool_id, str) and tool_id else f"call_{fallback_index}"
+    )
+    name = tool_name if isinstance(tool_name, str) and tool_name else "function"
+
+    return openai_models.ToolCallChunk(
+        index=index,
+        id=str(call_id),
+        type="function",
+        function=openai_models.FunctionCall(
+            name=str(name),
+            arguments=str(args_str),
+        ),
+    )

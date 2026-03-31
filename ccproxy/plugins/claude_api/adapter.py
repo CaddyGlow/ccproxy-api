@@ -12,6 +12,7 @@ from ccproxy.core.plugins.interfaces import (
     DetectionServiceProtocol,
     TokenManagerProtocol,
 )
+from ccproxy.llms.formatters.utils import strict_parse_tool_arguments
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.utils.headers import (
     extract_response_headers,
@@ -322,12 +323,9 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                     blocks.append({"type": "text", "text": str(content)})
                 for tc in tool_calls:
                     func_info = tc.get("function", {})
-                    import json as _json
-
-                    try:
-                        tool_input = _json.loads(func_info.get("arguments", "{}"))
-                    except (ValueError, TypeError):
-                        tool_input = {}
+                    tool_input = strict_parse_tool_arguments(
+                        func_info.get("arguments", "{}")
+                    )
                     blocks.append(
                         {
                             "type": "tool_use",

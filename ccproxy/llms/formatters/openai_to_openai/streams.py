@@ -389,7 +389,8 @@ class OpenAIResponsesToChatStreamAdapter:
 
                     # Emit initial tool call chunk to surface id/name information
                     if not state.initial_emitted:
-                        tool_call = openai_models.ToolCall(
+                        tool_call = openai_models.ToolCallChunk(
+                            index=state.index,
                             id=state.id,
                             type="function",
                             function=openai_models.FunctionCall(
@@ -442,7 +443,8 @@ class OpenAIResponsesToChatStreamAdapter:
                             state.name = guessed
 
                     if state.initial_emitted:
-                        tool_call = openai_models.ToolCall(
+                        tool_call = openai_models.ToolCallChunk(
+                            index=state.index,
                             id=state.id,
                             type="function",
                             function=openai_models.FunctionCall(
@@ -494,7 +496,8 @@ class OpenAIResponsesToChatStreamAdapter:
                             if guessed:
                                 state.name = guessed
 
-                        tool_call = openai_models.ToolCall(
+                        tool_call = openai_models.ToolCallChunk(
+                            index=state.index,
                             id=state.id,
                             type="function",
                             function=openai_models.FunctionCall(
@@ -586,7 +589,8 @@ class OpenAIResponsesToChatStreamAdapter:
                             if guessed:
                                 state.name = guessed
                         if not state.arguments_emitted:
-                            tool_call = openai_models.ToolCall(
+                            tool_call = openai_models.ToolCallChunk(
+                                index=state.index,
                                 id=state.id,
                                 type="function",
                                 function=openai_models.FunctionCall(
@@ -616,7 +620,8 @@ class OpenAIResponsesToChatStreamAdapter:
 
                     # Emit a patch chunk if the name was never surfaced earlier
                     if state.name and not state.name_emitted:
-                        tool_call = openai_models.ToolCall(
+                        tool_call = openai_models.ToolCallChunk(
+                            index=state.index,
                             id=state.id,
                             type="function",
                             function=openai_models.FunctionCall(

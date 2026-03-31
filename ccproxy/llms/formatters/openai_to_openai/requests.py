@@ -12,6 +12,7 @@ from ccproxy.llms.formatters.context import (
     register_request,
     register_request_tools,
 )
+from ccproxy.llms.formatters.utils import stringify_content
 from ccproxy.llms.models import openai as openai_models
 
 from ._helpers import (
@@ -247,31 +248,12 @@ def _build_responses_payload_from_chat_request(
     for msg in request.messages or []:
         role = msg.role
         content = msg.content
-        tool_calls = getattr(msg, "tool_calls", None)
 
         if role in ("system", "developer"):
-            # System/developer messages become instructions (handled below)
             continue
 
         if role == "user":
-            text = ""
-            if isinstance(content, str):
-                text = content
-            elif isinstance(content, list):
-                texts: list[str] = []
-                for block in content:
-                    if isinstance(block, dict):
-                        if block.get("type") == "text" and isinstance(
-                            block.get("text"), str
-                        ):
-                            texts.append(block.get("text") or "")
-                    elif (
-                        getattr(block, "type", None) == "text"
-                        and hasattr(block, "text")
-                        and isinstance(getattr(block, "text", None), str)
-                    ):
-                        texts.append(block.text or "")
-                text = " ".join(texts)
+            text = stringify_content(content)
             if text:
                 input_items.append(
                     {
@@ -282,8 +264,7 @@ def _build_responses_payload_from_chat_request(
                 )
 
         elif role == "assistant":
-            # Add text content if present
-            if content and not tool_calls or content and tool_calls:
+            if content:
                 input_items.append(
                     {
                         "type": "message",
@@ -291,54 +272,24 @@ def _build_responses_payload_from_chat_request(
                         "content": [{"type": "output_text", "text": str(content)}],
                     }
                 )
-            # Convert tool_calls to function_call items
-            if tool_calls:
-                for tc in tool_calls:
-                    func_info = getattr(tc, "function", None)
-                    if func_info is None and isinstance(tc, dict):
-                        func_info = tc.get("function", {})
-                    tc_id = (
-                        getattr(tc, "id", None)
-                        or (tc.get("id") if isinstance(tc, dict) else None)
-                        or ""
-                    )
-                    func_name = (
-                        getattr(func_info, "name", None)
-                        or (
-                            func_info.get("name")
-                            if isinstance(func_info, dict)
-                            else None
-                        )
-                        or ""
-                    )
-                    func_args = (
-                        getattr(func_info, "arguments", None)
-                        or (
-                            func_info.get("arguments")
-                            if isinstance(func_info, dict)
-                            else None
-                        )
-                        or "{}"
-                    )
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
                     input_items.append(
                         {
                             "type": "function_call",
-                            "id": str(tc_id),
-                            "call_id": str(tc_id),
-                            "name": str(func_name),
-                            "arguments": str(func_args),
+                            "id": tc.id,
+                            "call_id": tc.id,
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
                         }
                     )
 
         elif role == "tool":
-            # Convert tool result to function_call_output
-            tool_call_id = getattr(msg, "tool_call_id", None) or ""
-            output_text = str(content) if content else ""
             input_items.append(
                 {
                     "type": "function_call_output",
-                    "call_id": str(tool_call_id),
-                    "output": output_text,
+                    "call_id": msg.tool_call_id or "",
+                    "output": str(content) if content else "",
                 }
             )
 

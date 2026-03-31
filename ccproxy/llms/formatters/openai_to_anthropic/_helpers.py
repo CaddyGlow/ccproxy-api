@@ -63,17 +63,6 @@ def _normalize_text_and_images(
     return text_parts, image_blocks
 
 
-def _stringify_content(content: Any) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        text_parts, _ = _normalize_text_and_images(content)
-        return " ".join(text_parts)
-    return str(content)
-
-
 def _coerce_system_content(content: Any) -> str | None:
     if isinstance(content, str):
         return content
@@ -134,7 +123,6 @@ def _build_assistant_blocks(
 __all__ = [
     "_to_mapping",
     "_normalize_text_and_images",
-    "_stringify_content",
     "_coerce_system_content",
     "_build_user_blocks",
     "_build_assistant_blocks",
