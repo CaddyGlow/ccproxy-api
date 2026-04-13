@@ -88,9 +88,9 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
         # Minimal beta tags required for OAuth-based Claude Code auth
         filtered_headers["anthropic-version"] = "2023-06-01"
-        filtered_headers["anthropic-beta"] = self._merge_anthropic_beta(
-            headers.get("anthropic-beta") or headers.get("Anthropic-Beta")
-        )
+        client_beta = headers.get("anthropic-beta") or headers.get("Anthropic-Beta")
+        filtered_headers["anthropic-beta"] = self._merge_anthropic_beta(client_beta)
+        client_provided_beta = bool(client_beta)
 
         # Add CLI headers if available, but never allow overriding auth
         cli_headers = self._collect_cli_headers()
@@ -106,6 +106,14 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                     )
                     continue
                 if lk == "anthropic-beta":
+                    # Client is authoritative for its own beta features.
+                    # Only fall back to CLI-detected betas when the client
+                    # sent none — otherwise CLI defaults like
+                    # context-1m-2025-08-07 leak into client requests that
+                    # never asked for them and break model/account combos
+                    # that don't support those betas.
+                    if client_provided_beta:
+                        continue
                     filtered_headers[lk] = self._merge_anthropic_beta(
                         value, base=filtered_headers.get("anthropic-beta")
                     )
