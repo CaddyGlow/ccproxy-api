@@ -88,12 +88,14 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
         # Minimal beta tags required for OAuth-based Claude Code auth
         filtered_headers["anthropic-version"] = "2023-06-01"
-        filtered_headers["anthropic-beta"] = "claude-code-20250219,oauth-2025-04-20"
+        filtered_headers["anthropic-beta"] = self._merge_anthropic_beta(
+            headers.get("anthropic-beta") or headers.get("Anthropic-Beta")
+        )
 
-        # Add CLI headers if available, but never allow overriding auth or beta
+        # Add CLI headers if available, but never allow overriding auth
         cli_headers = self._collect_cli_headers()
         if cli_headers:
-            blocked_overrides = {"authorization", "x-api-key", "anthropic-beta"}
+            blocked_overrides = {"authorization", "x-api-key"}
             for key, value in cli_headers.items():
                 lk = key.lower()
                 if lk in blocked_overrides:
@@ -101,6 +103,11 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                         "cli_header_override_blocked",
                         header=lk,
                         reason="preserve_oauth_auth_header",
+                    )
+                    continue
+                if lk == "anthropic-beta":
+                    filtered_headers[lk] = self._merge_anthropic_beta(
+                        value, base=filtered_headers.get("anthropic-beta")
                     )
                     continue
                 filtered_headers[lk] = value
@@ -271,6 +278,26 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             return getattr(system_prompt_obj, "system_field", system_prompt_obj)
 
         return None
+
+    @staticmethod
+    def _merge_anthropic_beta(client_value: str | None, base: str | None = None) -> str:
+        """Merge required OAuth beta tags with client-provided beta tags.
+
+        Required tags are always present; additional client tags (e.g.
+        context-1m-2025-08-07 for 1M context) are preserved.
+        """
+        required = ["claude-code-20250219", "oauth-2025-04-20"]
+        tags: list[str] = []
+        seen: set[str] = set()
+        for source in (base, client_value, ",".join(required)):
+            if not source:
+                continue
+            for tag in source.split(","):
+                tag = tag.strip()
+                if tag and tag not in seen:
+                    seen.add(tag)
+                    tags.append(tag)
+        return ",".join(tags)
 
     def _collect_cli_headers(self) -> dict[str, str]:
         """Collect safe CLI headers from detection cache for request forwarding."""
