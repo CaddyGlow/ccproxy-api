@@ -125,8 +125,18 @@ async def test_openai_chat_stream_to_anthropic_sample() -> None:
         if isinstance(evt, anthropic_models.ContentBlockStartEvent)
         and getattr(evt.content_block, "type", None) == "tool_use"
     )
-    assert getattr(tool_event.content_block, "input", None), (
-        "tool input should be populated"
+    # Per Anthropic streaming spec, tool_use.input is empty at start and
+    # streamed via input_json_delta events.
+    assert getattr(tool_event.content_block, "input", None) == {}
+    input_delta = next(
+        evt
+        for evt in streamed
+        if isinstance(evt, anthropic_models.ContentBlockDeltaEvent)
+        and evt.index == tool_event.index
+        and getattr(evt.delta, "type", None) == "input_json_delta"
+    )
+    assert getattr(input_delta.delta, "partial_json", ""), (
+        "tool input_json_delta should carry the arguments JSON"
     )
 
     message_delta = next(

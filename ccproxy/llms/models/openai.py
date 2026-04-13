@@ -180,7 +180,7 @@ class Tool(LlmBaseModel):
 
 
 class FunctionCall(LlmBaseModel):
-    name: str
+    name: str | None = None
     arguments: str
 
 

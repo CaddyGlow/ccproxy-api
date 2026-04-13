@@ -44,6 +44,21 @@ def accumulate_delta(
             result[key] = delta_value
             continue
 
+        if key in ("index", "type", "id", "name", "call_id"):
+            # Identity/discriminator fields: overwrite instead of merging.
+            #
+            # Per OpenAI Chat streaming spec, id/type/function.name only
+            # appear on the first tool_call chunk; subsequent chunks carry
+            # function.arguments. But the Codex Responses->Chat adapter
+            # re-sends these fields on every chunk, so without this branch
+            # the generic string-concat branch would produce
+            # "shellshell.../fc_abc_fc_abc_..." and break downstream
+            # consumers. "index" is included so that non-zero int indices
+            # (e.g. index=1) are preserved rather than doubled by the
+            # numeric-add branch.
+            result[key] = delta_value
+            continue
+
         current_value = result[key]
 
         # Handle different data type combinations

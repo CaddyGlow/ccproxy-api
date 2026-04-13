@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -227,19 +228,42 @@ def emit_anthropic_tool_use_events(
     *,
     parser: Callable[[str], dict[str, Any]] | None = None,
 ) -> list[anthropic_models.MessageStreamEvent]:
-    """Build start/stop events for a tool-use block at the given index."""
+    """Build start/delta/stop events for a tool-use block at the given index.
+
+    Per Anthropic streaming spec, tool_use.input starts empty in
+    content_block_start and is filled via input_json_delta events; consumers
+    that follow the spec (e.g. the Anthropic SDK) ignore an input attached
+    directly to the start event.
+    """
 
     block = build_anthropic_tool_use_block(
         state,
         default_id=f"call_{state.index}",
         parser=parser,
     )
-    return [
+    input_payload = block.input or {}
+    start_block = block.model_copy(update={"input": {}})
+    partial_json = json.dumps(input_payload) if input_payload else ""
+
+    events: list[anthropic_models.MessageStreamEvent] = [
         anthropic_models.ContentBlockStartEvent(
-            type="content_block_start", index=index, content_block=block
+            type="content_block_start", index=index, content_block=start_block
         ),
-        anthropic_models.ContentBlockStopEvent(type="content_block_stop", index=index),
     ]
+    if partial_json:
+        events.append(
+            anthropic_models.ContentBlockDeltaEvent(
+                type="content_block_delta",
+                index=index,
+                delta=anthropic_models.InputJsonDelta(
+                    type="input_json_delta", partial_json=partial_json
+                ),
+            )
+        )
+    events.append(
+        anthropic_models.ContentBlockStopEvent(type="content_block_stop", index=index)
+    )
+    return events
 
 
 __all__ = [

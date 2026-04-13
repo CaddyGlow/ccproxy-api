@@ -2,12 +2,161 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Any
 
 from ccproxy.llms.formatters.context import register_request
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
+
+
+_MAX_CALL_ID_LEN = 64
+
+
+def _clamp_call_id(call_id: Any) -> str | None:
+    """Return a call_id that fits within OpenAI's 64-char limit.
+
+    Deterministic: the same input always yields the same output, so a
+    tool_use id and its matching tool_result.tool_use_id stay paired after
+    clamping.
+    """
+    if not isinstance(call_id, str) or not call_id:
+        return None
+    if len(call_id) <= _MAX_CALL_ID_LEN:
+        return call_id
+    digest = hashlib.sha1(call_id.encode("utf-8")).hexdigest()
+    return f"call_{digest}"
+
+
+def _block_type(block: Any) -> Any:
+    """Return ``block.type`` whether ``block`` is a dict or pydantic model."""
+    if isinstance(block, dict):
+        return block.get("type")
+    return getattr(block, "type", None)
+
+
+def _block_field(block: Any, name: str, default: Any = None) -> Any:
+    """Return ``block[name]`` / ``block.name`` whether dict or pydantic model."""
+    if isinstance(block, dict):
+        return block.get(name, default)
+    return getattr(block, name, default)
+
+
+def _stringify_tool_result_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for part in content:
+            if _block_type(part) == "text":
+                text = _block_field(part, "text")
+                if isinstance(text, str):
+                    text_parts.append(text)
+                    continue
+            try:
+                text_parts.append(json.dumps(part, default=str))
+            except Exception:
+                text_parts.append(str(part))
+        return "".join(text_parts)
+    try:
+        return json.dumps(content, default=str)
+    except Exception:
+        return str(content)
+
+
+def _user_message_item(text: str) -> dict[str, Any]:
+    return {
+        "type": "message",
+        "role": "user",
+        "content": [{"type": "input_text", "text": text}],
+    }
+
+
+def _assistant_message_item(text: str) -> dict[str, Any]:
+    return {
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "output_text", "text": text}],
+    }
+
+
+def _function_call_item(block: Any) -> dict[str, Any]:
+    tool_input = _block_field(block, "input") or {}
+    try:
+        args_str = json.dumps(tool_input)
+    except Exception:
+        args_str = json.dumps({"arguments": str(tool_input)})
+    return {
+        "type": "function_call",
+        "call_id": _clamp_call_id(_block_field(block, "id")),
+        "name": _block_field(block, "name"),
+        "arguments": args_str,
+    }
+
+
+def _function_call_output_item(block: Any) -> dict[str, Any]:
+    return {
+        "type": "function_call_output",
+        "call_id": _clamp_call_id(_block_field(block, "tool_use_id")),
+        "output": _stringify_tool_result_content(_block_field(block, "content", "")),
+    }
+
+
+def _build_responses_input_items(
+    messages: list[anthropic_models.Message],
+) -> list[dict[str, Any]]:
+    """Translate Anthropic messages into Responses API input items.
+
+    Preserves the original order of text and tool_use/tool_result blocks
+    inside each message. An assistant turn that interleaves text and
+    tool_use blocks produces interleaved ``message`` and ``function_call``
+    items, matching the Responses API's expectation that tool calls appear
+    between the text segments that motivated them.
+    """
+
+    items: list[dict[str, Any]] = []
+    for msg in messages:
+        content = msg.content
+        if isinstance(content, str):
+            if msg.role == "assistant":
+                items.append(_assistant_message_item(content))
+            else:
+                items.append(_user_message_item(content))
+            continue
+
+        if not isinstance(content, list):
+            continue
+
+        pending_text: list[str] = []
+        make_message = (
+            _assistant_message_item if msg.role == "assistant" else _user_message_item
+        )
+
+        for block in content:
+            btype = _block_type(block)
+            if btype == "text":
+                text = _block_field(block, "text")
+                if isinstance(text, str):
+                    pending_text.append(text)
+                continue
+            if msg.role == "assistant" and btype == "tool_use":
+                if pending_text:
+                    items.append(make_message("".join(pending_text)))
+                    pending_text = []
+                items.append(_function_call_item(block))
+                continue
+            if msg.role == "user" and btype == "tool_result":
+                if pending_text:
+                    items.append(make_message("".join(pending_text)))
+                    pending_text = []
+                items.append(_function_call_output_item(block))
+                continue
+
+        if pending_text:
+            items.append(make_message("".join(pending_text)))
+
+    return items
 
 
 def _build_responses_payload_from_anthropic_request(
@@ -44,47 +193,14 @@ def _build_responses_payload_from_anthropic_request(
             if joined:
                 payload_data["instructions"] = joined
 
-    last_user_text: str | None = None
-    for msg in reversed(request.messages):
-        if msg.role != "user":
-            continue
-        if isinstance(msg.content, str):
-            last_user_text = msg.content
-        elif isinstance(msg.content, list):
-            texts: list[str] = []
-            for block in msg.content:
-                if isinstance(block, dict):
-                    if block.get("type") == "text" and isinstance(
-                        block.get("text"), str
-                    ):
-                        texts.append(block.get("text") or "")
-                elif (
-                    getattr(block, "type", None) == "text"
-                    and hasattr(block, "text")
-                    and isinstance(getattr(block, "text", None), str)
-                ):
-                    texts.append(block.text or "")
-            if texts:
-                last_user_text = " ".join(texts)
-        break
-
-    if last_user_text:
-        payload_data["input"] = [
-            {
-                "type": "message",
-                "role": "user",
-                "content": [
-                    {"type": "input_text", "text": last_user_text},
-                ],
-            }
-        ]
-    else:
-        payload_data["input"] = []
+    payload_data["input"] = _build_responses_input_items(request.messages)
 
     if request.tools:
         tools: list[dict[str, Any]] = []
         for tool in request.tools:
-            if isinstance(tool, anthropic_models.Tool):
+            if isinstance(
+                tool, anthropic_models.Tool | anthropic_models.LegacyCustomTool
+            ):
                 tools.append(
                     {
                         "type": "function",
@@ -175,18 +291,18 @@ def convert__anthropic_message_to_openai_chat__request(
 
                         tool_calls.append(
                             {
-                                "id": block.id,
+                                "id": getattr(block, "id", None),
                                 "type": "function",
                                 "function": {
-                                    "name": block.name,
+                                    "name": getattr(block, "name", None),
                                     "arguments": args_str,
                                 },
                             }
                         )
                 elif block_type == "text":
-                    # Type guard for TextBlock
-                    if hasattr(block, "text"):
-                        text_parts.append(block.text)
+                    btext = getattr(block, "text", None)
+                    if isinstance(btext, str):
+                        text_parts.append(btext)
             if tool_calls:
                 assistant_msg: dict[str, Any] = {
                     "role": "assistant",
@@ -234,7 +350,7 @@ def convert__anthropic_message_to_openai_chat__request(
                             openai_messages.append(
                                 {
                                     "role": "tool",
-                                    "tool_call_id": block.tool_use_id,
+                                    "tool_call_id": getattr(block, "tool_use_id", None),
                                     "content": result_content,
                                 }
                             )
@@ -267,12 +383,9 @@ def convert__anthropic_message_to_openai_chat__request(
                 else:
                     # Pydantic models
                     btype = getattr(block, "type", None)
-                    if (
-                        btype == "text"
-                        and hasattr(block, "text")
-                        and isinstance(getattr(block, "text", None), str)
-                    ):
-                        text_accum.append(block.text or "")
+                    btext_val = getattr(block, "text", None)
+                    if btype == "text" and isinstance(btext_val, str):
+                        text_accum.append(btext_val)
                     elif btype == "image":
                         source = getattr(block, "source", None)
                         if (
@@ -303,7 +416,9 @@ def convert__anthropic_message_to_openai_chat__request(
     tools: list[dict[str, Any]] = []
     if request.tools:
         for tool in request.tools:
-            if isinstance(tool, anthropic_models.Tool):
+            if isinstance(
+                tool, anthropic_models.Tool | anthropic_models.LegacyCustomTool
+            ):
                 tools.append(
                     {
                         "type": "function",
