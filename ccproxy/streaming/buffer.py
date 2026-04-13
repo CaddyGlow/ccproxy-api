@@ -560,8 +560,16 @@ class StreamingBufferService:
                 continue
             event_type = payload.get("type")
             if isinstance(event_type, str) and stream_accumulator is not None:
-                with contextlib.suppress(Exception):
+                try:
                     stream_accumulator.accumulate(event_type, payload)
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    logger.warning(
+                        "streaming_buffer_accumulate_failed",
+                        event_type=event_type,
+                        error=str(exc),
+                        request_id=getattr(request_context, "request_id", None),
+                        category="streaming",
+                    )
             if event_type == "response.reasoning_summary_part.added":
                 part = payload.get("part")
                 if isinstance(part, dict):
@@ -584,7 +592,10 @@ class StreamingBufferService:
             response_obj.setdefault("created_at", 0)
             response_obj.setdefault("status", "completed")
             response_obj.setdefault("model", response_obj.get("model") or "")
-            response_obj.setdefault("output", response_obj.get("output") or {})
+            # ResponseObject.output must be a list; coerce stray dicts/None to [].
+            existing_output = response_obj.get("output")
+            if not isinstance(existing_output, list):
+                response_obj["output"] = []
             response_obj.setdefault(
                 "parallel_tool_calls", response_obj.get("parallel_tool_calls", False)
             )
@@ -602,8 +613,16 @@ class StreamingBufferService:
                         continue
                     event_type = payload.get("type")
                     if isinstance(event_type, str):
-                        with contextlib.suppress(Exception):
+                        try:
                             accumulator_for_rebuild.accumulate(event_type, payload)
+                        except Exception as exc:  # pragma: no cover - defensive logging
+                            logger.warning(
+                                "streaming_buffer_rebuild_accumulate_failed",
+                                event_type=event_type,
+                                error=str(exc),
+                                request_id=getattr(request_context, "request_id", None),
+                                category="streaming",
+                            )
 
             if accumulator_for_rebuild is not None:
                 completed_payload = accumulator_for_rebuild.get_completed_response()
@@ -635,11 +654,20 @@ class StreamingBufferService:
                             request_id=getattr(request_context, "request_id", None),
                         )
                 except Exception as exc:  # pragma: no cover - defensive logging
-                    logger.debug(
+                    logger.warning(
                         "response_rebuild_failed",
                         error=str(exc),
                         request_id=getattr(request_context, "request_id", None),
+                        category="streaming",
                     )
+
+            # Final safety net: ResponseObject.output is required and must be a
+            # list. If upstream event schema drift caused the accumulator to drop
+            # the completed event and rebuild to leave a non-list output behind,
+            # coerce it so downstream format chain validation doesn't explode
+            # with a bare "Field required" error.
+            if not isinstance(response_obj.get("output"), list):
+                response_obj["output"] = []
 
             if not response_obj.get("usage"):
                 usage = self._extract_usage_from_chunks(chunks)
