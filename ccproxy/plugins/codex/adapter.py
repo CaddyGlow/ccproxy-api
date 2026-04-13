@@ -301,12 +301,16 @@ class CodexAdapter(BaseHTTPAdapter):
         body_data["stream"] = True
         body_data["store"] = False
 
-        # Remove unsupported keys for Codex
+        # Remove unsupported keys for Codex. The chatgpt.com backend rejects
+        # "metadata" (which the anthropic.messages -> openai.responses converter
+        # populates from Anthropic's metadata.user_id) with
+        # {"detail":"Unsupported parameter: metadata"}.
         for key in (
             "max_output_tokens",
             "max_completion_tokens",
             "max_tokens",
             "temperature",
+            "metadata",
         ):
             body_data.pop(key, None)
 
