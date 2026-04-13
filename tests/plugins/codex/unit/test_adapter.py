@@ -442,6 +442,87 @@ class TestCodexAdapter:
         assert "max_tokens" not in result_data
 
     @pytest.mark.asyncio
+    async def test_normalize_input_extracts_system_messages_to_instructions(
+        self, adapter_with_disabled_detection: CodexAdapter
+    ) -> None:
+        """System messages in input should be extracted into instructions.
+
+        The upstream Codex Responses API rejects role: system in the input
+        array.  _normalize_input_messages must move them to the instructions
+        field so the request is accepted.
+        """
+        body = json.dumps(
+            {
+                "model": "gpt-5",
+                "input": [
+                    {"role": "system", "content": "You are a helpful assistant"},
+                    {"role": "user", "content": "Hello"},
+                ],
+            }
+        ).encode()
+
+        result_body, _ = await adapter_with_disabled_detection.prepare_provider_request(
+            body, {}, "/responses"
+        )
+        result_data = json.loads(result_body.decode())
+
+        # System message should be moved to instructions
+        assert result_data["instructions"] == "You are a helpful assistant"
+        # Only the user message should remain in input
+        assert len(result_data["input"]) == 1
+        assert result_data["input"][0]["role"] == "user"
+
+    @pytest.mark.asyncio
+    async def test_normalize_input_merges_system_with_existing_instructions(
+        self, adapter_with_disabled_detection: CodexAdapter
+    ) -> None:
+        """System messages should be appended to existing instructions."""
+        body = json.dumps(
+            {
+                "model": "gpt-5",
+                "instructions": "Existing instructions",
+                "input": [
+                    {"role": "system", "content": "Extra system context"},
+                    {"role": "user", "content": "Hello"},
+                ],
+            }
+        ).encode()
+
+        result_body, _ = await adapter_with_disabled_detection.prepare_provider_request(
+            body, {}, "/responses"
+        )
+        result_data = json.loads(result_body.decode())
+
+        assert (
+            result_data["instructions"]
+            == "Existing instructions\n\nExtra system context"
+        )
+        assert len(result_data["input"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_normalize_input_extracts_developer_messages(
+        self, adapter_with_disabled_detection: CodexAdapter
+    ) -> None:
+        """Developer role messages should also be extracted to instructions."""
+        body = json.dumps(
+            {
+                "model": "gpt-5",
+                "input": [
+                    {"role": "developer", "content": "Developer instructions"},
+                    {"role": "user", "content": "Hello"},
+                ],
+            }
+        ).encode()
+
+        result_body, _ = await adapter_with_disabled_detection.prepare_provider_request(
+            body, {}, "/responses"
+        )
+        result_data = json.loads(result_body.decode())
+
+        assert result_data["instructions"] == "Developer instructions"
+        assert len(result_data["input"]) == 1
+
+    @pytest.mark.asyncio
     async def test_process_provider_response(self, adapter: CodexAdapter) -> None:
         """Test response processing and format conversion."""
         # Mock Codex response format
