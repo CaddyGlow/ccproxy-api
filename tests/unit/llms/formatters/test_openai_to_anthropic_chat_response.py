@@ -288,7 +288,20 @@ async def test_openai_chat_stream_to_anthropic_events_with_tool_call() -> None:
         if isinstance(evt, anthropic_models.ContentBlockStartEvent)
         and getattr(evt.content_block, "type", None) == "tool_use"
     )
-    assert getattr(tool_start.content_block, "input", None) == {
+    assert getattr(tool_start.content_block, "input", None) == {}
+    tool_index = tool_start.index
+
+    import json as _json
+
+    input_delta = next(
+        evt
+        for evt in events
+        if isinstance(evt, anthropic_models.ContentBlockDeltaEvent)
+        and evt.index == tool_index
+        and getattr(evt.delta, "type", None) == "input_json_delta"
+    )
+    partial = getattr(input_delta.delta, "partial_json", "")
+    assert _json.loads(partial) == {
         "city": "Seattle",
         "units": "metric",
     }

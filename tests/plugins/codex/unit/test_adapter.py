@@ -598,6 +598,24 @@ class TestCodexAdapter:
         assert result_headers["x-cli-version"] == "1.0.0"
         assert result_headers["x-session-id"] == "cli-session-123"
 
+    def test_sanitize_provider_body_strips_metadata(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """Codex backend rejects metadata; ensure it is stripped (issue #51)."""
+        body = {
+            "model": "gpt-5-codex",
+            "input": [{"type": "message", "role": "user", "content": []}],
+            "metadata": {"user_id": "abc123"},
+            "max_tokens": 100,
+            "temperature": 0.5,
+        }
+        cleaned = adapter._sanitize_provider_body(body)
+        assert "metadata" not in cleaned
+        assert "max_tokens" not in cleaned
+        assert "temperature" not in cleaned
+        assert cleaned["stream"] is True
+        assert cleaned["store"] is False
+
     def test_get_instructions_default(self, adapter: CodexAdapter) -> None:
         """Test default instructions when no detection service data."""
         instructions = adapter._get_instructions()

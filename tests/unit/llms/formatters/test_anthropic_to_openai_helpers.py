@@ -319,3 +319,299 @@ async def test_convert__anthropic_message_to_openai_responses__request_basic() -
     assert resp_req.stream is True
     assert resp_req.instructions == "sys"
     assert isinstance(resp_req.input, list) and resp_req.input
+
+
+@pytest.mark.asyncio
+async def test_convert__anthropic_message_to_openai_responses__request_tool_cycle() -> (
+    None
+):
+    req = anthropic_models.CreateMessageRequest(
+        model="claude-3",
+        messages=[
+            anthropic_models.Message(role="user", content="list files"),
+            anthropic_models.Message(
+                role="assistant",
+                content=[
+                    anthropic_models.TextBlock(type="text", text="running ls"),
+                    anthropic_models.ToolUseBlock(
+                        type="tool_use",
+                        id="call_1",
+                        name="shell",
+                        input={"command": ["ls"]},
+                    ),
+                ],
+            ),
+            anthropic_models.Message(
+                role="user",
+                content=[
+                    anthropic_models.ToolResultBlock(
+                        type="tool_result",
+                        tool_use_id="call_1",
+                        content="a.txt\nb.txt",
+                    )
+                ],
+            ),
+        ],
+        max_tokens=64,
+    )
+
+    out = convert__anthropic_message_to_openai_responses__request(req)
+
+    assert isinstance(out.input, list)
+    types = [item.get("type") for item in out.input]
+    assert types == ["message", "message", "function_call", "function_call_output"]
+
+    user_msg, assistant_msg, fn_call, fn_out = out.input
+    assert user_msg["role"] == "user"
+    assert user_msg["content"][0]["type"] == "input_text"
+    assert user_msg["content"][0]["text"] == "list files"
+
+    assert assistant_msg["role"] == "assistant"
+    assert assistant_msg["content"][0]["type"] == "output_text"
+    assert assistant_msg["content"][0]["text"] == "running ls"
+
+    assert fn_call["call_id"] == "call_1"
+    assert fn_call["name"] == "shell"
+    assert json.loads(fn_call["arguments"]) == {"command": ["ls"]}
+
+    assert fn_out["call_id"] == "call_1"
+    assert fn_out["output"] == "a.txt\nb.txt"
+
+
+@pytest.mark.asyncio
+async def test_convert__anthropic_message_to_openai_responses__request_long_call_id() -> (
+    None
+):
+    long_id = "fc_" + ("0123456789abcdef" * 8)  # 131 chars
+    assert len(long_id) > 64
+
+    req = anthropic_models.CreateMessageRequest(
+        model="claude-3",
+        messages=[
+            anthropic_models.Message(role="user", content="run"),
+            anthropic_models.Message(
+                role="assistant",
+                content=[
+                    anthropic_models.ToolUseBlock(
+                        type="tool_use",
+                        id=long_id,
+                        name="shell",
+                        input={},
+                    ),
+                ],
+            ),
+            anthropic_models.Message(
+                role="user",
+                content=[
+                    anthropic_models.ToolResultBlock(
+                        type="tool_result",
+                        tool_use_id=long_id,
+                        content="done",
+                    )
+                ],
+            ),
+        ],
+        max_tokens=64,
+    )
+
+    out = convert__anthropic_message_to_openai_responses__request(req)
+    assert isinstance(out.input, list)
+    fn_call = next(item for item in out.input if item.get("type") == "function_call")
+    fn_out = next(
+        item for item in out.input if item.get("type") == "function_call_output"
+    )
+    assert fn_call["call_id"] == fn_out["call_id"]
+    assert len(fn_call["call_id"]) <= 64
+    assert fn_call["call_id"] != long_id
+
+
+@pytest.mark.asyncio
+async def test_convert__anthropic_message_to_openai_responses__request_legacy_custom_tools() -> (
+    None
+):
+    req = anthropic_models.CreateMessageRequest(
+        model="claude-3",
+        messages=[anthropic_models.Message(role="user", content="run ls")],
+        max_tokens=64,
+        tools=[
+            anthropic_models.LegacyCustomTool(
+                type="custom",
+                name="Bash",
+                description="Run a shell command",
+                input_schema={
+                    "type": "object",
+                    "properties": {"command": {"type": "string"}},
+                    "required": ["command"],
+                },
+            )
+        ],
+    )
+
+    out = convert__anthropic_message_to_openai_responses__request(req)
+    assert out.tools is not None
+    assert len(out.tools) == 1
+    assert out.tools[0]["type"] == "function"
+    assert out.tools[0]["name"] == "Bash"
+
+
+@pytest.mark.asyncio
+async def test_convert__anthropic_message_to_openai_responses__request_tool_result_mixed_content() -> (
+    None
+):
+    """tool_result with a list of text + image parts should stringify."""
+    req = anthropic_models.CreateMessageRequest(
+        model="claude-3",
+        messages=[
+            anthropic_models.Message(role="user", content="screenshot"),
+            anthropic_models.Message(
+                role="assistant",
+                content=[
+                    anthropic_models.ToolUseBlock(
+                        type="tool_use",
+                        id="call_img",
+                        name="screenshot",
+                        input={},
+                    ),
+                ],
+            ),
+            anthropic_models.Message(
+                role="user",
+                content=[
+                    anthropic_models.ToolResultBlock(
+                        type="tool_result",
+                        tool_use_id="call_img",
+                        content=[
+                            anthropic_models.TextBlock(type="text", text="here: "),
+                            anthropic_models.ImageBlock(
+                                type="image",
+                                source=anthropic_models.ImageSource(
+                                    type="base64",
+                                    media_type="image/png",
+                                    data="AAAA",
+                                ),
+                            ),
+                            anthropic_models.TextBlock(type="text", text=" done"),
+                        ],
+                    )
+                ],
+            ),
+        ],
+        max_tokens=64,
+    )
+
+    out = convert__anthropic_message_to_openai_responses__request(req)
+    assert isinstance(out.input, list)
+    fn_out = next(
+        item for item in out.input if item.get("type") == "function_call_output"
+    )
+    assert isinstance(fn_out["output"], str)
+    assert fn_out["output"].startswith("here: ")
+    assert fn_out["output"].endswith(" done")
+    # The image part must be serialized (as JSON) rather than dropped.
+    assert "image" in fn_out["output"]
+
+
+@pytest.mark.asyncio
+async def test_convert__anthropic_message_to_openai_responses__request_pending_text_after_tool_result() -> (
+    None
+):
+    """Text following a tool_result in the same user message is flushed."""
+    req = anthropic_models.CreateMessageRequest(
+        model="claude-3",
+        messages=[
+            anthropic_models.Message(role="user", content="run"),
+            anthropic_models.Message(
+                role="assistant",
+                content=[
+                    anthropic_models.ToolUseBlock(
+                        type="tool_use",
+                        id="call_1",
+                        name="shell",
+                        input={"cmd": "ls"},
+                    ),
+                ],
+            ),
+            anthropic_models.Message(
+                role="user",
+                content=[
+                    anthropic_models.ToolResultBlock(
+                        type="tool_result",
+                        tool_use_id="call_1",
+                        content="ok",
+                    ),
+                    anthropic_models.TextBlock(type="text", text="now list again"),
+                ],
+            ),
+        ],
+        max_tokens=64,
+    )
+
+    out = convert__anthropic_message_to_openai_responses__request(req)
+    assert isinstance(out.input, list)
+    types = [item.get("type") for item in out.input]
+    # user, function_call, function_call_output, user (post-result text)
+    assert types == ["message", "function_call", "function_call_output", "message"]
+    trailing = out.input[-1]
+    assert trailing["role"] == "user"
+    assert trailing["content"][0]["text"] == "now list again"
+
+
+@pytest.mark.asyncio
+async def test_convert__anthropic_message_to_openai_responses__request_assistant_interleaved_ordering() -> (
+    None
+):
+    """Assistant text/tool_use interleave must preserve original order."""
+    req = anthropic_models.CreateMessageRequest(
+        model="claude-3",
+        messages=[
+            anthropic_models.Message(role="user", content="do it"),
+            anthropic_models.Message(
+                role="assistant",
+                content=[
+                    anthropic_models.TextBlock(type="text", text="first, "),
+                    anthropic_models.ToolUseBlock(
+                        type="tool_use",
+                        id="call_a",
+                        name="shell",
+                        input={"cmd": "ls"},
+                    ),
+                    anthropic_models.TextBlock(type="text", text="then, "),
+                    anthropic_models.ToolUseBlock(
+                        type="tool_use",
+                        id="call_b",
+                        name="shell",
+                        input={"cmd": "pwd"},
+                    ),
+                    anthropic_models.TextBlock(type="text", text="done."),
+                ],
+            ),
+        ],
+        max_tokens=64,
+    )
+
+    out = convert__anthropic_message_to_openai_responses__request(req)
+    assert isinstance(out.input, list)
+    types = [item.get("type") for item in out.input]
+    assert types == [
+        "message",  # user: do it
+        "message",  # assistant: first,
+        "function_call",  # call_a
+        "message",  # assistant: then,
+        "function_call",  # call_b
+        "message",  # assistant: done.
+    ]
+
+    assistant_texts = [
+        item["content"][0]["text"]
+        for item in out.input
+        if item.get("type") == "message" and item.get("role") == "assistant"
+    ]
+    assert assistant_texts == ["first, ", "then, ", "done."]
+
+    fn_calls = [item for item in out.input if item.get("type") == "function_call"]
+    assert [fc["call_id"] for fc in fn_calls] == ["call_a", "call_b"]
+    assert [fc["name"] for fc in fn_calls] == ["shell", "shell"]
+    assert [json.loads(fc["arguments"]) for fc in fn_calls] == [
+        {"cmd": "ls"},
+        {"cmd": "pwd"},
+    ]

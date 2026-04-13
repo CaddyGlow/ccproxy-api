@@ -391,7 +391,7 @@ class OpenAIResponsesToChatStreamAdapter:
                     if not state.initial_emitted:
                         tool_call = openai_models.ToolCallChunk(
                             index=state.index,
-                            id=state.id,
+                            id=state.call_id or state.id,
                             type="function",
                             function=openai_models.FunctionCall(
                                 name=state.name or "",
@@ -445,10 +445,8 @@ class OpenAIResponsesToChatStreamAdapter:
                     if state.initial_emitted:
                         tool_call = openai_models.ToolCallChunk(
                             index=state.index,
-                            id=state.id,
                             type="function",
                             function=openai_models.FunctionCall(
-                                name=state.name or "",
                                 arguments=delta_segment,
                             ),
                         )
@@ -498,10 +496,8 @@ class OpenAIResponsesToChatStreamAdapter:
 
                         tool_call = openai_models.ToolCallChunk(
                             index=state.index,
-                            id=state.id,
                             type="function",
                             function=openai_models.FunctionCall(
-                                name=state.name or "",
                                 arguments=arguments,
                             ),
                         )

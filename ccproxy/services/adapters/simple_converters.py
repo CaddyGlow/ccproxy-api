@@ -6,6 +6,7 @@ that operate directly on dictionaries instead of typed Pydantic models.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -231,8 +232,38 @@ async def convert_openai_to_anthropic_stream(
 
 
 async def convert_anthropic_to_openai_error(data: FormatDict) -> FormatDict:
-    """Convert Anthropic error to OpenAI error."""
-    # Convert dict to typed model
+    """Convert Anthropic error to OpenAI error.
+
+    Upstreams sometimes return non-Anthropic error shapes (e.g. the Codex
+    backend returns FastAPI-style ``{"detail": "..."}``). Coerce unexpected
+    payloads into a minimal Anthropic ErrorResponse so the format chain can
+    still surface the upstream status to the client instead of turning a 400
+    into a 502.
+    """
+
+    if not isinstance(data, dict) or "error" not in data:
+        message = ""
+        if isinstance(data, dict):
+            for key in ("detail", "message", "error_description"):
+                value = data.get(key)
+                if isinstance(value, str) and value:
+                    message = value
+                    break
+            if not message:
+                try:
+                    message = json.dumps(data)
+                except (TypeError, ValueError):
+                    message = str(data)
+        else:
+            message = str(data)
+        data = {
+            "type": "error",
+            "error": {
+                "type": "invalid_request_error",
+                "message": message or "upstream error",
+            },
+        }
+
     error = anthropic_models.ErrorResponse.model_validate(data)
 
     # Use existing formatter function

@@ -3,6 +3,7 @@
 import pytest
 
 from ccproxy.services.adapters.simple_converters import (
+    convert_anthropic_to_openai_error,
     convert_anthropic_to_openai_response,
     convert_openai_to_anthropic_request,
 )
@@ -49,3 +50,36 @@ async def test_anthropic_to_openai_response_conversion():
     assert "id" in result
     assert "choices" in result
     assert "usage" in result
+
+
+@pytest.mark.asyncio
+async def test_anthropic_to_openai_error_passes_through_anthropic_shape():
+    """A well-formed Anthropic error payload is converted normally."""
+    anthropic_error = {
+        "type": "error",
+        "error": {"type": "invalid_request_error", "message": "bad things"},
+    }
+    result = await convert_anthropic_to_openai_error(anthropic_error)
+    assert isinstance(result, dict)
+
+
+@pytest.mark.asyncio
+async def test_anthropic_to_openai_error_coerces_fastapi_detail_shape():
+    """Codex/FastAPI-style ``{"detail": "..."}`` must not explode (issue #51).
+
+    Before this fix the converter raised ``ValidationError`` on
+    ``ErrorResponse.model_validate({"detail": ...})``, which turned upstream
+    400s into 502s in the codex plugin error path.
+    """
+    result = await convert_anthropic_to_openai_error(
+        {"detail": "Unsupported parameter: metadata"}
+    )
+    assert isinstance(result, dict)
+    assert "Unsupported parameter: metadata" in str(result)
+
+
+@pytest.mark.asyncio
+async def test_anthropic_to_openai_error_coerces_unknown_shape():
+    """Arbitrary dict payloads are wrapped into an Anthropic error envelope."""
+    result = await convert_anthropic_to_openai_error({"foo": "bar"})
+    assert isinstance(result, dict)
