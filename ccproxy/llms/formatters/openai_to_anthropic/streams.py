@@ -120,7 +120,7 @@ class OpenAIResponsesToAnthropicStreamAdapter:
                     yield anthropic_models.ContentBlockDeltaEvent(
                         type="content_block_delta",
                         index=current_index,
-                        delta=anthropic_models.TextBlock(type="text", text=text),
+                        delta=anthropic_models.TextDelta(type="text_delta", text=text),
                     )
             elif event_type == "response.output_text.done":
                 if text_block_active:
@@ -418,8 +418,8 @@ class OpenAIChatToAnthropicStreamAdapter:
                     yield anthropic_models.ContentBlockDeltaEvent(
                         type="content_block_delta",
                         index=current_index,
-                        delta=anthropic_models.TextBlock(
-                            type="text", text=content_text
+                        delta=anthropic_models.TextDelta(
+                            type="text_delta", text=content_text
                         ),
                     )
                     accumulated_content += content_text

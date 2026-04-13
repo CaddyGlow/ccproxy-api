@@ -15,6 +15,7 @@ from ccproxy.llms.formatters.anthropic_to_openai import (
 from ccproxy.llms.formatters.context import register_request
 from ccproxy.llms.formatters.openai_to_anthropic import (
     convert__openai_chat_to_anthropic_messages__stream,
+    convert__openai_responses_to_anthropic_messages__stream,
 )
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
@@ -134,3 +135,177 @@ async def test_openai_chat_stream_to_anthropic_sample() -> None:
     assert message_delta.delta.stop_reason == "tool_use"
 
     register_request(None)
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_stream_emits_text_delta_type() -> None:
+    """OpenAI Responses -> Anthropic streaming must emit ``text_delta`` on the wire.
+
+    Regression for issue #51 follow-up: Claude Code CLI pointed at ccproxy's
+    /codex endpoint received 200 OK with well-structured SSE chunks but the
+    text never rendered, because the converter was emitting
+    ``ContentBlockDeltaEvent(delta=TextBlock(type="text"))`` instead of
+    ``TextDelta(type="text_delta")``. The Pydantic model accepts both, but the
+    real Anthropic wire protocol (and the CLI's parser) requires ``text_delta``.
+    """
+
+    events: list[dict[str, Any]] = [
+        {
+            "type": "response.created",
+            "sequence_number": 1,
+            "response": {
+                "id": "resp_1",
+                "object": "response",
+                "model": "gpt-5-codex",
+                "created_at": 0,
+                "status": "in_progress",
+                "parallel_tool_calls": False,
+                "output": [],
+            },
+        },
+        {
+            "type": "response.output_item.added",
+            "sequence_number": 2,
+            "output_index": 0,
+            "item": {
+                "type": "message",
+                "id": "msg_1",
+                "status": "in_progress",
+                "role": "assistant",
+                "content": [],
+            },
+        },
+        {
+            "type": "response.output_text.delta",
+            "sequence_number": 3,
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "Hello",
+        },
+        {
+            "type": "response.output_text.delta",
+            "sequence_number": 4,
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "!",
+        },
+        {
+            "type": "response.output_text.done",
+            "sequence_number": 5,
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "text": "Hello!",
+        },
+        {
+            "type": "response.completed",
+            "sequence_number": 6,
+            "response": {
+                "id": "resp_1",
+                "object": "response",
+                "model": "gpt-5-codex",
+                "created_at": 0,
+                "status": "completed",
+                "parallel_tool_calls": False,
+                "output": [
+                    {
+                        "type": "message",
+                        "id": "msg_1",
+                        "status": "completed",
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "Hello!"}],
+                    }
+                ],
+            },
+        },
+    ]
+
+    streamed: list[anthropic_models.MessageStreamEvent] = []
+    async for evt in convert__openai_responses_to_anthropic_messages__stream(
+        _iter_events(events)
+    ):
+        streamed.append(evt)
+
+    deltas = [
+        evt
+        for evt in streamed
+        if isinstance(evt, anthropic_models.ContentBlockDeltaEvent)
+    ]
+    assert len(deltas) == 2, "expected two content_block_delta events"
+    for delta_evt in deltas:
+        assert delta_evt.delta.type == "text_delta", (
+            f"delta.type must be 'text_delta' on the wire, got {delta_evt.delta.type!r}"
+        )
+        dumped = delta_evt.model_dump(mode="json", by_alias=True)
+        assert dumped["delta"]["type"] == "text_delta"
+
+    combined = "".join(
+        getattr(evt.delta, "text", "") for evt in deltas if hasattr(evt.delta, "text")
+    )
+    assert combined == "Hello!"
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_stream_emits_text_delta_type() -> None:
+    """OpenAI Chat -> Anthropic streaming must also emit ``text_delta``."""
+
+    events: list[dict[str, Any]] = [
+        {
+            "id": "chatcmpl-1",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": "Hi"},
+                    "finish_reason": None,
+                }
+            ],
+        },
+        {
+            "id": "chatcmpl-1",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": " there"},
+                    "finish_reason": None,
+                }
+            ],
+        },
+        {
+            "id": "chatcmpl-1",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "finish_reason": "stop",
+                }
+            ],
+        },
+    ]
+
+    streamed: list[anthropic_models.MessageStreamEvent] = []
+    async for evt in convert__openai_chat_to_anthropic_messages__stream(
+        _iter_events(events)
+    ):
+        streamed.append(evt)
+
+    deltas = [
+        evt
+        for evt in streamed
+        if isinstance(evt, anthropic_models.ContentBlockDeltaEvent)
+    ]
+    assert deltas, "expected at least one content_block_delta"
+    for delta_evt in deltas:
+        assert delta_evt.delta.type == "text_delta"
+        dumped = delta_evt.model_dump(mode="json", by_alias=True)
+        assert dumped["delta"]["type"] == "text_delta"
