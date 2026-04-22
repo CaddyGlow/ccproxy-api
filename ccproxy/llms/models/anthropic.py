@@ -219,7 +219,13 @@ class RedactedThinkingBlock(ContentBlockBase):
 
 
 RequestContentBlock = Annotated[
-    TextBlock | ImageBlock | ToolUseBlock | ToolResultBlock, Field(discriminator="type")
+    TextBlock
+    | ImageBlock
+    | ToolUseBlock
+    | ToolResultBlock
+    | ThinkingBlock
+    | RedactedThinkingBlock,
+    Field(discriminator="type"),
 ]
 
 ResponseContentBlock = Annotated[
