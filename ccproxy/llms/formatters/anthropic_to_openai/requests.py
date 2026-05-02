@@ -13,6 +13,24 @@ from ccproxy.llms.models import openai as openai_models
 
 _MAX_CALL_ID_LEN = 64
 
+_NONSEMANTIC_SYSTEM_PREFIXES = ("x-anthropic-billing-header:",)
+
+
+def _strip_nonsemantic_system_lines(text: str) -> str:
+    """Remove non-semantic Anthropic header lines from system prompt text.
+
+    Lines such as ``x-anthropic-billing-header: cc_version=...; cch=<hash>;``
+    vary per request (the ``cch`` hash regenerates each time) and carry no
+    semantic value to the model.  Forwarding them verbatim into the upstream
+    ``instructions`` field causes every turn to present a brand-new prefix,
+    defeating the upstream prompt cache.
+    """
+    return "\n".join(
+        line
+        for line in text.splitlines()
+        if not line.strip().lower().startswith(_NONSEMANTIC_SYSTEM_PREFIXES)
+    ).strip()
+
 
 def _clamp_call_id(call_id: Any) -> str | None:
     """Return a call_id that fits within OpenAI's 64-char limit.
@@ -185,12 +203,19 @@ def _build_responses_payload_from_anthropic_request(
 
     if request.system:
         if isinstance(request.system, str):
-            instructions_text = request.system
-            payload_data["instructions"] = request.system
+            cleaned = _strip_nonsemantic_system_lines(request.system)
+            if cleaned:
+                instructions_text = cleaned
+                payload_data["instructions"] = cleaned
         else:
-            joined = "".join(block.text for block in request.system if block.text)
-            instructions_text = joined or None
+            cleaned_blocks = (
+                _strip_nonsemantic_system_lines(block.text or "")
+                for block in request.system
+                if block.text
+            )
+            joined = "\n\n".join(b for b in cleaned_blocks if b)
             if joined:
+                instructions_text = joined
                 payload_data["instructions"] = joined
 
     payload_data["input"] = _build_responses_input_items(request.messages)

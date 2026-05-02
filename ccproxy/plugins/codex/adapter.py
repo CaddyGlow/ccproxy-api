@@ -641,7 +641,7 @@ class CodexAdapter(BaseHTTPAdapter):
         if "prompt_cache_key" not in merged:
             prompt_cache_key = template.get("prompt_cache_key")
             if isinstance(prompt_cache_key, str) and prompt_cache_key:
-                merged["prompt_cache_key"] = str(uuid.uuid4())
+                merged["prompt_cache_key"] = prompt_cache_key
 
         return self._normalize_input_messages(merged)
 
