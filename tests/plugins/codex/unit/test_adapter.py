@@ -349,7 +349,7 @@ class TestCodexAdapter:
         assert result_data["reasoning"] == {"effort": "medium"}
         assert result_data["tool_choice"] == "auto"
         assert result_data["tools"] == [{"type": "function", "name": "exec_command"}]
-        assert result_data["prompt_cache_key"] != "template-cache-key"
+        assert result_data["prompt_cache_key"] == "template-cache-key"
         assert result_data["input"][0]["type"] == "message"
 
     @pytest.mark.asyncio
@@ -670,3 +670,87 @@ class TestCodexAdapter:
         # Verify auth headers are set
         assert result_headers["authorization"] == "Bearer test-token"
         assert result_headers["chatgpt-account-id"] == "test-account-123"
+
+    @pytest.mark.asyncio
+    async def test_apply_request_template_prompt_cache_key_is_stable(
+        self,
+        mock_detection_service: Mock,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
+    ) -> None:
+        """prompt_cache_key from the template must be forwarded verbatim (not randomised)."""
+        template = {
+            "instructions": "You are a Python expert.",
+            "prompt_cache_key": "stable-session-key",
+        }
+        prompts = DetectedPrompts.from_body(template)
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.instructions_payload()
+        )
+
+        mock_config = Mock()
+        mock_config.base_url = "https://chat.openai.com/backend-anon"
+
+        adapter = CodexAdapter(
+            detection_service=mock_detection_service,
+            config=mock_config,
+            auth_manager=mock_auth_manager,
+            http_pool_manager=mock_http_pool_manager,
+        )
+
+        body = json.dumps(
+            {"model": "gpt-5", "input": [{"role": "user", "content": "hello"}]}
+        ).encode()
+
+        result1, _ = await adapter.prepare_provider_request(body, {}, "/responses")
+        result2, _ = await adapter.prepare_provider_request(body, {}, "/responses")
+
+        data1 = json.loads(result1.decode())
+        data2 = json.loads(result2.decode())
+
+        # The key must equal the template value on both calls
+        assert data1["prompt_cache_key"] == "stable-session-key"
+        assert data2["prompt_cache_key"] == "stable-session-key"
+
+    @pytest.mark.asyncio
+    async def test_apply_request_template_inbound_prompt_cache_key_preserved(
+        self,
+        mock_detection_service: Mock,
+        mock_auth_manager: Mock,
+        mock_http_pool_manager: Mock,
+    ) -> None:
+        """A prompt_cache_key already present in the request must not be overwritten."""
+        template = {
+            "instructions": "You are a Python expert.",
+            "prompt_cache_key": "template-key",
+        }
+        prompts = DetectedPrompts.from_body(template)
+        mock_detection_service.get_detected_prompts = Mock(return_value=prompts)
+        mock_detection_service.get_system_prompt = Mock(
+            return_value=prompts.instructions_payload()
+        )
+
+        mock_config = Mock()
+        mock_config.base_url = "https://chat.openai.com/backend-anon"
+
+        adapter = CodexAdapter(
+            detection_service=mock_detection_service,
+            config=mock_config,
+            auth_manager=mock_auth_manager,
+            http_pool_manager=mock_http_pool_manager,
+        )
+
+        body = json.dumps(
+            {
+                "model": "gpt-5",
+                "prompt_cache_key": "caller-supplied-key",
+                "input": [{"role": "user", "content": "hello"}],
+            }
+        ).encode()
+
+        result, _ = await adapter.prepare_provider_request(body, {}, "/responses")
+        data = json.loads(result.decode())
+
+        # Caller-supplied key wins over the template key
+        assert data["prompt_cache_key"] == "caller-supplied-key"
