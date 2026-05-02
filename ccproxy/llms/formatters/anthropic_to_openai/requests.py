@@ -285,9 +285,14 @@ def convert__anthropic_message_to_openai_chat__request(
     # System prompt
     if request.system:
         if isinstance(request.system, str):
-            sys_content = request.system
+            sys_content = _strip_nonsemantic_system_lines(request.system)
         else:
-            sys_content = "".join(block.text for block in request.system)
+            cleaned_blocks = (
+                _strip_nonsemantic_system_lines(block.text or "")
+                for block in request.system
+                if block.text
+            )
+            sys_content = "".join(b for b in cleaned_blocks if b)
         if sys_content:
             openai_messages.append({"role": "system", "content": sys_content})
 
