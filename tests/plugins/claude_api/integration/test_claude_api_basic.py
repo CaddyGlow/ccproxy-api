@@ -38,6 +38,8 @@ async def test_models_endpoint_available_when_enabled(
     # Verify Claude models are present
     model_ids = {model["id"] for model in models}
     assert "claude-3-5-sonnet-20241022" in model_ids
+    assert "sonnet[1m]" in model_ids
+    assert "opus[1m]" in model_ids
 
 
 @pytest.mark.asyncio

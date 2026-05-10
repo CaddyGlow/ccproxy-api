@@ -7,6 +7,46 @@ from ccproxy.models.provider import ModelCard, ModelMappingRule
 
 DEFAULT_CODEX_MODEL_CARDS: list[ModelCard] = [
     ModelCard(
+        id="gpt-5.5",
+        created=1778198400,
+        owned_by="openai",
+        permission=[],
+        root="gpt-5.5",
+        parent=None,
+    ),
+    ModelCard(
+        id="gpt-5.5-high",
+        created=1778198400,
+        owned_by="openai",
+        permission=[],
+        root="gpt-5.5-high",
+        parent=None,
+    ),
+    ModelCard(
+        id="gpt-5.5-xhigh",
+        created=1778198400,
+        owned_by="openai",
+        permission=[],
+        root="gpt-5.5-xhigh",
+        parent=None,
+    ),
+    ModelCard(
+        id="gpt-5.5-max",
+        created=1778198400,
+        owned_by="openai",
+        permission=[],
+        root="gpt-5.5-max",
+        parent=None,
+    ),
+    ModelCard(
+        id="gpt-5.4",
+        created=1778198400,
+        owned_by="openai",
+        permission=[],
+        root="gpt-5.4",
+        parent=None,
+    ),
+    ModelCard(
         id="gpt-5.3-codex",
         created=1723075200,
         owned_by="openai",
@@ -26,6 +66,11 @@ DEFAULT_CODEX_MODEL_CARDS: list[ModelCard] = [
 
 
 DEFAULT_CODEX_MODEL_MAPPINGS: list[ModelMappingRule] = [
+    ModelMappingRule(match="gpt-5.5", target="gpt-5.5", kind="exact"),
+    ModelMappingRule(match="gpt-5.5-", target="gpt-5.5", kind="prefix"),
+    ModelMappingRule(match="gpt-5.4", target="gpt-5.4", kind="exact"),
+    ModelMappingRule(match="gpt-5.3-codex", target="gpt-5.3-codex", kind="exact"),
+    ModelMappingRule(match="gpt-5.2-codex", target="gpt-5.2-codex", kind="exact"),
     ModelMappingRule(match="gpt-5-codex", target="gpt-5.3-codex", kind="prefix"),
     ModelMappingRule(match="gpt-", target="gpt-5.3-codex", kind="prefix"),
     ModelMappingRule(match="o3-", target="gpt-5.3-codex", kind="prefix"),
