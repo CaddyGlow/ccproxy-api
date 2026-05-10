@@ -15,6 +15,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.core.plugins.hooks import HookEvent, HookManager
 from ccproxy.core.plugins.hooks.base import HookContext
+from ccproxy.llms.formatters.common import normalize_responses_sse_event_bytes
 from ccproxy.llms.streaming.accumulators import StreamAccumulator
 from ccproxy.streaming.sse import serialize_json_to_sse_stream
 from ccproxy.utils.model_mapper import restore_model_aliases
@@ -393,6 +394,13 @@ class DeferredStreaming(StreamingResponse):
                                                 event_type="PROVIDER_STREAM_CHUNK",
                                                 error=str(e),
                                             )
+
+                                    if is_codex:
+                                        event_data = (
+                                            normalize_responses_sse_event_bytes(
+                                                event_data
+                                            )
+                                        )
 
                                     # Yield the complete event
                                     self._record_sse_bytes(event_data)

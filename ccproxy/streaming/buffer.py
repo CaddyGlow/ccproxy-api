@@ -16,6 +16,7 @@ from starlette.responses import Response
 
 from ccproxy.core.plugins.hooks import HookEvent, HookManager
 from ccproxy.core.plugins.hooks.base import HookContext
+from ccproxy.llms.formatters.common import normalize_responses_function_call_ids
 from ccproxy.llms.models import openai as openai_models
 from ccproxy.llms.streaming.accumulators import ResponsesAccumulator, StreamAccumulator
 
@@ -631,7 +632,9 @@ class StreamingBufferService:
                     completed=bool(completed_payload),
                 )
                 if completed_payload is not None:
-                    response_obj = completed_payload
+                    response_obj = normalize_responses_function_call_ids(
+                        completed_payload
+                    )
                     return response_obj
                 try:
                     response_obj = accumulator_for_rebuild.rebuild_response_object(
@@ -680,7 +683,7 @@ class StreamingBufferService:
                         "total_tokens": usage.get("total_tokens", 0),
                     }
 
-            return response_obj
+            return normalize_responses_function_call_ids(response_obj)
 
         # Try using the configured SSE parser first
         logger.debug(
@@ -723,7 +726,7 @@ class StreamingBufferService:
                                 exc_info=e,
                             )
 
-                    return parsed_data
+                    return normalize_responses_function_call_ids(parsed_data)
                 else:
                     logger.warning(
                         "sse_parser_returned_none",
@@ -748,7 +751,7 @@ class StreamingBufferService:
                     request_id=getattr(request_context, "request_id", None),
                     category="streaming",
                 )
-                return parsed_json
+                return normalize_responses_function_call_ids(parsed_json)
             else:
                 # If it's not a dict, wrap it
                 logger.info(
@@ -757,7 +760,7 @@ class StreamingBufferService:
                     request_id=getattr(request_context, "request_id", None),
                     category="streaming",
                 )
-                return {"data": parsed_json}
+                return normalize_responses_function_call_ids({"data": parsed_json})
         except json.JSONDecodeError:
             pass
 
@@ -771,7 +774,7 @@ class StreamingBufferService:
                     request_id=getattr(request_context, "request_id", None),
                     category="streaming",
                 )
-                return parsed_data
+                return normalize_responses_function_call_ids(parsed_data)
         except Exception as e:
             logger.debug(
                 "generic_sse_parsing_failed",

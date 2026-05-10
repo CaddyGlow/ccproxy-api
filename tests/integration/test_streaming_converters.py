@@ -130,7 +130,16 @@ async def test_openai_chat_stream_to_anthropic_sample() -> None:
     assert isinstance(tool_event.content_block, anthropic_models.ToolUseBlock), (
         "expected ToolUseBlock"
     )
-    assert tool_event.content_block.input, "tool input should be populated"
+    assert tool_event.content_block.input == {}
+
+    tool_delta = next(
+        evt
+        for evt in streamed
+        if isinstance(evt, anthropic_models.ContentBlockDeltaEvent)
+        and getattr(evt.delta, "type", None) == "input_json_delta"
+    )
+    assert isinstance(tool_delta.delta, anthropic_models.InputJsonDelta)
+    assert tool_delta.delta.partial_json, "tool input delta should be populated"
 
     message_delta = next(
         evt for evt in streamed if isinstance(evt, anthropic_models.MessageDeltaEvent)

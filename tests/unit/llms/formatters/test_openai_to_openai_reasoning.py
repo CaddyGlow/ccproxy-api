@@ -101,6 +101,44 @@ async def test_chat_to_responses_extracts_thinking() -> None:
     assert response.reasoning.summary  # type: ignore[union-attr]
 
 
+@pytest.mark.asyncio
+async def test_chat_response_tool_calls_use_responses_function_call_item_ids() -> None:
+    chat_response = openai_models.ChatCompletionResponse(
+        id="chatcmpl-tools",
+        object="chat.completion",
+        created=0,
+        model="gpt-test",
+        choices=[
+            openai_models.Choice(
+                index=0,
+                finish_reason="tool_calls",
+                message=openai_models.ResponseMessage(
+                    role="assistant",
+                    content=None,
+                    tool_calls=[
+                        openai_models.ToolCall(
+                            id="call_weather",
+                            type="function",
+                            function=openai_models.FunctionCall(
+                                name="get_weather",
+                                arguments='{"city":"Paris"}',
+                            ),
+                        )
+                    ],
+                ),
+            )
+        ],
+    )
+
+    response = await convert__openai_chat_to_openai_responses__response(chat_response)
+
+    function_call = next(
+        item for item in response.output if getattr(item, "type", "") == "function_call"
+    )
+    assert getattr(function_call, "id", "") == "fc_weather"
+    assert getattr(function_call, "call_id", "") == "call_weather"
+
+
 def _get_type(entry: object) -> str | None:
     return getattr(entry, "type", None)
 
@@ -585,9 +623,16 @@ async def test_chat_stream_tool_calls_emit_responses_events() -> None:
         and getattr(getattr(evt, "item", None), "type", "") == "function_call"
     )
     fn_added_item = fn_added.item  # type: ignore[union-attr]
-    assert fn_added_item.id == "call_abc"
+    assert fn_added_item.id == "fc_abc"
     assert fn_added_item.name == "get_weather"
     assert fn_added_item.call_id == "call_abc"
+
+    argument_item_ids = [
+        getattr(evt, "item_id", "")
+        for evt in events
+        if getattr(evt, "type", "").startswith("response.function_call_arguments.")
+    ]
+    assert argument_item_ids == ["fc_abc", "fc_abc", "fc_abc", "fc_abc"]
 
     args_done = next(
         evt
@@ -602,7 +647,8 @@ async def test_chat_stream_tool_calls_emit_responses_events() -> None:
     assert completed_response.parallel_tool_calls is True
     assert len(completed_response.output) == 1
     fn_output = completed_response.output[0]
-    assert getattr(fn_output, "id", "") == "call_abc"
+    assert getattr(fn_output, "id", "") == "fc_abc"
+    assert getattr(fn_output, "call_id", "") == "call_abc"
     assert getattr(fn_output, "name", "") == "get_weather"
     assert getattr(fn_output, "arguments", "") == '{"city": "New York"}'
     tool_calls = getattr(completed_response, "tool_calls", []) or []

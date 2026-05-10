@@ -397,11 +397,16 @@ def test_responses_accumulator_rebuild_response() -> None:
     assert "output" in rebuilt
     output_items = rebuilt["output"]
     assert isinstance(output_items, list)
+    output_function_call = next(
+        item for item in output_items if item["type"] == "function_call"
+    )
+    assert output_function_call["id"] == "fc_2"
+    assert output_function_call["call_id"] == "call_1"
 
     # Verify function calls metadata
     assert "tool_calls" in rebuilt
     function_call = rebuilt["tool_calls"][0]
-    assert function_call["id"] == "item_2"
+    assert function_call["id"] == "fc_2"
     assert function_call["type"] == "function_call"
     assert function_call["call_id"] == "call_1"
     assert function_call["function"]["name"] == "test_function"

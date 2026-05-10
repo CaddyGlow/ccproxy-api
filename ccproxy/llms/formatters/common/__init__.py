@@ -1,6 +1,12 @@
 """Shared helpers used by formatter adapters."""
 
-from .identifiers import ensure_identifier, normalize_suffix
+from .identifiers import (
+    ensure_identifier,
+    ensure_responses_function_call_identifiers,
+    normalize_responses_function_call_ids,
+    normalize_responses_sse_event_bytes,
+    normalize_suffix,
+)
 from .streams import (
     IndexedToolCallTracker,
     ObfuscationTokenFactory,
@@ -29,6 +35,9 @@ from .usage import (
 
 __all__ = [
     "ensure_identifier",
+    "ensure_responses_function_call_identifiers",
+    "normalize_responses_function_call_ids",
+    "normalize_responses_sse_event_bytes",
     "normalize_suffix",
     "THINKING_PATTERN",
     "THINKING_OPEN_PATTERN",

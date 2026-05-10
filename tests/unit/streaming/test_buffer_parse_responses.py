@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 import pytest
 
+from ccproxy.llms.formatters.common import normalize_responses_sse_event_bytes
 from ccproxy.llms.models import openai as openai_models
 from ccproxy.llms.streaming.accumulators import ResponsesAccumulator
 from ccproxy.streaming.buffer import StreamingBufferService
@@ -27,6 +28,32 @@ class _Ctx:
 def _sse(event_type: str, payload: dict[str, Any]) -> bytes:
     body = {"type": event_type, **payload}
     return f"event: {event_type}\ndata: {json.dumps(body)}\n\n".encode()
+
+
+def test_responses_sse_event_bytes_normalizes_function_call_item_id() -> None:
+    raw = _sse(
+        "response.output_item.added",
+        {
+            "sequence_number": 1,
+            "output_index": 0,
+            "item": {
+                "type": "function_call",
+                "id": "call_weather",
+                "call_id": "call_weather",
+                "name": "get_weather",
+                "arguments": "",
+            },
+        },
+    )
+
+    normalized = normalize_responses_sse_event_bytes(raw)
+    payload_line = next(
+        line for line in normalized.decode().splitlines() if line.startswith("data: ")
+    )
+    payload = json.loads(payload_line.removeprefix("data: "))
+
+    assert payload["item"]["id"] == "fc_weather"
+    assert payload["item"]["call_id"] == "call_weather"
 
 
 @pytest.fixture
@@ -211,3 +238,106 @@ async def test_parse_collected_stream_preserves_rebuilt_output(
     )
     validated = openai_models.ResponseObject.model_validate(parsed)
     assert validated.output
+
+
+@pytest.mark.asyncio
+async def test_parse_collected_stream_normalizes_function_call_item_ids(
+    buffer: StreamingBufferService,
+) -> None:
+    response_dict: dict[str, Any] = {
+        "id": "resp_tools",
+        "object": "response",
+        "created_at": 0,
+        "status": "in_progress",
+        "model": "gpt-5-codex",
+        "parallel_tool_calls": False,
+        "output": [],
+    }
+    chunks = [
+        _sse(
+            "response.created",
+            {"sequence_number": 1, "response": response_dict},
+        ),
+        _sse(
+            "response.output_item.added",
+            {
+                "sequence_number": 2,
+                "output_index": 0,
+                "item": {
+                    "type": "function_call",
+                    "id": "call_weather",
+                    "status": "in_progress",
+                    "name": "get_weather",
+                    "arguments": "",
+                    "call_id": "call_weather",
+                },
+            },
+        ),
+        _sse(
+            "response.function_call_arguments.delta",
+            {
+                "sequence_number": 3,
+                "item_id": "call_weather",
+                "output_index": 0,
+                "delta": '{"city":"Paris"}',
+            },
+        ),
+        _sse(
+            "response.function_call_arguments.done",
+            {
+                "sequence_number": 4,
+                "item_id": "call_weather",
+                "output_index": 0,
+                "arguments": '{"city":"Paris"}',
+            },
+        ),
+        _sse(
+            "response.output_item.done",
+            {
+                "sequence_number": 5,
+                "output_index": 0,
+                "item": {
+                    "type": "function_call",
+                    "id": "call_weather",
+                    "status": "completed",
+                    "name": "get_weather",
+                    "arguments": '{"city":"Paris"}',
+                    "call_id": "call_weather",
+                },
+            },
+        ),
+        _sse(
+            "response.completed",
+            {
+                "sequence_number": 6,
+                "response": {
+                    **response_dict,
+                    "status": "completed",
+                    "output": [
+                        {
+                            "type": "function_call",
+                            "id": "call_weather",
+                            "status": "completed",
+                            "name": "get_weather",
+                            "arguments": '{"city":"Paris"}',
+                            "call_id": "call_weather",
+                        }
+                    ],
+                },
+            },
+        ),
+    ]
+
+    parsed = await buffer._parse_collected_stream(
+        chunks=chunks,
+        handler_config=None,  # type: ignore[arg-type]
+        request_context=_Ctx(),  # type: ignore[arg-type]
+    )
+
+    assert parsed is not None
+    function_call = next(
+        item for item in parsed["output"] if item["type"] == "function_call"
+    )
+    assert function_call["id"] == "fc_weather"
+    assert function_call["call_id"] == "call_weather"
+    openai_models.ResponseObject.model_validate(parsed)
