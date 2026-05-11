@@ -233,9 +233,9 @@ class ChatCompletionRequest(LlmBaseModel):
     n: int | None = Field(default=1)
     parallel_tool_calls: bool | None = Field(default=None)
     presence_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
-    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
-        default=None
-    )
+    reasoning_effort: (
+        Literal["minimal", "low", "medium", "high", "xhigh", "max"] | None
+    ) = Field(default=None)
     response_format: ResponseFormat | None = Field(default=None)
     seed: int | None = Field(default=None)
     stop: str | list[str] | None = Field(default=None)
@@ -262,7 +262,7 @@ class ChatCompletionRequest(LlmBaseModel):
 
 
 class ResponseMessageReasoning(LlmBaseModel):
-    effort: Literal["minimal", "low", "medium", "high"] | None = None
+    effort: Literal["minimal", "low", "medium", "high", "xhigh", "max"] | None = None
     summary: Literal["auto", "detailed", "concise"] | None = None
 
 
@@ -447,6 +447,7 @@ class ResponseRequest(LlmBaseModel):
     previous_response_id: str | None = Field(default=None)
     prompt: dict[str, Any] | None = Field(default=None)
     prompt_cache_key: str | None = Field(default=None)
+    prompt_cache_retention: str | None = Field(default=None)
     reasoning: dict[str, Any] | None = Field(default=None)
     safety_identifier: str | None = Field(default=None)
     service_tier: str | None = Field(default=None)

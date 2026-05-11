@@ -22,6 +22,7 @@ from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 from .adapter import CodexAdapter
 from .config import CodexSettings
 from .detection_service import CodexDetectionService
+from .routes import openai_router as codex_openai_router
 from .routes import router as codex_router
 
 
@@ -238,6 +239,7 @@ class CodexFactory(BaseProviderPluginFactory):
     credentials_manager_class = CodexTokenManager
     routers = [
         RouterSpec(router=codex_router, prefix="/codex"),
+        RouterSpec(router=codex_openai_router, prefix=""),
     ]
     dependencies = ["oauth_codex"]
     optional_requires = ["pricing"]

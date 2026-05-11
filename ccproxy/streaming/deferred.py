@@ -4,6 +4,7 @@ This implementation solves the header timing issue and supports SSE processing.
 """
 
 import contextlib
+import inspect
 import json
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from datetime import datetime
@@ -13,9 +14,12 @@ import httpx
 import structlog
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ccproxy.core.constants import FORMAT_ANTHROPIC_MESSAGES, FORMAT_OPENAI_RESPONSES
 from ccproxy.core.plugins.hooks import HookEvent, HookManager
 from ccproxy.core.plugins.hooks.base import HookContext
+from ccproxy.llms.formatters.common import normalize_responses_sse_event_bytes
 from ccproxy.llms.streaming.accumulators import StreamAccumulator
+from ccproxy.streaming.errors import normalize_openai_error_payload
 from ccproxy.streaming.sse import serialize_json_to_sse_stream
 from ccproxy.utils.model_mapper import restore_model_aliases
 
@@ -233,6 +237,7 @@ class DeferredStreaming(StreamingResponse):
                 async def _emit_error_sse(
                     error_obj: dict[str, Any],
                 ) -> AsyncGenerator[bytes, None]:
+                    error_obj = self._format_stream_error(error_obj)
                     adapted: dict[str, Any] | None = None
                     try:
                         if self.handler_config and self.handler_config.response_adapter:
@@ -260,9 +265,14 @@ class DeferredStreaming(StreamingResponse):
                 try:
                     # Check for error status
                     if response.status_code >= 400:
-                        # Forward provider error body as-is (no SSE wrapping)
                         raw_error = await response.aread()
-                        yield raw_error
+                        if self._should_normalize_openai_error():
+                            yield json.dumps(
+                                normalize_openai_error_payload(raw_error)
+                            ).encode("utf-8")
+                        else:
+                            # Forward non-Codex provider error body as-is.
+                            yield raw_error
                         return
 
                     # Stream the response with optional SSE processing
@@ -329,13 +339,24 @@ class DeferredStreaming(StreamingResponse):
                             and self.request_context.metadata.get("service_type")
                             == "codex"
                         )
-                        is_sse_format = "text/event-stream" in content_type or is_codex
+                        is_openai_responses = bool(
+                            self.request_context
+                            and self.request_context.format_chain
+                            and self.request_context.format_chain[0]
+                            == "openai.responses"
+                        )
+                        is_sse_format = (
+                            "text/event-stream" in content_type
+                            or is_codex
+                            or is_openai_responses
+                        )
 
                         logger.debug(
                             "streaming_no_format_adapter",
                             content_type=content_type,
                             is_codex=is_codex,
                             is_sse_format=is_sse_format,
+                            is_openai_responses=is_openai_responses,
                             request_id=request_id,
                             category="streaming_conversion",
                         )
@@ -394,14 +415,29 @@ class DeferredStreaming(StreamingResponse):
                                                 error=str(e),
                                             )
 
+                                    if is_codex or is_openai_responses:
+                                        event_data = (
+                                            normalize_responses_sse_event_bytes(
+                                                event_data
+                                            )
+                                        )
+
                                     # Yield the complete event
                                     self._record_sse_bytes(event_data)
+                                    event_data = (
+                                        self._patch_responses_completed_sse_bytes(
+                                            event_data
+                                        )
+                                    )
                                     yield event_data
 
                             # Yield any remaining data in buffer
                             if sse_buffer:
                                 upstream_raw_chunks.append(sse_buffer)
                                 self._record_sse_bytes(sse_buffer)
+                                sse_buffer = self._patch_responses_completed_sse_bytes(
+                                    sse_buffer
+                                )
                                 yield sse_buffer
                         else:
                             # Stream the raw response without SSE parsing
@@ -618,6 +654,8 @@ class DeferredStreaming(StreamingResponse):
                     request_id=getattr(self.request_context, "request_id", None),
                 )
 
+        await self._notify_stream_complete()
+
         # After the streaming context closes, optionally close the client we own
         if self._close_client_on_finish:
             with contextlib.suppress(Exception):
@@ -808,6 +846,7 @@ class DeferredStreaming(StreamingResponse):
                             and "type" not in json_obj
                         ):
                             json_obj["type"] = event_type
+                        json_obj = self._patch_responses_completed_event(json_obj)
                         yield json_obj
                     except json.JSONDecodeError:
                         continue
@@ -840,6 +879,34 @@ class DeferredStreaming(StreamingResponse):
         ):
             yield chunk
 
+    def _format_stream_error(self, error_obj: dict[str, Any]) -> dict[str, Any]:
+        """Normalize streaming error payloads for client-specific SSE schemas."""
+        if isinstance(error_obj, dict) and error_obj.get("type"):
+            return error_obj
+
+        format_chain = (
+            self.request_context.format_chain
+            if self.request_context and self.request_context.format_chain
+            else []
+        )
+        client_format = format_chain[0] if format_chain else None
+
+        if client_format == FORMAT_ANTHROPIC_MESSAGES:
+            return {"type": "error", "error": error_obj.get("error", error_obj)}
+
+        return error_obj
+
+    def _should_normalize_openai_error(self) -> bool:
+        if not self.request_context:
+            return False
+
+        metadata = getattr(self.request_context, "metadata", None)
+        if isinstance(metadata, dict) and metadata.get("service_type") == "codex":
+            return True
+
+        format_chain = getattr(self.request_context, "format_chain", None) or []
+        return bool(format_chain and format_chain[0] == FORMAT_OPENAI_RESPONSES)
+
     def _record_tool_event(self, event_name: str, payload: Any) -> None:
         if not self._stream_accumulator or not isinstance(payload, dict):
             return
@@ -853,6 +920,79 @@ class DeferredStreaming(StreamingResponse):
                 event_name=event_name,
                 request_id=getattr(self.request_context, "request_id", None),
             )
+
+    def _patch_responses_completed_event(self, payload: Any) -> Any:
+        if not self._stream_accumulator or not isinstance(payload, dict):
+            return payload
+        if payload.get("type") != "response.completed":
+            return payload
+        response_payload = payload.get("response")
+        if not isinstance(response_payload, dict):
+            return payload
+
+        rebuild_response = getattr(
+            self._stream_accumulator, "rebuild_response_object", None
+        )
+        if not callable(rebuild_response):
+            return payload
+
+        try:
+            rebuilt_response = rebuild_response(response_payload)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug(
+                "responses_completed_event_patch_failed",
+                error=str(exc),
+                request_id=getattr(self.request_context, "request_id", None),
+            )
+            return payload
+
+        if not isinstance(rebuilt_response, dict):
+            return payload
+
+        patched = dict(payload)
+        patched["response"] = rebuilt_response
+        return patched
+
+    def _patch_responses_completed_sse_bytes(self, event_data: bytes) -> bytes:
+        if not self._stream_accumulator:
+            return event_data
+
+        try:
+            text = event_data.decode("utf-8")
+        except UnicodeDecodeError:
+            return event_data
+
+        lines = text.splitlines()
+        passthrough_lines: list[str] = []
+        data_lines: list[str] = []
+        for line in lines:
+            if line.startswith("data:"):
+                data_value = line[5:]
+                if data_value.startswith(" "):
+                    data_value = data_value[1:]
+                data_lines.append(data_value)
+            elif line:
+                passthrough_lines.append(line)
+
+        if not data_lines:
+            return event_data
+
+        data_payload = "\n".join(data_lines)
+        if data_payload.strip() == "[DONE]":
+            return event_data
+
+        try:
+            parsed = json.loads(data_payload)
+        except json.JSONDecodeError:
+            return event_data
+
+        patched = self._patch_responses_completed_event(parsed)
+        if patched is parsed:
+            return event_data
+
+        compact = json.dumps(patched, ensure_ascii=False, separators=(",", ":"))
+        patched_lines = [*passthrough_lines, f"data: {compact}", ""]
+        return ("\n".join(patched_lines) + "\n").encode("utf-8")
 
     def _override_model_alias(self, payload: Any, model_value: str) -> None:
         if isinstance(payload, dict):
@@ -895,3 +1035,23 @@ class DeferredStreaming(StreamingResponse):
             return
 
         self._record_tool_event(event_name, payload_obj)
+
+    async def _notify_stream_complete(self) -> None:
+        if not self.request_context or not hasattr(self.request_context, "metadata"):
+            return
+        metadata = self.request_context.metadata
+        if not isinstance(metadata, dict):
+            return
+        callback = metadata.get("_codex_responses_stream_complete_callback")
+        if not callable(callback):
+            return
+        try:
+            result = callback(self.request_context, self._stream_accumulator)
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug(
+                "stream_complete_callback_failed",
+                error=str(exc),
+                request_id=getattr(self.request_context, "request_id", None),
+            )

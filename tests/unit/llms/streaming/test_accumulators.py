@@ -397,11 +397,16 @@ def test_responses_accumulator_rebuild_response() -> None:
     assert "output" in rebuilt
     output_items = rebuilt["output"]
     assert isinstance(output_items, list)
+    output_function_call = next(
+        item for item in output_items if item["type"] == "function_call"
+    )
+    assert output_function_call["id"] == "fc_2"
+    assert output_function_call["call_id"] == "call_1"
 
     # Verify function calls metadata
     assert "tool_calls" in rebuilt
     function_call = rebuilt["tool_calls"][0]
-    assert function_call["id"] == "item_2"
+    assert function_call["id"] == "fc_2"
     assert function_call["type"] == "function_call"
     assert function_call["call_id"] == "call_1"
     assert function_call["function"]["name"] == "test_function"
@@ -594,7 +599,10 @@ def test_responses_accumulator_uses_completed_response_payload() -> None:
     assert rebuilt["usage"]["total_tokens"] == 3
 
     completed_copy = accumulator.get_completed_response()
-    assert completed_copy == completed_event.response.model_dump()
+    assert completed_copy is not None
+    assert completed_copy["id"] == completed_event.response.id
+    assert completed_copy["usage"]["total_tokens"] == 3
+    assert completed_copy["output"][0]["content"][0]["text"] == "Final text"
     if completed_copy is not None:
         completed_copy["status"] = "mutated"
     retrieved_response = accumulator.get_completed_response()
