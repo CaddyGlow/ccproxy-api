@@ -56,6 +56,31 @@ def test_responses_sse_event_bytes_normalizes_function_call_item_id() -> None:
     assert payload["item"]["call_id"] == "call_weather"
 
 
+def test_responses_sse_event_bytes_tolerates_non_string_type_fields() -> None:
+    raw = _sse(
+        "response.output_item.added",
+        {
+            "sequence_number": 1,
+            "output_index": 0,
+            "item": {
+                "type": {
+                    "kind": "json_schema",
+                },
+                "id": "item_schema",
+                "content": [],
+            },
+        },
+    )
+
+    normalized = normalize_responses_sse_event_bytes(raw)
+    payload_line = next(
+        line for line in normalized.decode().splitlines() if line.startswith("data: ")
+    )
+    payload = json.loads(payload_line.removeprefix("data: "))
+
+    assert payload["item"]["type"] == {"kind": "json_schema"}
+
+
 @pytest.fixture
 def buffer() -> StreamingBufferService:
     return StreamingBufferService(http_client=httpx.AsyncClient())

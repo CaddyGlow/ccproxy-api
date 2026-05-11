@@ -19,6 +19,7 @@ from ccproxy.core.plugins.hooks.base import HookContext
 from ccproxy.llms.formatters.common import normalize_responses_function_call_ids
 from ccproxy.llms.models import openai as openai_models
 from ccproxy.llms.streaming.accumulators import ResponsesAccumulator, StreamAccumulator
+from ccproxy.streaming.errors import normalize_openai_error_payload
 
 
 if TYPE_CHECKING:
@@ -384,10 +385,15 @@ class StreamingBufferService:
                     request_id=request_id,
                     category="streaming",
                 )
-                try:
-                    error_data = json.loads(error_body)
-                except json.JSONDecodeError:
-                    error_data = {"error": error_body.decode("utf-8", errors="ignore")}
+                if provider_name == "codex":
+                    error_data = normalize_openai_error_payload(error_body)
+                else:
+                    try:
+                        error_data = json.loads(error_body)
+                    except json.JSONDecodeError:
+                        error_data = {
+                            "error": error_body.decode("utf-8", errors="ignore")
+                        }
                 return error_data, status_code, response_headers
 
             # Collect all stream chunks

@@ -599,7 +599,10 @@ def test_responses_accumulator_uses_completed_response_payload() -> None:
     assert rebuilt["usage"]["total_tokens"] == 3
 
     completed_copy = accumulator.get_completed_response()
-    assert completed_copy == completed_event.response.model_dump()
+    assert completed_copy is not None
+    assert completed_copy["id"] == completed_event.response.id
+    assert completed_copy["usage"]["total_tokens"] == 3
+    assert completed_copy["output"][0]["content"][0]["text"] == "Final text"
     if completed_copy is not None:
         completed_copy["status"] = "mutated"
     retrieved_response = accumulator.get_completed_response()

@@ -10,11 +10,17 @@ from fastapi import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.auth.exceptions import OAuthTokenRefreshError
+from ccproxy.core.constants import (
+    FORMAT_OPENAI_RESPONSES,
+    UPSTREAM_ENDPOINT_OPENAI_RESPONSES,
+)
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins.interfaces import (
     DetectionServiceProtocol,
     ProfiledTokenManagerProtocol,
 )
+from ccproxy.core.request_context import RequestContext
+from ccproxy.llms.streaming.accumulators import ResponsesAccumulator
 from ccproxy.services.adapters.chain_composer import compose_from_chain
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.adapters.mock_adapter import MockAdapter
@@ -28,8 +34,17 @@ from ccproxy.utils.headers import (
 )
 from ccproxy.utils.model_mapper import restore_model_aliases
 
+from .responses_state import CodexResponsesStateStore, ResponsesStateNotFoundError
+
 
 logger = get_plugin_logger()
+
+
+_CODEX_MODEL_REASONING_ALIASES = {
+    "gpt-5.5-high": "high",
+    "gpt-5.5-xhigh": "xhigh",
+    "gpt-5.5-max": "max",
+}
 
 
 class CodexAdapter(BaseHTTPAdapter):
@@ -47,6 +62,10 @@ class CodexAdapter(BaseHTTPAdapter):
             ProfiledTokenManagerProtocol, self.auth_manager
         )
         self.base_url = self.config.base_url.rstrip("/")
+        self.responses_state_store = CodexResponsesStateStore(
+            max_entries=getattr(self.config, "responses_state_max_entries", 1024),
+            ttl_seconds=getattr(self.config, "responses_state_ttl_seconds", 3600),
+        )
 
     async def handle_request(
         self, request: Request
@@ -63,8 +82,10 @@ class CodexAdapter(BaseHTTPAdapter):
             return await MockAdapter(self.mock_handler).handle_request(request)
 
         endpoint = ctx.metadata.get("endpoint", "")
+        self._ensure_responses_accumulator(ctx, endpoint)
         body = await request.body()
         body = await self._map_request_model(ctx, body)
+        body = self._apply_model_alias_reasoning_effort(ctx, body)
         headers = extract_request_headers(request)
 
         # Determine client streaming intent from body flag (fallback to False)
@@ -123,9 +144,12 @@ class CodexAdapter(BaseHTTPAdapter):
                         },
                     )
 
-            prepared_body, prepared_headers = await self.prepare_provider_request(
-                body, headers, endpoint
-            )
+            try:
+                prepared_body, prepared_headers = await self.prepare_provider_request(
+                    body, headers, endpoint, request_context=ctx
+                )
+            except ResponsesStateNotFoundError as exc:
+                return self._responses_state_error_response(exc)
             logger.trace(
                 "codex_adapter_prepared_provider_request",
                 header_keys=list(prepared_headers.keys()),
@@ -174,6 +198,9 @@ class CodexAdapter(BaseHTTPAdapter):
                 handler_config=handler_config,
                 request_context=ctx,
                 provider_name="codex",
+            )
+            buffered_response = self._finalize_buffered_responses_state(
+                buffered_response, ctx
             )
             logger.trace(
                 "codex_adapter_buffered_response_ready",
@@ -254,7 +281,12 @@ class CodexAdapter(BaseHTTPAdapter):
         return f"{self.base_url}/responses"
 
     async def prepare_provider_request(
-        self, body: bytes, headers: dict[str, str], endpoint: str
+        self,
+        body: bytes,
+        headers: dict[str, str],
+        endpoint: str,
+        *,
+        request_context: RequestContext | None = None,
     ) -> tuple[bytes, dict[str, str]]:
         filtered_headers = await self.prepare_provider_headers(headers)
 
@@ -291,8 +323,212 @@ class CodexAdapter(BaseHTTPAdapter):
             body_data.pop("instructions", None)
 
         body_data = self._sanitize_provider_body(body_data)
+        body_data = self._apply_responses_state_continuation(
+            body_data,
+            headers=headers,
+            endpoint=endpoint,
+            request_context=request_context,
+        )
 
         return json.dumps(body_data).encode(), filtered_headers
+
+    def _apply_responses_state_continuation(
+        self,
+        body_data: dict[str, Any],
+        *,
+        headers: dict[str, str],
+        endpoint: str,
+        request_context: RequestContext | None,
+    ) -> dict[str, Any]:
+        if not self._should_manage_responses_state(endpoint, request_context):
+            return body_data
+
+        prepared, scope, previous_response_id = (
+            self.responses_state_store.prepare_payload(body_data, headers=headers)
+        )
+
+        if request_context is not None:
+            metadata = request_context.metadata
+            metadata["_codex_responses_state_scope"] = scope
+            metadata["_codex_responses_state_request"] = copy.deepcopy(prepared)
+            metadata["_codex_responses_stream_complete_callback"] = (
+                self._record_responses_state_from_stream
+            )
+            if previous_response_id:
+                metadata["_codex_responses_previous_response_id"] = previous_response_id
+            else:
+                metadata.pop("_codex_responses_previous_response_id", None)
+
+        return prepared
+
+    def _should_manage_responses_state(
+        self, endpoint: str, request_context: RequestContext | None
+    ) -> bool:
+        if endpoint != UPSTREAM_ENDPOINT_OPENAI_RESPONSES:
+            return False
+        if request_context is None:
+            return True
+        format_chain = getattr(request_context, "format_chain", None) or []
+        return not format_chain or format_chain[0] == FORMAT_OPENAI_RESPONSES
+
+    def _ensure_responses_accumulator(
+        self, request_context: RequestContext, endpoint: str
+    ) -> None:
+        if self._should_manage_responses_state(endpoint, request_context):
+            cast(Any, request_context)._tool_accumulator_class = ResponsesAccumulator
+
+    def _responses_state_error_response(
+        self, exc: ResponsesStateNotFoundError
+    ) -> JSONResponse:
+        return JSONResponse(status_code=400, content=exc.to_openai_error())
+
+    def _responses_state_error_streaming_response(
+        self, exc: ResponsesStateNotFoundError
+    ) -> StreamingResponse:
+        error_bytes = json.dumps(exc.to_openai_error()).encode("utf-8")
+
+        async def error_generator() -> Any:
+            yield error_bytes
+
+        return StreamingResponse(
+            content=error_generator(),
+            status_code=400,
+            media_type="application/json",
+        )
+
+    def _finalize_buffered_responses_state(
+        self, response: Response, request_context: RequestContext
+    ) -> Response:
+        if not self._has_responses_state_request(request_context):
+            return response
+        if response.status_code >= 400:
+            return response
+
+        body = (
+            response.body if isinstance(response.body, bytes) else bytes(response.body)
+        )
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except Exception:
+            return response
+        if not isinstance(payload, dict):
+            return response
+
+        payload = self.record_responses_state_from_payload(payload, request_context)
+        if payload is None:
+            return response
+
+        headers = filter_response_headers(dict(response.headers))
+        return Response(
+            content=json.dumps(payload).encode("utf-8"),
+            status_code=response.status_code,
+            headers=headers,
+            media_type=response.media_type or "application/json",
+        )
+
+    def _has_responses_state_request(self, request_context: RequestContext) -> bool:
+        metadata = getattr(request_context, "metadata", None)
+        return isinstance(metadata, dict) and isinstance(
+            metadata.get("_codex_responses_state_request"), dict
+        )
+
+    def record_responses_state_from_payload(
+        self, payload: dict[str, Any], request_context: RequestContext
+    ) -> dict[str, Any] | None:
+        metadata = getattr(request_context, "metadata", None)
+        if not isinstance(metadata, dict):
+            return None
+
+        request_payload = metadata.get("_codex_responses_state_request")
+        scope = metadata.get("_codex_responses_state_scope")
+        if not isinstance(request_payload, dict) or not isinstance(scope, str):
+            return None
+        if not isinstance(payload, dict) or payload.get("error"):
+            return None
+
+        response_payload = copy.deepcopy(payload)
+        previous_response_id = metadata.get("_codex_responses_previous_response_id")
+        if (
+            isinstance(previous_response_id, str)
+            and previous_response_id
+            and not response_payload.get("previous_response_id")
+        ):
+            response_payload["previous_response_id"] = previous_response_id
+
+        self.responses_state_store.store_response(
+            scope=scope,
+            request_payload=request_payload,
+            response_payload=response_payload,
+        )
+        return response_payload
+
+    async def _record_responses_state_from_stream(
+        self,
+        request_context: RequestContext,
+        stream_accumulator: Any,
+    ) -> None:
+        if stream_accumulator is None:
+            return
+
+        payload: dict[str, Any] | None = None
+        get_completed = getattr(stream_accumulator, "get_completed_response", None)
+        if callable(get_completed):
+            with contextlib.suppress(Exception):
+                completed = get_completed()
+                if isinstance(completed, dict):
+                    payload = completed
+
+        if payload is None:
+            rebuild = getattr(stream_accumulator, "rebuild_response_object", None)
+            if callable(rebuild):
+                with contextlib.suppress(Exception):
+                    rebuilt = rebuild({})
+                    if isinstance(rebuilt, dict):
+                        payload = rebuilt
+
+        if payload is not None:
+            self.record_responses_state_from_payload(payload, request_context)
+
+    def _apply_model_alias_reasoning_effort(self, ctx: Any, body: bytes) -> bytes:
+        """Apply reasoning effort implied by client-facing Codex model aliases."""
+
+        metadata = getattr(ctx, "metadata", None)
+        client_model = None
+        if isinstance(metadata, dict):
+            client_model = metadata.get("_last_client_model")
+        if not isinstance(client_model, str):
+            return body
+
+        effort = _CODEX_MODEL_REASONING_ALIASES.get(client_model)
+        if effort is None:
+            return body
+
+        try:
+            body_data = json.loads(body.decode()) if body else {}
+        except Exception:
+            return body
+        if not isinstance(body_data, dict):
+            return body
+
+        is_responses_request = self._is_openai_responses_request(ctx)
+        if isinstance(body_data.get("reasoning"), dict):
+            reasoning = dict(body_data["reasoning"])
+            reasoning.setdefault("effort", effort)
+            body_data["reasoning"] = reasoning
+        elif is_responses_request:
+            body_data["reasoning"] = {"effort": effort}
+        elif not body_data.get("reasoning_effort"):
+            body_data["reasoning_effort"] = effort
+
+        return self._encode_json_body(body_data)
+
+    def _is_openai_responses_request(self, ctx: Any) -> bool:
+        format_chain = getattr(ctx, "format_chain", None)
+        if format_chain is None:
+            return True
+        if not isinstance(format_chain, list | tuple):
+            return False
+        return not format_chain or format_chain[0] == FORMAT_OPENAI_RESPONSES
 
     def _sanitize_provider_body(self, body_data: dict[str, Any]) -> dict[str, Any]:
         """Apply Codex-specific payload sanitization shared by all request paths."""
@@ -311,19 +547,55 @@ class CodexAdapter(BaseHTTPAdapter):
             "max_tokens",
             "temperature",
             "metadata",
+            "stream_options",
+            "prompt_cache_retention",
+            "safety_identifier",
         ):
             body_data.pop(key, None)
 
-        list_input = body_data.get("input", [])
-        # Remove any input types that Codex does not support
-        body_data["input"] = [
-            input for input in list_input if input.get("type") != "item_reference"
-        ]
+        input_value = body_data.get("input", [])
+        # Remove any input types that Codex does not support. Public Responses API
+        # input may be a plain string, but the Codex backend expects message items.
+        if isinstance(input_value, list):
+            body_data["input"] = [
+                input_item
+                for input_item in input_value
+                if not (
+                    isinstance(input_item, dict)
+                    and input_item.get("type") == "item_reference"
+                )
+            ]
+        elif isinstance(input_value, str):
+            body_data["input"] = [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": input_value}],
+                }
+            ]
 
         # Remove any prefixed metadata fields that shouldn't be sent to the API
         body_data = self._remove_metadata_fields(body_data)
+        self._normalize_reasoning_effort(body_data)
 
         return body_data
+
+    def _normalize_reasoning_effort(self, body_data: dict[str, Any]) -> None:
+        """Clamp client-facing effort aliases to values accepted by Codex backend."""
+
+        reasoning_effort = body_data.pop("reasoning_effort", None)
+        reasoning = body_data.get("reasoning")
+        if isinstance(reasoning_effort, str) and reasoning_effort:
+            if reasoning_effort == "max":
+                reasoning_effort = "xhigh"
+            if isinstance(reasoning, dict):
+                reasoning.setdefault("effort", reasoning_effort)
+            else:
+                reasoning = {"effort": reasoning_effort}
+                body_data["reasoning"] = reasoning
+
+        if isinstance(reasoning, dict) and reasoning.get("effort") == "max":
+            reasoning["effort"] = "xhigh"
 
     async def prepare_provider_headers(self, headers: dict[str, str]) -> dict[str, str]:
         token_value = await self._resolve_access_token()
@@ -497,10 +769,14 @@ class CodexAdapter(BaseHTTPAdapter):
         # Get context
         ctx = request.state.context
         self._ensure_tool_accumulator(ctx)
+        with contextlib.suppress(Exception):
+            ctx.metadata.setdefault("service_type", "codex")
+        self._ensure_responses_accumulator(ctx, endpoint)
 
         # Extract body and headers
         body = await request.body()
         body = await self._map_request_model(ctx, body)
+        body = self._apply_model_alias_reasoning_effort(ctx, body)
         headers = extract_request_headers(request)
 
         # Ensure format adapters are available when required
@@ -549,9 +825,12 @@ class CodexAdapter(BaseHTTPAdapter):
                 )
 
         # Provider-specific preparation (adds auth, sets stream=true)
-        prepared_body, prepared_headers = await self.prepare_provider_request(
-            body, headers, endpoint
-        )
+        try:
+            prepared_body, prepared_headers = await self.prepare_provider_request(
+                body, headers, endpoint, request_context=ctx
+            )
+        except ResponsesStateNotFoundError as exc:
+            return self._responses_state_error_streaming_response(exc)
 
         # Get format adapter for streaming reverse conversion
         streaming_format_adapter = None

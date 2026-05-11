@@ -774,11 +774,12 @@ class ResponsesAccumulator(StreamAccumulator):
         return normalize_responses_function_call_ids(payload)
 
     def get_completed_response(self) -> dict[str, Any] | None:
-        """Return the final response payload captured from the stream, if any."""
+        """Return the completed response merged with accumulated stream items."""
 
         if isinstance(self.completed_response, openai_models.ResponseObject):
+            payload = self.completed_response.model_dump()
             return normalize_responses_function_call_ids(
-                self.completed_response.model_dump()
+                self.rebuild_response_object(payload)
             )
         return None
 

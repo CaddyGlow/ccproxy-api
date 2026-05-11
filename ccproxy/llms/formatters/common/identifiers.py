@@ -129,7 +129,9 @@ def normalize_responses_function_call_ids(payload: _Payload) -> _Payload:
         payload["id"] = item_id
         payload["call_id"] = call_id
 
-    elif payload_type in _FUNCTION_ARGUMENT_EVENT_TYPES:
+    elif (
+        isinstance(payload_type, str) and payload_type in _FUNCTION_ARGUMENT_EVENT_TYPES
+    ):
         item_id, call_id = ensure_responses_function_call_identifiers(
             item_id=payload.get("item_id")
             if isinstance(payload.get("item_id"), str)

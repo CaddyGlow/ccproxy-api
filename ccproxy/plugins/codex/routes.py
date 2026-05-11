@@ -36,6 +36,7 @@ from ccproxy.streaming.sse_parser import SSEStreamParser
 from ccproxy.utils.model_mapper import restore_model_aliases
 
 from .config import CodexSettings
+from .responses_state import ResponsesStateNotFoundError
 
 
 if TYPE_CHECKING:
@@ -51,6 +52,7 @@ CodexConfigDep = Annotated[
     Depends(get_provider_config_dependency("codex", CodexSettings)),
 ]
 router = APIRouter()
+openai_router = APIRouter()
 
 
 # Helper to handle adapter requests
@@ -218,7 +220,10 @@ async def _sanitize_websocket_payload(
     body_bytes = json.dumps(provider_payload).encode("utf-8")
     body_bytes = await adapter._map_request_model(request_context, body_bytes)
     prepared_body, prepared_headers = await adapter.prepare_provider_request(
-        body_bytes, headers, UPSTREAM_ENDPOINT_OPENAI_RESPONSES
+        body_bytes,
+        headers,
+        UPSTREAM_ENDPOINT_OPENAI_RESPONSES,
+        request_context=request_context,
     )
     sanitized_payload = json.loads(prepared_body.decode("utf-8"))
     return sanitized_payload, prepared_headers
@@ -289,6 +294,26 @@ async def _send_websocket_event(
             separators=(",", ":"),
         )
     )
+
+
+def _record_websocket_response_state(
+    adapter: "CodexAdapter",
+    event: dict[str, Any],
+    request_context: RequestContext,
+) -> dict[str, Any]:
+    if event.get("type") != "response.completed":
+        return event
+    response_payload = event.get("response")
+    if not isinstance(response_payload, dict):
+        return event
+    updated = adapter.record_responses_state_from_payload(
+        response_payload, request_context
+    )
+    if updated is None:
+        return event
+    patched = dict(event)
+    patched["response"] = updated
+    return patched
 
 
 def _serialize_codex_models(config: CodexSettings) -> list[dict[str, Any]]:
@@ -364,9 +389,20 @@ async def _stream_websocket_response(
             websocket, adapter, provider_payload, request_context
         )
         return
-    provider_payload, provider_headers = await _sanitize_websocket_payload(
-        adapter, provider_payload, request_headers, request_context
-    )
+    try:
+        provider_payload, provider_headers = await _sanitize_websocket_payload(
+            adapter, provider_payload, request_headers, request_context
+        )
+    except ResponsesStateNotFoundError as exc:
+        await _send_websocket_event(
+            websocket,
+            _make_websocket_terminal_event(
+                provider_payload,
+                error=exc.to_openai_error()["error"],
+            ),
+            request_context,
+        )
+        return
 
     target_url = await adapter.get_target_url(UPSTREAM_ENDPOINT_OPENAI_RESPONSES)
     parsed_url = urlparse(target_url)
@@ -411,11 +447,15 @@ async def _stream_websocket_response(
             for event in parser.feed(chunk):
                 if event.get("type") in {"response.completed", "response.failed"}:
                     saw_terminal_event = True
+                event = _record_websocket_response_state(
+                    adapter, event, request_context
+                )
                 await _send_websocket_event(websocket, event, request_context)
 
         for event in parser.flush():
             if event.get("type") in {"response.completed", "response.failed"}:
                 saw_terminal_event = True
+            event = _record_websocket_response_state(adapter, event, request_context)
             await _send_websocket_event(websocket, event, request_context)
 
         if not saw_terminal_event:
@@ -458,11 +498,13 @@ async def _stream_websocket_mock_response(
         for event in parser.feed(chunk):
             if event.get("type") in {"response.completed", "response.failed"}:
                 saw_terminal_event = True
+            event = _record_websocket_response_state(adapter, event, request_context)
             await _send_websocket_event(websocket, event, request_context)
 
     for event in parser.flush():
         if event.get("type") in {"response.completed", "response.failed"}:
             saw_terminal_event = True
+        event = _record_websocket_response_state(adapter, event, request_context)
         await _send_websocket_event(websocket, event, request_context)
 
     if not saw_terminal_event:
@@ -552,6 +594,40 @@ async def codex_responses_legacy_websocket(websocket: WebSocket) -> None:
     await codex_responses_websocket(websocket)
 
 
+@openai_router.post("/responses", response_model=None)
+@with_format_chain(
+    [FORMAT_OPENAI_RESPONSES], endpoint=UPSTREAM_ENDPOINT_OPENAI_RESPONSES
+)
+async def openai_responses(
+    request: Request,
+    auth: ConditionalAuthDep,
+    adapter: CodexAdapterDep,
+) -> StreamingResponse | Response | DeferredStreaming:
+    return await _codex_responses_handler(request, adapter)
+
+
+@openai_router.post("/v1/responses", response_model=None)
+@with_format_chain(
+    [FORMAT_OPENAI_RESPONSES], endpoint=UPSTREAM_ENDPOINT_OPENAI_RESPONSES
+)
+async def openai_v1_responses(
+    request: Request,
+    auth: ConditionalAuthDep,
+    adapter: CodexAdapterDep,
+) -> StreamingResponse | Response | DeferredStreaming:
+    return await _codex_responses_handler(request, adapter)
+
+
+@openai_router.websocket("/responses")
+async def openai_responses_websocket(websocket: WebSocket) -> None:
+    await codex_responses_websocket(websocket)
+
+
+@openai_router.websocket("/v1/responses")
+async def openai_v1_responses_websocket(websocket: WebSocket) -> None:
+    await codex_responses_websocket(websocket)
+
+
 @router.post("/v1/chat/completions", response_model=None)
 @with_format_chain(
     [FORMAT_OPENAI_CHAT, FORMAT_OPENAI_RESPONSES],
@@ -575,6 +651,16 @@ async def list_models(
     openai_models = _serialize_codex_models(config)
     codex_models = await _serialize_codex_cli_models(config)
     return {"object": "list", "data": openai_models, "models": codex_models}
+
+
+@openai_router.get("/models", response_model=None)
+@openai_router.get("/v1/models", response_model=None)
+async def openai_list_models(
+    request: Request,
+    auth: ConditionalAuthDep,
+    config: CodexConfigDep,
+) -> dict[str, Any]:
+    return await list_models(request, auth, config)
 
 
 @router.post("/v1/messages", response_model=None)
