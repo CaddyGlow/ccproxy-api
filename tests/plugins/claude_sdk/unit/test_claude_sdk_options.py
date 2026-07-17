@@ -118,6 +118,22 @@ class TestOptionsHandler:
         )
 
     @pytest.mark.unit
+    def test_native_anthropic_system_field_wins_over_message_fallback(self) -> None:
+        """Top-level Anthropic system blocks must become the SDK system prompt."""
+
+        handler = OptionsHandler(config=ClaudeSDKSettings())
+
+        prompt = handler.extract_system_message(
+            [{"role": "system", "content": "converted fallback"}],
+            [
+                {"type": "text", "text": "Return one JSON object."},
+                {"type": "text", "text": "Do not add prose."},
+            ],
+        )
+
+        assert prompt == "Return one JSON object. Do not add prose."
+
+    @pytest.mark.unit
     def test_create_options_with_kwargs_override(self) -> None:
         """Test that additional kwargs are applied correctly."""
         claude_settings = ClaudeSDKSettings(

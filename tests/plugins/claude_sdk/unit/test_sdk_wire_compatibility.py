@@ -1,14 +1,23 @@
 """Compatibility gates between the installed Claude CLI and Agent SDK."""
 
+import time
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
+import structlog
 from claude_agent_sdk import AssistantMessage, RateLimitEvent, TextBlock, ThinkingBlock
 from claude_agent_sdk._internal.message_parser import parse_message
 
+from ccproxy.core.request_context import RequestContext
 from ccproxy.plugins.claude_sdk import models as sdk_models
 from ccproxy.plugins.claude_sdk.client import ClaudeSDKClient
 from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings, SDKMessageMode
 from ccproxy.plugins.claude_sdk.converter import MessageConverter
-from ccproxy.plugins.claude_sdk.handler import _select_terminal_assistant_message
+from ccproxy.plugins.claude_sdk.handler import (
+    ClaudeSDKHandler,
+    _select_terminal_assistant_message,
+)
 
 
 @pytest.mark.unit
@@ -94,3 +103,37 @@ def test_terminal_assistant_selection_skips_thinking_only_preamble() -> None:
     )
 
     assert _select_terminal_assistant_message([thinking, final]) is final
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_native_anthropic_system_field_reaches_sdk_options(monkeypatch) -> None:
+    """The API's top-level system field cannot disappear before SDK launch."""
+
+    handler = ClaudeSDKHandler(ClaudeSDKSettings())
+    captured: dict[str, Any] = {}
+
+    def create_options(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace()
+
+    async def complete(*_args, **_kwargs):
+        return SimpleNamespace()
+
+    monkeypatch.setattr(handler.options_handler, "create_options", create_options)
+    monkeypatch.setattr(handler, "_complete_non_streaming", complete)
+    context = RequestContext(
+        request_id="system-wire",
+        start_time=time.perf_counter(),
+        logger=structlog.get_logger(__name__),
+    )
+
+    await handler.create_completion(
+        request_context=context,
+        messages=[{"role": "user", "content": "make a plan"}],
+        model="claude-sonnet-5",
+        system="Return exactly one JSON object.",
+    )
+
+    assert captured["system_message"] == "Return exactly one JSON object."
+    assert "system" not in captured

@@ -214,8 +214,12 @@ class ClaudeSDKHandler:
         **kwargs: Any,
     ) -> MessageResponse | AsyncIterator[dict[str, Any]]:
         """Create a completion using Claude SDK with business logic orchestration."""
-        # Extract system message and create options
-        system_message = self.options_handler.extract_system_message(messages)
+        # Anthropic carries system instructions outside ``messages``. Pop the
+        # field before generic option mapping so it cannot be silently ignored.
+        top_level_system = kwargs.pop("system", None)
+        system_message = self.options_handler.extract_system_message(
+            messages, top_level_system
+        )
 
         if isinstance(request_context, RequestContext):
             metadata = request_context.metadata
