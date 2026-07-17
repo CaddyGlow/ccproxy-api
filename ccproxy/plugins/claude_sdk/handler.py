@@ -47,6 +47,31 @@ def _convert_sdk_message_mode(core_mode: Any) -> SDKMessageMode:
     return SDKMessageMode.FORWARD  # Default fallback
 
 
+def _select_terminal_assistant_message(
+    messages: list[
+        sdk_models.UserMessage
+        | sdk_models.AssistantMessage
+        | sdk_models.SystemMessage
+        | sdk_models.ResultMessage
+    ],
+) -> sdk_models.AssistantMessage | None:
+    """Return the final text-bearing assistant turn from an SDK run."""
+
+    assistant_messages = [
+        message
+        for message in messages
+        if isinstance(message, sdk_models.AssistantMessage)
+    ]
+    return next(
+        (
+            message
+            for message in reversed(assistant_messages)
+            if any(isinstance(block, sdk_models.TextBlock) for block in message.content)
+        ),
+        assistant_messages[-1] if assistant_messages else None,
+    )
+
+
 class ClaudeSDKHandler:
     """
     Handler for Claude SDK operations orchestration.
@@ -272,10 +297,7 @@ class ClaudeSDKHandler:
         result_message = next(
             (m for m in sdk_messages if isinstance(m, sdk_models.ResultMessage)), None
         )
-        assistant_message = next(
-            (m for m in sdk_messages if isinstance(m, sdk_models.AssistantMessage)),
-            None,
-        )
+        assistant_message = _select_terminal_assistant_message(sdk_messages)
 
         if result_message is None:
             raise ClaudeProxyError(

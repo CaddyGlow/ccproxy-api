@@ -8,6 +8,7 @@ from ccproxy.plugins.claude_sdk import models as sdk_models
 from ccproxy.plugins.claude_sdk.client import ClaudeSDKClient
 from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings, SDKMessageMode
 from ccproxy.plugins.claude_sdk.converter import MessageConverter
+from ccproxy.plugins.claude_sdk.handler import _select_terminal_assistant_message
 
 
 @pytest.mark.unit
@@ -79,3 +80,17 @@ def test_anthropic_compatible_default_does_not_mix_in_sdk_metadata() -> None:
     assert [
         (block.type, getattr(block, "text", None)) for block in response.content
     ] == [("text", '{"ok":true}')]
+
+
+@pytest.mark.unit
+def test_terminal_assistant_selection_skips_thinking_only_preamble() -> None:
+    """The API response comes from the final answer, not a thinking preamble."""
+
+    thinking = sdk_models.AssistantMessage(
+        content=[sdk_models.ThinkingBlock(thinking="private", signature="signed")]
+    )
+    final = sdk_models.AssistantMessage(
+        content=[sdk_models.TextBlock(text='{"ok":true}')]
+    )
+
+    assert _select_terminal_assistant_message([thinking, final]) is final
