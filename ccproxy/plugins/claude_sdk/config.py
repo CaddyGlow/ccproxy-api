@@ -171,9 +171,9 @@ class ClaudeSDKSettings(ProviderConfig):
     session_timeout_seconds: int = 300
 
     # SDK behavior settings
-    include_system_messages_in_stream: bool = True
+    include_system_messages_in_stream: bool = False
     pretty_format: bool = True
-    sdk_message_mode: SDKMessageMode = SDKMessageMode.FORMATTED
+    sdk_message_mode: SDKMessageMode = SDKMessageMode.IGNORE
 
     # Performance settings
     max_tokens_default: int = 4096

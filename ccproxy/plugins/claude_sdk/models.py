@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal, TypeVar, cast
 
 # Import Claude SDK types for isinstance checks
 from claude_agent_sdk import TextBlock as SDKTextBlock
+from claude_agent_sdk import ThinkingBlock as SDKThinkingBlock
 from claude_agent_sdk import ToolResultBlock as SDKToolResultBlock
 from claude_agent_sdk import ToolUseBlock as SDKToolUseBlock
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -141,10 +142,21 @@ class UserMessage(BaseModel):
 
         converted_blocks = []
         for block in v:
-            if isinstance(block, SDKTextBlock | SDKToolUseBlock | SDKToolResultBlock):
+            if isinstance(
+                block,
+                SDKTextBlock | SDKThinkingBlock | SDKToolUseBlock | SDKToolResultBlock,
+            ):
                 # Convert Claude SDK dataclass to dict and add type field
                 if isinstance(block, SDKTextBlock):
                     converted_blocks.append({"type": "text", "text": block.text})
+                elif isinstance(block, SDKThinkingBlock):
+                    converted_blocks.append(
+                        {
+                            "type": "thinking",
+                            "thinking": block.thinking,
+                            "signature": block.signature,
+                        }
+                    )
                 elif isinstance(block, SDKToolUseBlock):
                     converted_blocks.append(
                         cast(
@@ -193,10 +205,21 @@ class AssistantMessage(BaseModel):
 
         converted_blocks = []
         for block in v:
-            if isinstance(block, SDKTextBlock | SDKToolUseBlock | SDKToolResultBlock):
+            if isinstance(
+                block,
+                SDKTextBlock | SDKThinkingBlock | SDKToolUseBlock | SDKToolResultBlock,
+            ):
                 # Convert Claude SDK dataclass to dict and add type field
                 if isinstance(block, SDKTextBlock):
                     converted_blocks.append({"type": "text", "text": block.text})
+                elif isinstance(block, SDKThinkingBlock):
+                    converted_blocks.append(
+                        {
+                            "type": "thinking",
+                            "thinking": block.thinking,
+                            "signature": block.signature,
+                        }
+                    )
                 elif isinstance(block, SDKToolUseBlock):
                     converted_blocks.append(
                         cast(
