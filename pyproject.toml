@@ -52,7 +52,7 @@ all = [
   "aioconsole>=0.8.2",
   "prometheus-client>=0.23.1",
   "sse-starlette>=3.0.2",
-  "claude-agent-sdk>=0.1.4",
+  "claude-agent-sdk>=0.2.121",
 ]
 
 test = [
@@ -96,7 +96,7 @@ dev = [
 ]
 
 [project.optional-dependencies]
-plugins-claude = ["claude-agent-sdk>=0.1.4", "qrcode>=8.2", "keyring>=25.7.0"]
+plugins-claude = ["claude-agent-sdk>=0.2.121", "qrcode>=8.2", "keyring>=25.7.0"]
 plugins-codex = ["qrcode>=8.2", "pyjwt>=2.10.1"]
 plugins-storage = [
   "sqlmodel>=0.0.27",
