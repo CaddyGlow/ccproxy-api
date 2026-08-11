@@ -48,7 +48,29 @@ def test_explicit_base_url_overrides_region() -> None:
 @pytest.mark.unit
 def test_default_models_present() -> None:
     config = MiniMaxConfig()
-    ids = {card.id for card in config.models_endpoint}
-    assert ids == {"MiniMax-M3", "MiniMax-M2.7"}
-    assert {card.id for card in DEFAULT_MINIMAX_MODEL_CARDS} == ids
+    models = {card.id: card for card in config.models_endpoint}
+    assert set(models) == {"MiniMax-M3", "MiniMax-M2.7"}
+    assert {card.id for card in DEFAULT_MINIMAX_MODEL_CARDS} == set(models)
     assert len(DEFAULT_MINIMAX_MODEL_MAPPINGS) >= 1
+
+    m3 = models["MiniMax-M3"].model_dump()
+    assert m3["context_window"] == 1_000_000
+    assert m3["pricing_usd_per_million_tokens"] == {
+        "input": 0.6,
+        "output": 2.4,
+        "cache_read": 0.12,
+        "cache_write": None,
+    }
+    assert m3["input_modalities"] == ["text", "image", "video"]
+    assert m3["thinking"] == ["adaptive", "disabled"]
+
+    m27 = models["MiniMax-M2.7"].model_dump()
+    assert m27["context_window"] == 204_800
+    assert m27["pricing_usd_per_million_tokens"] == {
+        "input": 0.3,
+        "output": 1.2,
+        "cache_read": 0.06,
+        "cache_write": 0.375,
+    }
+    assert m27["input_modalities"] == ["text"]
+    assert m27["thinking"] == ["always_on"]
