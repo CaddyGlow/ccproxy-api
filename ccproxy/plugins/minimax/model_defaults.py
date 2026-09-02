@@ -9,39 +9,43 @@ from ccproxy.models.provider import ModelCard, ModelMappingRule
 # unavailable. Timestamps are rounded placeholders, matching the convention
 # used by the other provider plugins in this repository.
 DEFAULT_MINIMAX_MODEL_CARDS: list[ModelCard] = [
-    ModelCard(
-        id="MiniMax-M3",
-        created=1735689600,
-        owned_by="minimax",
-        permission=[],
-        root="MiniMax-M3",
-        parent=None,
-        context_window=1_000_000,
-        pricing_usd_per_million_tokens={
-            "input": 0.6,
-            "output": 2.4,
-            "cache_read": 0.12,
-            "cache_write": None,
-        },
-        input_modalities=["text", "image", "video"],
-        thinking=["adaptive", "disabled"],
+    ModelCard.model_validate(
+        {
+            "id": "MiniMax-M3",
+            "created": 1735689600,
+            "owned_by": "minimax",
+            "permission": [],
+            "root": "MiniMax-M3",
+            "parent": None,
+            "context_window": 1_000_000,
+            "pricing_usd_per_million_tokens": {
+                "input": 0.6,
+                "output": 2.4,
+                "cache_read": 0.12,
+                "cache_write": None,
+            },
+            "input_modalities": ["text", "image", "video"],
+            "thinking": ["adaptive", "disabled"],
+        }
     ),
-    ModelCard(
-        id="MiniMax-M2.7",
-        created=1735689600,
-        owned_by="minimax",
-        permission=[],
-        root="MiniMax-M2.7",
-        parent=None,
-        context_window=204_800,
-        pricing_usd_per_million_tokens={
-            "input": 0.3,
-            "output": 1.2,
-            "cache_read": 0.06,
-            "cache_write": 0.375,
-        },
-        input_modalities=["text"],
-        thinking=["always_on"],
+    ModelCard.model_validate(
+        {
+            "id": "MiniMax-M2.7",
+            "created": 1735689600,
+            "owned_by": "minimax",
+            "permission": [],
+            "root": "MiniMax-M2.7",
+            "parent": None,
+            "context_window": 204_800,
+            "pricing_usd_per_million_tokens": {
+                "input": 0.3,
+                "output": 1.2,
+                "cache_read": 0.06,
+                "cache_write": 0.375,
+            },
+            "input_modalities": ["text"],
+            "thinking": ["always_on"],
+        }
     ),
 ]
 
