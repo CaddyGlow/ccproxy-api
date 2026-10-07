@@ -123,7 +123,7 @@ class CodexDetectionService:
                 category="plugin",
             )
             # Return fallback data
-            fallback_data = self._get_fallback_data()
+            fallback_data = self._get_fallback_data(version=current_version)
             self._cached_data = fallback_data
             return fallback_data
 
@@ -509,7 +509,7 @@ class CodexDetectionService:
                 category="plugin",
             )
 
-    def _get_fallback_data(self) -> CodexCacheData:
+    def _get_fallback_data(self, version: str | None = None) -> CodexCacheData:
         """Get fallback data when detection fails."""
         logger.warning("using_fallback_codex_data", category="plugin")
 
@@ -519,7 +519,20 @@ class CodexDetectionService:
         )
         with package_data_file.open("r") as f:
             fallback_data_dict = json.load(f)
-            return CodexCacheData.model_validate(fallback_data_dict)
+            fallback_data = CodexCacheData.model_validate(fallback_data_dict)
+
+        if version and version != "unknown":
+            headers = fallback_data.headers.as_dict()
+            headers["version"] = version
+            fallback_data = fallback_data.model_copy(
+                update={
+                    "codex_version": version,
+                    "headers": DetectedHeaders(headers),
+                },
+                deep=True,
+            )
+
+        return fallback_data
 
     def _safe_fallback_data(self) -> CodexCacheData | None:
         """Best-effort fallback data loader for partial detection caches."""

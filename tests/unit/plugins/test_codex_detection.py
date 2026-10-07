@@ -55,6 +55,17 @@ def test_codex_detection_ignores_content_encoding_header() -> None:
     assert "content-encoding" in CodexDetectionService.ignores_header
 
 
+def test_codex_fallback_data_uses_detected_cli_version() -> None:
+    settings = MagicMock(spec=Settings)
+    cli_service = MagicMock()
+    service = CodexDetectionService(settings=settings, cli_service=cli_service)
+
+    fallback = service._get_fallback_data(version="0.129.0")
+
+    assert fallback.codex_version == "0.129.0"
+    assert fallback.headers.get("version") == "0.129.0"
+
+
 def test_codex_detection_merges_partial_prompt_cache_with_fallback() -> None:
     settings = MagicMock(spec=Settings)
     cli_service = MagicMock()

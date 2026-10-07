@@ -68,10 +68,13 @@ async def _build_bearer_auth_manager(
     expected_token: str | None,
     *,
     require_credentials: bool,
+    api_key: str | None = None,
 ) -> AuthManager | None:
     """Create a bearer auth manager when credentials satisfy expectations."""
 
     token = credentials.credentials if credentials and credentials.credentials else None
+    if token is None and api_key:
+        token = api_key
 
     if token is None:
         if require_credentials:
@@ -118,6 +121,7 @@ async def _build_bearer_auth_manager(
 
 
 async def get_auth_manager(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     settings: SettingsDep,
 ) -> AuthManager:
@@ -127,6 +131,7 @@ async def get_auth_manager(
         credentials,
         _expected_token(settings),
         require_credentials=True,
+        api_key=request.headers.get("x-api-key"),
     )
     # require_credentials ensures auth_manager is never None here.
     assert auth_manager is not None
@@ -183,6 +188,7 @@ async def get_conditional_auth_manager(
         credentials,
         expected_token,
         require_credentials=True,
+        api_key=request.headers.get("x-api-key"),
     )
 
 
