@@ -32,6 +32,13 @@ from ccproxy.utils.model_mapper import restore_model_aliases
 logger = get_plugin_logger()
 
 
+_CODEX_MODEL_REASONING_ALIASES = {
+    "gpt-5.5-high": "high",
+    "gpt-5.5-xhigh": "xhigh",
+    "gpt-5.5-max": "max",
+}
+
+
 class CodexAdapter(BaseHTTPAdapter):
     """Simplified Codex adapter."""
 
@@ -65,6 +72,7 @@ class CodexAdapter(BaseHTTPAdapter):
         endpoint = ctx.metadata.get("endpoint", "")
         body = await request.body()
         body = await self._map_request_model(ctx, body)
+        body = self._apply_model_alias_reasoning_effort(ctx, body)
         headers = extract_request_headers(request)
 
         # Determine client streaming intent from body flag (fallback to False)
@@ -294,6 +302,36 @@ class CodexAdapter(BaseHTTPAdapter):
 
         return json.dumps(body_data).encode(), filtered_headers
 
+    def _apply_model_alias_reasoning_effort(self, ctx: Any, body: bytes) -> bytes:
+        """Apply reasoning effort implied by client-facing Codex model aliases."""
+
+        metadata = getattr(ctx, "metadata", None)
+        client_model = None
+        if isinstance(metadata, dict):
+            client_model = metadata.get("_last_client_model")
+        if not isinstance(client_model, str):
+            return body
+
+        effort = _CODEX_MODEL_REASONING_ALIASES.get(client_model)
+        if effort is None:
+            return body
+
+        try:
+            body_data = json.loads(body.decode()) if body else {}
+        except Exception:
+            return body
+        if not isinstance(body_data, dict):
+            return body
+
+        if isinstance(body_data.get("reasoning"), dict):
+            reasoning = dict(body_data["reasoning"])
+            reasoning.setdefault("effort", effort)
+            body_data["reasoning"] = reasoning
+        elif not body_data.get("reasoning_effort"):
+            body_data["reasoning_effort"] = effort
+
+        return self._encode_json_body(body_data)
+
     def _sanitize_provider_body(self, body_data: dict[str, Any]) -> dict[str, Any]:
         """Apply Codex-specific payload sanitization shared by all request paths."""
 
@@ -314,16 +352,42 @@ class CodexAdapter(BaseHTTPAdapter):
         ):
             body_data.pop(key, None)
 
-        list_input = body_data.get("input", [])
-        # Remove any input types that Codex does not support
-        body_data["input"] = [
-            input for input in list_input if input.get("type") != "item_reference"
-        ]
+        input_value = body_data.get("input", [])
+        # Remove any input types that Codex does not support. Public Responses API
+        # input may be a plain string, but the Codex backend expects message items.
+        if isinstance(input_value, list):
+            body_data["input"] = [
+                input_item
+                for input_item in input_value
+                if not (
+                    isinstance(input_item, dict)
+                    and input_item.get("type") == "item_reference"
+                )
+            ]
+        elif isinstance(input_value, str):
+            body_data["input"] = [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": input_value}],
+                }
+            ]
 
         # Remove any prefixed metadata fields that shouldn't be sent to the API
         body_data = self._remove_metadata_fields(body_data)
+        self._normalize_reasoning_effort(body_data)
 
         return body_data
+
+    def _normalize_reasoning_effort(self, body_data: dict[str, Any]) -> None:
+        """Clamp client-facing effort aliases to values accepted by Codex backend."""
+
+        if body_data.get("reasoning_effort") == "max":
+            body_data["reasoning_effort"] = "xhigh"
+
+        reasoning = body_data.get("reasoning")
+        if isinstance(reasoning, dict) and reasoning.get("effort") == "max":
+            reasoning["effort"] = "xhigh"
 
     async def prepare_provider_headers(self, headers: dict[str, str]) -> dict[str, str]:
         token_value = await self._resolve_access_token()
@@ -501,6 +565,7 @@ class CodexAdapter(BaseHTTPAdapter):
         # Extract body and headers
         body = await request.body()
         body = await self._map_request_model(ctx, body)
+        body = self._apply_model_alias_reasoning_effort(ctx, body)
         headers = extract_request_headers(request)
 
         # Ensure format adapters are available when required

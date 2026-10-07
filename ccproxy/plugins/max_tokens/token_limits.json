@@ -1,4 +1,44 @@
 {
+  "claude-opus-4-7": {
+    "max_output_tokens": 128000,
+    "max_input_tokens": 1000000
+  },
+  "opus[1m]": {
+    "max_output_tokens": 128000,
+    "max_input_tokens": 1000000
+  },
+  "opus-4-7[1m]": {
+    "max_output_tokens": 128000,
+    "max_input_tokens": 1000000
+  },
+  "claude-opus-4-7[1m]": {
+    "max_output_tokens": 128000,
+    "max_input_tokens": 1000000
+  },
+  "claude-opus-4-6": {
+    "max_output_tokens": 128000,
+    "max_input_tokens": 1000000
+  },
+  "opus-4-6[1m]": {
+    "max_output_tokens": 128000,
+    "max_input_tokens": 1000000
+  },
+  "claude-opus-4-6[1m]": {
+    "max_output_tokens": 128000,
+    "max_input_tokens": 1000000
+  },
+  "claude-sonnet-4-6": {
+    "max_output_tokens": 64000,
+    "max_input_tokens": 1000000
+  },
+  "sonnet[1m]": {
+    "max_output_tokens": 64000,
+    "max_input_tokens": 1000000
+  },
+  "claude-sonnet-4-6[1m]": {
+    "max_output_tokens": 64000,
+    "max_input_tokens": 1000000
+  },
   "claude-opus-4-1-20250805": {
     "max_output_tokens": 32000,
     "max_input_tokens": 200000

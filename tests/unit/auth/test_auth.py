@@ -17,6 +17,7 @@ from ccproxy.auth.bearer import BearerTokenAuthManager
 
 # from ccproxy.auth.credentials_adapter import CredentialsAuthManager
 from ccproxy.auth.dependencies import (
+    _build_bearer_auth_manager,
     get_access_token,
     require_auth,
 )
@@ -147,6 +148,31 @@ class TestAuthDependencies:
         token = await get_access_token(mock_manager)
         assert token == "sk-test-token-123"
         mock_manager.get_access_token.assert_called_once()
+
+    async def test_x_api_key_header_authenticates_when_token_matches(self) -> None:
+        """Test x-api-key header support for Anthropic-compatible clients."""
+        auth_manager = await _build_bearer_auth_manager(
+            None,
+            "sk-test-token-123",
+            require_credentials=True,
+            api_key="sk-test-token-123",
+        )
+
+        assert isinstance(auth_manager, BearerTokenAuthManager)
+        assert await auth_manager.get_access_token() == "sk-test-token-123"
+
+    async def test_x_api_key_header_rejects_invalid_token(self) -> None:
+        """Test x-api-key still enforces the configured shared secret."""
+        with pytest.raises(HTTPException) as exc_info:
+            await _build_bearer_auth_manager(
+                None,
+                "sk-test-token-123",
+                require_credentials=True,
+                api_key="wrong-token",
+            )
+
+        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert "Invalid authentication credentials" in str(exc_info.value.detail)
 
 
 @pytest.mark.auth

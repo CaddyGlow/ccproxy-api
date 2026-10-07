@@ -190,6 +190,36 @@ async def test_chat_request_to_responses_maps_reasoning_effort() -> None:
 
 
 @pytest.mark.asyncio
+async def test_chat_request_to_responses_allows_xhigh_reasoning_effort() -> None:
+    chat_request = openai_models.ChatCompletionRequest(
+        model="gpt-test",
+        messages=[openai_models.ChatMessage(role="user", content="Hello")],
+        reasoning_effort="xhigh",
+    )
+
+    response_request = await convert__openai_chat_to_openai_responses__request(
+        chat_request
+    )
+
+    assert response_request.reasoning == {"effort": "xhigh", "summary": "auto"}
+
+
+@pytest.mark.asyncio
+async def test_chat_request_to_responses_allows_max_reasoning_effort() -> None:
+    chat_request = openai_models.ChatCompletionRequest(
+        model="gpt-test",
+        messages=[openai_models.ChatMessage(role="user", content="Hello")],
+        reasoning_effort="max",
+    )
+
+    response_request = await convert__openai_chat_to_openai_responses__request(
+        chat_request
+    )
+
+    assert response_request.reasoning == {"effort": "max", "summary": "auto"}
+
+
+@pytest.mark.asyncio
 async def test_chat_request_to_responses_defaults_reasoning(monkeypatch: Any) -> None:
     monkeypatch.delenv("LLM__OPENAI_THINKING_XML", raising=False)
     monkeypatch.delenv("OPENAI_STREAM_ENABLE_THINKING_SERIALIZATION", raising=False)

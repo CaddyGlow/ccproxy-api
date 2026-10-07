@@ -88,3 +88,40 @@ async def test_openai_responses_request_to_anthropic_messages_basic() -> None:
     assert anth_req.max_tokens == 64
     assert anth_req.system == "sys"
     assert anth_req.messages and anth_req.messages[0].role == "user"
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_to_anthropic_supports_max_thinking_effort() -> None:
+    req = openai_models.ChatCompletionRequest(
+        model="claude-opus-4-7",
+        messages=[{"role": "user", "content": "Think carefully"}],  # type: ignore[list-item]
+        max_completion_tokens=128,
+        reasoning_effort="max",
+    )
+
+    anth_req = await convert__openai_chat_to_anthropic_message__request(req)
+
+    assert anth_req.model == "claude-opus-4-7"
+    assert anth_req.thinking is not None
+    assert anth_req.thinking.type == "enabled"
+    assert anth_req.thinking.budget_tokens == 32000
+    assert anth_req.max_tokens == 32064
+    assert anth_req.temperature == 1.0
+
+
+def test_openai_responses_to_anthropic_maps_reasoning_effort() -> None:
+    resp_req = openai_models.ResponseRequest(
+        model="claude-opus-4-7",
+        input="Think carefully",
+        max_output_tokens=128,
+        reasoning={"effort": "xhigh"},
+    )
+
+    anth_req = convert__openai_responses_to_anthropic_message__request(resp_req)
+
+    assert anth_req.model == "claude-opus-4-7"
+    assert anth_req.thinking is not None
+    assert anth_req.thinking.type == "enabled"
+    assert anth_req.thinking.budget_tokens == 20000
+    assert anth_req.max_tokens == 20064
+    assert anth_req.temperature == 1.0

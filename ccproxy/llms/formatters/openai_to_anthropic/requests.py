@@ -404,7 +404,7 @@ async def convert__openai_chat_to_anthropic_message__request(
 def convert__openai_responses_to_anthropic_message__request(
     request: openai_models.ResponseRequest,
 ) -> anthropic_models.CreateMessageRequest:
-    model = request.model
+    model = request.model or ""
     stream = bool(request.stream)
     max_out = request.max_output_tokens
 
@@ -618,8 +618,7 @@ def convert__openai_responses_to_anthropic_message__request(
             else request.instructions
         )
 
-    # Skip thinking config for ResponseRequest as it doesn't have the required fields
-    thinking_cfg = None
+    thinking_cfg = derive_thinking_config(model, request)
     if thinking_cfg is not None:
         payload_data["thinking"] = thinking_cfg
         budget = thinking_cfg.get("budget_tokens", 0)
@@ -631,21 +630,28 @@ def convert__openai_responses_to_anthropic_message__request(
 
 
 def derive_thinking_config(
-    model: str, request: openai_models.ChatCompletionRequest
+    model: str,
+    request: openai_models.ChatCompletionRequest | openai_models.ResponseRequest,
 ) -> dict[str, Any] | None:
     """Derive Anthropic thinking config from OpenAI fields and model name.
 
     Rules:
     - If model matches o1/o3 families, enable thinking by default with model-specific budget
-    - Map reasoning_effort: low=1000, medium=5000, high=10000
+    - Map effort: minimal/low=1024, medium=5000, high=10000, xhigh=20000, max=32000
     - o3*: 10000; o1-mini: 3000; other o1*: 5000
     - If thinking is enabled, return {"type":"enabled","budget_tokens":N}
     - Otherwise return None
     """
     # Explicit reasoning_effort mapping
-    effort = getattr(request, "reasoning_effort", None)
-    effort = effort.strip().lower() if isinstance(effort, str) else ""
-    effort_budgets = {"low": 1000, "medium": 5000, "high": 10000}
+    effort = _extract_reasoning_effort(request)
+    effort_budgets = {
+        "minimal": 1024,
+        "low": 1024,
+        "medium": 5000,
+        "high": 10000,
+        "xhigh": 20000,
+        "max": 32000,
+    }
 
     budget: int | None = None
     if effort in effort_budgets:
@@ -665,6 +671,22 @@ def derive_thinking_config(
         return None
 
     return {"type": "enabled", "budget_tokens": budget}
+
+
+def _extract_reasoning_effort(
+    request: openai_models.ChatCompletionRequest | openai_models.ResponseRequest,
+) -> str:
+    effort = getattr(request, "reasoning_effort", None)
+    if isinstance(effort, str) and effort.strip():
+        return effort.strip().lower()
+
+    reasoning = getattr(request, "reasoning", None)
+    if isinstance(reasoning, dict):
+        effort = reasoning.get("effort")
+    elif reasoning is not None:
+        effort = getattr(reasoning, "effort", None)
+
+    return effort.strip().lower() if isinstance(effort, str) else ""
 
 
 __all__ = [

@@ -616,6 +616,82 @@ class TestCodexAdapter:
         assert cleaned["stream"] is True
         assert cleaned["store"] is False
 
+    def test_sanitize_provider_body_normalizes_string_input(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """Responses API string input should be normalized for Codex backend."""
+        body = {"model": "gpt-5.5", "input": "Reply exactly OK"}
+
+        cleaned = adapter._sanitize_provider_body(body)
+
+        assert cleaned["input"] == [
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Reply exactly OK"}],
+            }
+        ]
+        assert cleaned["stream"] is True
+        assert cleaned["store"] is False
+
+    def test_apply_model_alias_reasoning_effort_for_chat_alias(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """GPT-5.5 effort aliases should set effort while using the base model."""
+        ctx = Mock()
+        ctx.metadata = {
+            "_last_client_model": "gpt-5.5-xhigh",
+            "_last_provider_model": "gpt-5.5",
+        }
+        body = json.dumps(
+            {
+                "model": "gpt-5.5",
+                "messages": [{"role": "user", "content": "Hello"}],
+            }
+        ).encode()
+
+        result = adapter._apply_model_alias_reasoning_effort(ctx, body)
+        result_data = json.loads(result.decode())
+
+        assert result_data["model"] == "gpt-5.5"
+        assert result_data["reasoning_effort"] == "xhigh"
+
+    def test_apply_model_alias_reasoning_effort_preserves_explicit_effort(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """Explicit request effort should win over model-alias defaults."""
+        ctx = Mock()
+        ctx.metadata = {
+            "_last_client_model": "gpt-5.5-max",
+            "_last_provider_model": "gpt-5.5",
+        }
+        body = json.dumps(
+            {
+                "model": "gpt-5.5",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "reasoning_effort": "high",
+            }
+        ).encode()
+
+        result = adapter._apply_model_alias_reasoning_effort(ctx, body)
+        result_data = json.loads(result.decode())
+
+        assert result_data["reasoning_effort"] == "high"
+
+    def test_sanitize_provider_body_clamps_max_reasoning_effort(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """Codex backend currently accepts xhigh but rejects max."""
+        body = {
+            "model": "gpt-5.5",
+            "input": [{"type": "message", "role": "user", "content": []}],
+            "reasoning": {"effort": "max", "summary": "auto"},
+        }
+
+        cleaned = adapter._sanitize_provider_body(body)
+
+        assert cleaned["reasoning"] == {"effort": "xhigh", "summary": "auto"}
+
     def test_get_instructions_default(self, adapter: CodexAdapter) -> None:
         """Test default instructions when no detection service data."""
         instructions = adapter._get_instructions()

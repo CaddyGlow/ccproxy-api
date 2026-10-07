@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from ccproxy.models.provider import ModelMappingRule
-from ccproxy.plugins.claude_shared.model_defaults import DEFAULT_CLAUDE_MODEL_MAPPINGS
+from ccproxy.plugins.claude_shared.model_defaults import (
+    DEFAULT_CLAUDE_MODEL_CARDS,
+    DEFAULT_CLAUDE_MODEL_MAPPINGS,
+)
 from ccproxy.plugins.codex.model_defaults import DEFAULT_CODEX_MODEL_MAPPINGS
 from ccproxy.utils.model_mapper import (
     ModelMapper,
@@ -60,13 +63,39 @@ def test_default_claude_mapping_prefers_latest_sonnet_and_opus() -> None:
 
     assert mapper.map("gpt-4o").mapped == "claude-sonnet-4-6"
     assert mapper.map("gpt-5").mapped == "claude-sonnet-4-6"
-    assert mapper.map("o1-preview").mapped == "claude-opus-4-6"
-    assert mapper.map("o3-mini").mapped == "claude-opus-4-6"
+    assert mapper.map("o1-preview").mapped == "claude-opus-4-7"
+    assert mapper.map("o3-mini").mapped == "claude-opus-4-7"
+    assert mapper.map("opus-4-7").mapped == "claude-opus-4-7"
+    assert mapper.map("sonnet[1m]").mapped == "claude-sonnet-4-6"
+    assert mapper.map("claude-sonnet-4-6[1m]").mapped == "claude-sonnet-4-6"
+    assert mapper.map("opus[1m]").mapped == "claude-opus-4-7"
+    assert mapper.map("opus-4-7[1m]").mapped == "claude-opus-4-7"
+    assert mapper.map("claude-opus-4-7[1m]").mapped == "claude-opus-4-7"
+    assert mapper.map("opus-4-6[1m]").mapped == "claude-opus-4-6"
+    assert mapper.map("claude-opus-4-6[1m]").mapped == "claude-opus-4-6"
     assert mapper.map("sonnet").mapped == "claude-sonnet-4-6"
-    assert mapper.map("opus").mapped == "claude-opus-4-6"
+    assert mapper.map("opus").mapped == "claude-opus-4-7"
+
+
+def test_default_claude_model_cards_expose_1m_aliases() -> None:
+    model_ids = {card.id for card in DEFAULT_CLAUDE_MODEL_CARDS}
+
+    assert "sonnet[1m]" in model_ids
+    assert "opus[1m]" in model_ids
+    assert "claude-sonnet-4-6[1m]" in model_ids
+    assert "claude-opus-4-7[1m]" in model_ids
+    assert "claude-opus-4-6[1m]" in model_ids
 
 
 def test_default_codex_mapping_keeps_latest_codex_model() -> None:
     mapper = ModelMapper(DEFAULT_CODEX_MODEL_MAPPINGS)
 
+    assert mapper.map("gpt-5.5").mapped == "gpt-5.5"
+    assert mapper.map("gpt-5.5-high").mapped == "gpt-5.5"
+    assert mapper.map("gpt-5.5-xhigh").mapped == "gpt-5.5"
+    assert mapper.map("gpt-5.5-max").mapped == "gpt-5.5"
+    assert mapper.map("gpt-5.5-custom").mapped == "gpt-5.5"
+    assert mapper.map("gpt-5.4").mapped == "gpt-5.4"
+    assert mapper.map("gpt-5.3-codex").mapped == "gpt-5.3-codex"
+    assert mapper.map("gpt-5.2-codex").mapped == "gpt-5.2-codex"
     assert mapper.map("gpt-5-codex").mapped == "gpt-5.3-codex"
