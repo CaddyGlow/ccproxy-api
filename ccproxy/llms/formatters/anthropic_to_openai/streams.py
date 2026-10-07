@@ -15,6 +15,7 @@ from ccproxy.llms.formatters.common import (
     ObfuscationTokenFactory,
     ToolCallState,
     ensure_identifier,
+    ensure_responses_function_call_identifiers,
 )
 from ccproxy.llms.formatters.constants import ANTHROPIC_TO_OPENAI_FINISH_REASON
 from ccproxy.llms.formatters.context import (
@@ -558,6 +559,18 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                 next_output_index += 1
             return state
 
+        def normalize_tool_state_identifiers(
+            state: ToolCallState,
+        ) -> tuple[str, str]:
+            item_id, call_id = ensure_responses_function_call_identifiers(
+                item_id=state.item_id,
+                call_id=state.call_id,
+                fallback_index=state.index,
+            )
+            state.item_id = item_id
+            state.call_id = call_id
+            return item_id, call_id
+
         def emit_tool_item_added(
             block_index: int, state: ToolCallState
         ) -> list[openai_models.StreamEventType]:
@@ -574,8 +587,7 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                 if not state.call_id:
                     state.call_id = tool_entry.get("id")
 
-            item_id = state.item_id or state.call_id or f"call_{state.index}"
-            state.item_id = item_id
+            item_id, call_id = normalize_tool_state_identifiers(state)
 
             name = state.name or "function"
 
@@ -592,7 +604,7 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                         status="in_progress",
                         name=str(name),
                         arguments="",
-                        call_id=state.call_id,
+                        call_id=call_id,
                     ),
                 )
             )
@@ -606,7 +618,7 @@ class AnthropicToOpenAIResponsesStreamAdapter:
             sequence_counter += 1
             event_sequence = sequence_counter
             state.add_arguments_part(delta_text)
-            item_identifier = str(state.item_id or f"call_{state.index}")
+            item_identifier, _ = normalize_tool_state_identifiers(state)
             return openai_models.ResponseFunctionCallArgumentsDeltaEvent(
                 type="response.function_call_arguments.delta",
                 sequence_number=event_sequence,
@@ -631,8 +643,7 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                 if not state.item_id:
                     state.item_id = tool_entry.get("id")
 
-            item_id = state.item_id or state.call_id or f"call_{state.index}"
-            state.item_id = item_id
+            item_id, call_id = normalize_tool_state_identifiers(state)
             name = state.name or "function"
 
             args_str = "".join(state.arguments_parts)
@@ -674,7 +685,7 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                             status="completed",
                             name=str(name),
                             arguments=args_str,
-                            call_id=state.call_id,
+                            call_id=call_id,
                         ),
                     )
                 )
@@ -1103,6 +1114,7 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                             state.call_id = tool_entry.get("id")
                         if not state.item_id:
                             state.item_id = state.call_id or f"call_{state.index}"
+                        item_id, call_id = normalize_tool_state_identifiers(state)
 
                         final_args = state.final_arguments
                         if final_args is None:
@@ -1123,10 +1135,10 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                                 state.output_index,
                                 openai_models.FunctionCallOutput(
                                     type="function_call",
-                                    id=state.item_id,
+                                    id=item_id,
                                     status="completed",
                                     name=state.name,
-                                    call_id=state.call_id,
+                                    call_id=call_id,
                                     arguments=final_args,
                                 ),
                             )
@@ -1254,6 +1266,7 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                         state.call_id = tool_entry.get("id")
                     if not state.item_id:
                         state.item_id = state.call_id or f"call_{state.index}"
+                    item_id, call_id = normalize_tool_state_identifiers(state)
                     final_args = state.final_arguments
                     if final_args is None:
                         combined = "".join(state.arguments_parts)
@@ -1270,10 +1283,10 @@ class AnthropicToOpenAIResponsesStreamAdapter:
                             state.output_index,
                             openai_models.FunctionCallOutput(
                                 type="function_call",
-                                id=state.item_id,
+                                id=item_id,
                                 status="completed",
                                 name=state.name,
-                                call_id=state.call_id,
+                                call_id=call_id,
                                 arguments=final_args,
                             ),
                         )

@@ -656,6 +656,30 @@ class TestCodexAdapter:
         assert result_data["model"] == "gpt-5.5"
         assert result_data["reasoning_effort"] == "xhigh"
 
+    def test_apply_model_alias_reasoning_effort_for_responses_alias(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """Responses requests should use the Responses-native reasoning field."""
+        ctx = Mock()
+        ctx.format_chain = ["openai.responses"]
+        ctx.metadata = {
+            "_last_client_model": "gpt-5.5-high",
+            "_last_provider_model": "gpt-5.5",
+        }
+        body = json.dumps(
+            {
+                "model": "gpt-5.5",
+                "input": "Hello",
+            }
+        ).encode()
+
+        result = adapter._apply_model_alias_reasoning_effort(ctx, body)
+        result_data = json.loads(result.decode())
+
+        assert result_data["model"] == "gpt-5.5"
+        assert result_data["reasoning"] == {"effort": "high"}
+        assert "reasoning_effort" not in result_data
+
     def test_apply_model_alias_reasoning_effort_preserves_explicit_effort(
         self, adapter: CodexAdapter
     ) -> None:
@@ -691,6 +715,27 @@ class TestCodexAdapter:
         cleaned = adapter._sanitize_provider_body(body)
 
         assert cleaned["reasoning"] == {"effort": "xhigh", "summary": "auto"}
+
+    def test_sanitize_provider_body_converts_reasoning_effort(
+        self, adapter: CodexAdapter
+    ) -> None:
+        """Codex Responses backend rejects chat-only reasoning_effort."""
+        body = {
+            "model": "gpt-5.5",
+            "input": [{"type": "message", "role": "user", "content": []}],
+            "reasoning_effort": "high",
+            "stream_options": {"include_usage": True},
+            "prompt_cache_retention": "24h",
+            "safety_identifier": "user-123",
+        }
+
+        cleaned = adapter._sanitize_provider_body(body)
+
+        assert cleaned["reasoning"] == {"effort": "high"}
+        assert "reasoning_effort" not in cleaned
+        assert "stream_options" not in cleaned
+        assert "prompt_cache_retention" not in cleaned
+        assert "safety_identifier" not in cleaned
 
     def test_get_instructions_default(self, adapter: CodexAdapter) -> None:
         """Test default instructions when no detection service data."""

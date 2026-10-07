@@ -447,6 +447,7 @@ class ResponseRequest(LlmBaseModel):
     previous_response_id: str | None = Field(default=None)
     prompt: dict[str, Any] | None = Field(default=None)
     prompt_cache_key: str | None = Field(default=None)
+    prompt_cache_retention: str | None = Field(default=None)
     reasoning: dict[str, Any] | None = Field(default=None)
     safety_identifier: str | None = Field(default=None)
     service_tier: str | None = Field(default=None)

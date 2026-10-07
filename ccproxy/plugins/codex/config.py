@@ -121,6 +121,16 @@ class CodexSettings(ProviderConfig):
     buffer_non_streaming: bool = Field(
         default=True, description="Whether to buffer non-streaming requests"
     )
+    responses_state_ttl_seconds: int = Field(
+        default=3600,
+        ge=1,
+        description="TTL for locally emulated OpenAI Responses continuation state",
+    )
+    responses_state_max_entries: int = Field(
+        default=1024,
+        ge=1,
+        description="Maximum local OpenAI Responses continuation records to retain",
+    )
     enable_format_registry: bool = Field(
         default=True, description="Whether to enable format adapter registry"
     )

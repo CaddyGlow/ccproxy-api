@@ -22,6 +22,7 @@ from ccproxy.llms.formatters.common import (
     ToolCallState,
     ToolCallTracker,
     ensure_identifier,
+    ensure_responses_function_call_identifiers,
 )
 from ccproxy.llms.formatters.context import (
     get_last_instructions,
@@ -1321,6 +1322,18 @@ class OpenAIChatToResponsesStreamAdapter:
                         return entry
                 return None
 
+            def normalize_tool_state_identifiers(
+                state: ToolCallState,
+            ) -> tuple[str, str]:
+                item_id, call_id = ensure_responses_function_call_identifiers(
+                    item_id=state.item_id,
+                    call_id=state.call_id,
+                    fallback_index=state.index,
+                )
+                state.item_id = item_id
+                state.call_id = call_id
+                return item_id, call_id
+
             def emit_tool_item_added(
                 state: ToolCallState,
             ) -> list[openai_models.StreamEventType]:
@@ -1334,6 +1347,7 @@ class OpenAIChatToResponsesStreamAdapter:
                     if not item_identifier:
                         item_identifier = f"call_{state.index}"
                     state.item_id = item_identifier
+                item_id, call_id = normalize_tool_state_identifiers(state)
                 sequence_counter += 1
                 state.added_emitted = True
                 return [
@@ -1342,12 +1356,12 @@ class OpenAIChatToResponsesStreamAdapter:
                         sequence_number=sequence_counter,
                         output_index=state.output_index,
                         item=openai_models.OutputItem(
-                            id=state.item_id,
+                            id=item_id,
                             type="function_call",
                             status="in_progress",
                             name=state.name,
                             arguments="",
-                            call_id=state.call_id,
+                            call_id=call_id,
                         ),
                     )
                 ]
@@ -1372,6 +1386,7 @@ class OpenAIChatToResponsesStreamAdapter:
                         state.item_id = (
                             candidate_id or state.call_id or f"call_{state.index}"
                         )
+                    item_id, call_id = normalize_tool_state_identifiers(state)
                     if not state.added_emitted:
                         events.extend(emit_tool_item_added(state))
                     final_args = state.final_arguments
@@ -1390,7 +1405,7 @@ class OpenAIChatToResponsesStreamAdapter:
                             openai_models.ResponseFunctionCallArgumentsDoneEvent(
                                 type="response.function_call_arguments.done",
                                 sequence_number=sequence_counter,
-                                item_id=state.item_id,
+                                item_id=item_id,
                                 output_index=state.output_index,
                                 arguments=final_args,
                             )
@@ -1404,12 +1419,12 @@ class OpenAIChatToResponsesStreamAdapter:
                                 sequence_number=sequence_counter,
                                 output_index=state.output_index,
                                 item=openai_models.OutputItem(
-                                    id=state.item_id,
+                                    id=item_id,
                                     type="function_call",
                                     status="completed",
                                     name=state.name,
                                     arguments=final_args,
-                                    call_id=state.call_id,
+                                    call_id=call_id,
                                 ),
                             )
                         )
@@ -1648,14 +1663,16 @@ class OpenAIChatToResponsesStreamAdapter:
                                         ) or arguments_payload.get("obfuscated")
                                     if arguments_delta:
                                         state.add_arguments_part(arguments_delta)
+                                        item_id, _ = normalize_tool_state_identifiers(
+                                            state
+                                        )
                                         sequence_counter += 1
                                         event_sequence = sequence_counter
                                         yield (
                                             delta_event_cls(
                                                 type="response.function_call_arguments.delta",
                                                 sequence_number=event_sequence,
-                                                item_id=state.item_id
-                                                or f"call_{state.index}",
+                                                item_id=item_id,
                                                 output_index=state.output_index,
                                                 delta=arguments_delta,
                                             )
@@ -1770,15 +1787,16 @@ class OpenAIChatToResponsesStreamAdapter:
                     if accumulator_entry is not None:
                         candidate_id = accumulator_entry.get("id")
                     state.item_id = candidate_id or f"call_{state.index}"
+                item_id, call_id = normalize_tool_state_identifiers(state)
                 completed_entries.append(
                     (
                         state.output_index,
                         openai_models.FunctionCallOutput(
                             type="function_call",
-                            id=state.item_id,
+                            id=item_id,
                             status="completed",
                             name=state.name,
-                            call_id=state.call_id,
+                            call_id=call_id,
                             arguments=state.final_arguments or "",
                         ),
                     )

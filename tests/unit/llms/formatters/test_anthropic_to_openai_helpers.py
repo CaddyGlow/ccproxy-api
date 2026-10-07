@@ -253,6 +253,26 @@ async def test_convert__anthropic_message_to_openai_responses__stream_with_think
     assert "response.function_call_arguments.delta" in event_types
     assert "response.function_call_arguments.done" in event_types
 
+    function_events = [
+        evt
+        for evt in events
+        if getattr(evt, "type", "")
+        in {"response.output_item.added", "response.output_item.done"}
+        and getattr(getattr(evt, "item", None), "type", "") == "function_call"
+    ]
+    assert function_events
+    for evt in function_events:
+        item = evt.item  # type: ignore[union-attr]
+        assert item.id == "fc_1"
+        assert item.call_id == "call_1"
+
+    argument_item_ids = [
+        getattr(evt, "item_id", "")
+        for evt in events
+        if getattr(evt, "type", "").startswith("response.function_call_arguments.")
+    ]
+    assert argument_item_ids and all(item_id == "fc_1" for item_id in argument_item_ids)
+
     reasoning_deltas = [
         getattr(evt, "delta", "")
         for evt in events
@@ -283,6 +303,8 @@ async def test_convert__anthropic_message_to_openai_responses__stream_with_think
         for out in complete_response.output
         if getattr(out, "type", "") == "function_call"
     )
+    assert getattr(function_output, "id", "") == "fc_1"
+    assert getattr(function_output, "call_id", "") == "call_1"
     assert getattr(function_output, "name", "") == "get_weather"
     assert (
         getattr(function_output, "arguments", "")
