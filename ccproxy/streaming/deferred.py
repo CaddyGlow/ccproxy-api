@@ -13,6 +13,7 @@ import httpx
 import structlog
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
+from ccproxy.core.constants import FORMAT_ANTHROPIC_MESSAGES
 from ccproxy.core.plugins.hooks import HookEvent, HookManager
 from ccproxy.core.plugins.hooks.base import HookContext
 from ccproxy.llms.streaming.accumulators import StreamAccumulator
@@ -233,6 +234,7 @@ class DeferredStreaming(StreamingResponse):
                 async def _emit_error_sse(
                     error_obj: dict[str, Any],
                 ) -> AsyncGenerator[bytes, None]:
+                    error_obj = self._format_stream_error(error_obj)
                     adapted: dict[str, Any] | None = None
                     try:
                         if self.handler_config and self.handler_config.response_adapter:
@@ -839,6 +841,23 @@ class DeferredStreaming(StreamingResponse):
             request_context=self.request_context,
         ):
             yield chunk
+
+    def _format_stream_error(self, error_obj: dict[str, Any]) -> dict[str, Any]:
+        """Normalize streaming error payloads for client-specific SSE schemas."""
+        if isinstance(error_obj, dict) and error_obj.get("type"):
+            return error_obj
+
+        format_chain = (
+            self.request_context.format_chain
+            if self.request_context and self.request_context.format_chain
+            else []
+        )
+        client_format = format_chain[0] if format_chain else None
+
+        if client_format == FORMAT_ANTHROPIC_MESSAGES:
+            return {"type": "error", "error": error_obj.get("error", error_obj)}
+
+        return error_obj
 
     def _record_tool_event(self, event_name: str, payload: Any) -> None:
         if not self._stream_accumulator or not isinstance(payload, dict):
