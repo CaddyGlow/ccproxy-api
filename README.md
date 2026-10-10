@@ -167,6 +167,15 @@ pipx install "ccproxy-api[all]"
 ccproxy serve  # default on localhost:8000
 ```
 
+> **⚠️  Windows Binary Note**
+> The pre-built Windows binary (`ccproxy.exe`) in GitHub releases ships without the Claude/Codex OAuth provider plugins.
+> Until this is fixed (tracked in [issue #75](https://github.com/CaddyGlow/ccproxy-api/issues/75)),
+> install via pipx on Python 3.11+ to get the full plugin set:
+> ```powershell
+> pipx install "ccproxy-api[plugins-claude,plugins-codex]"
+> ```
+> See [`docs/windows-binary-build.md`](docs/windows-binary-build.md) for the full technical breakdown.
+
 ## License
 
 See `LICENSE`.

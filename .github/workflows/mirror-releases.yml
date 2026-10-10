@@ -1,0 +1,77 @@
+name: Mirror Upstream Releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Specific version to mirror (e.g. 1.18.2)"
+        required: false
+        type: string
+  schedule:
+    - cron: "0 6 * * *"
+
+concurrency: mirror-releases-${{ github.ref }}
+
+permissions:
+  contents: write
+
+jobs:
+  mirror-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set version
+        id: set-version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            # Get latest upstream release
+            LATEST=$(gh release list --repo caddyglow/ccproxy-api --limit 1 --json tagName --jq '.[0].tagName' | sed 's/v//')
+            echo "version=$LATEST" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if already mirrored
+        id: check-existing
+        run: |
+          VERSION="${{ steps.set-version.outputs.version }}"
+          if gh release view "v${VERSION}" --repo ClintonSarkar/ccproxy-api >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release v${VERSION} already exists on fork -- skipping"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download upstream assets
+        if: steps.check-existing.outputs.exists != 'true'
+        run: |
+          mkdir -p assets
+          gh release download "v${{ steps.set-version.outputs.version }}" \
+            --repo caddyglow/ccproxy-api \
+            --dir ./assets \
+            --clobber
+          echo "Downloaded $(ls ./assets | wc -l) assets"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create fork release and upload assets
+        if: steps.check-existing.outputs.exists != 'true'
+        run: |
+          VERSION="${{ steps.set-version.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --repo ClintonSarkar/ccproxy-api \
+            --title "v${VERSION}" \
+            --notes "Mirrored from upstream [caddyglow/ccproxy-api v${VERSION}](https://github.com/caddyglow/ccproxy-api/releases/tag/v${VERSION})" \
+            --target main
+          gh release upload "v${VERSION}" ./assets/* \
+            --repo ClintonSarkar/ccproxy-api
+          echo "Successfully mirrored v${VERSION} with $(ls ./assets | wc -l) assets"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf assets
