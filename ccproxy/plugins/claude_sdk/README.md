@@ -19,8 +19,8 @@ Runs Claude through the local Claude Code SDK and CLI with session management.
 # base_url = "claude-sdk://local"
 # session_pool_enabled = false
 # session_pool_size = 5
-# include_system_messages_in_stream = true
-# sdk_message_mode = "formatted"
+# include_system_messages_in_stream = false
+# sdk_message_mode = "ignore"
 
 [plugins.claude_sdk.sdk_session_pool]
 # enabled = true

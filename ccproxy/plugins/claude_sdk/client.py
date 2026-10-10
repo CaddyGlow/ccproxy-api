@@ -34,6 +34,7 @@ with patched_typing():
     from claude_agent_sdk import (
         ClaudeSDKClient as ImportedClaudeSDKClient,
     )
+    from claude_agent_sdk import RateLimitEvent as SDKRateLimitEvent
     from claude_agent_sdk import (
         ResultMessage as SDKResultMessage,
     )
@@ -613,6 +614,14 @@ class ClaudeSDKClient:
             Converted Pydantic model messages (unless drain_mode is True)
         """
         async for sdk_msg in message_iterator:
+            if isinstance(sdk_msg, SDKRateLimitEvent):
+                logger.debug(
+                    "claude_sdk_rate_limit_event",
+                    request_id=request_id,
+                    session_id=session_id,
+                    status=sdk_msg.rate_limit_info.status,
+                )
+                continue
             # Find matching type and convert
             for sdk_type, model_type in self.MESSAGE_TYPE_MAP.items():
                 if isinstance(sdk_msg, sdk_type):

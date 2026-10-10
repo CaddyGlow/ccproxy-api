@@ -89,16 +89,29 @@ class OptionsHandler:
         return options
 
     @staticmethod
-    def extract_system_message(messages: list[dict[str, Any]]) -> str | None:
+    def extract_system_message(
+        messages: list[dict[str, Any]],
+        top_level_system: str | list[dict[str, Any]] | None = None,
+    ) -> str | None:
         """
-        Extract system message from Anthropic messages format.
+        Extract the system prompt from Anthropic or converted OpenAI input.
 
         Args:
-            messages: List of messages in Anthropic format
+            messages: Message list; converted OpenAI requests may include role=system.
+            top_level_system: Native Anthropic ``system`` request field.
 
         Returns:
             System message content if found, None otherwise
         """
+        if top_level_system is not None:
+            if isinstance(top_level_system, list):
+                return " ".join(
+                    str(block.get("text", ""))
+                    for block in top_level_system
+                    if isinstance(block, dict) and block.get("type") == "text"
+                )
+            return str(top_level_system)
+
         for message in messages:
             if message.get("role") == "system":
                 content = message.get("content", "")
