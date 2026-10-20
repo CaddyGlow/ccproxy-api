@@ -31,6 +31,9 @@ class MiniMaxAdapter(BaseHTTPAdapter):
         self.base_url = self.config.base_url.rstrip("/")
 
     async def get_target_url(self, endpoint: str) -> str:
+        if endpoint == "/v1/messages":
+            base_url = str(self.config.anthropic_base_url).rstrip("/")
+            return f"{base_url}{endpoint}"
         return f"{self.base_url}/{endpoint.lstrip('/')}"
 
     def _resolve_api_key(self) -> str:
@@ -63,6 +66,8 @@ class MiniMaxAdapter(BaseHTTPAdapter):
         provider_headers["x-request-id"] = str(uuid.uuid4())
 
         final_headers = {**filtered_headers, **provider_headers}
+        if endpoint == "/v1/messages":
+            final_headers.setdefault("anthropic-version", "2023-06-01")
 
         logger.debug("minimax_request_prepared", header_count=len(final_headers))
 

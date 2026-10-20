@@ -1,7 +1,5 @@
 """API routes for the MiniMax provider plugin."""
 
-from __future__ import annotations
-
 from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Request
@@ -22,8 +20,10 @@ from ccproxy.core.logging import get_plugin_logger
 from ccproxy.llms.models import anthropic as anthropic_models
 from ccproxy.llms.models import openai as openai_models
 from ccproxy.streaming import DeferredStreaming
+from ccproxy.utils.model_mapper import ModelMapper
 
-from .config import MiniMaxConfig
+from .config import MINIMAX_REGION_ENDPOINTS, MiniMaxConfig
+from .models import MiniMaxMessageRequest
 
 
 logger = get_plugin_logger()
@@ -75,11 +75,24 @@ async def create_openai_chat_completion(
 )
 async def create_anthropic_message(
     request: Request,
-    _: anthropic_models.CreateMessageRequest,
+    payload: MiniMaxMessageRequest,
     auth: ConditionalAuthDep,
     adapter: MiniMaxAdapterDep,
 ) -> APIResponse:
-    """Create a message using MiniMax with the native Anthropic format."""
+    """Preserve native M3 history and retain legacy model conversion."""
+    mapper = adapter.model_mapper or ModelMapper(adapter.config.model_mappings)
+    endpoints = MINIMAX_REGION_ENDPOINTS[adapter.config.region]
+    native_endpoint = (
+        adapter.config.base_url.rstrip("/") == endpoints["openai_base_url"]
+        or adapter.config.anthropic_base_url.rstrip("/")
+        != endpoints["anthropic_base_url"]
+    )
+    if native_endpoint and mapper.map(payload.model).mapped in {
+        "MiniMax-M3.1-Flash",
+        "MiniMax-M3",
+    }:
+        request.state.context.format_chain = [FORMAT_ANTHROPIC_MESSAGES]
+        request.state.context.metadata["endpoint"] = "/v1/messages"
     return await _handle_adapter_request(request, adapter)
 
 
