@@ -398,7 +398,7 @@ class TestAnalyticsStreamEndpoint:
 
         response = client_no_storage.get("/logs/stream")
         assert response.status_code == 200
-        assert response.headers.get("content-type").startswith("text/event-stream")
+        assert response.headers["content-type"].startswith("text/event-stream")
 
     def test_stream_logs_with_filters(self, client_no_storage: TestClient) -> None:
         """Test stream logs with various filters."""
@@ -415,7 +415,7 @@ class TestAnalyticsStreamEndpoint:
             },
         )
         assert response.status_code == 200
-        assert response.headers.get("content-type").startswith("text/event-stream")
+        assert response.headers["content-type"].startswith("text/event-stream")
 
 
 @pytest.mark.integration

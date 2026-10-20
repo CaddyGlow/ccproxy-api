@@ -13,6 +13,7 @@ from ccproxy.llms.formatters.common import (
     ThinkingSegment,
     convert_openai_completion_usage_to_responses_usage,
     convert_openai_responses_usage_to_completion_usage,
+    ensure_responses_function_call_identifiers,
     merge_thinking_segments,
 )
 from ccproxy.llms.formatters.context import get_openai_thinking_xml
@@ -551,13 +552,19 @@ async def convert__openai_chat_to_openai_responses__response(
                 arguments_value: str | dict[str, Any] | None = arguments
             else:
                 arguments_value = str(arguments) if arguments is not None else None
+            source_call_id = getattr(tool_call, "id", None)
+            item_id, call_id = ensure_responses_function_call_identifiers(
+                item_id=source_call_id if isinstance(source_call_id, str) else None,
+                call_id=source_call_id if isinstance(source_call_id, str) else None,
+                fallback_index=idx,
+            )
             outputs.append(
                 openai_models.FunctionCallOutput(
                     type="function_call",
-                    id=getattr(tool_call, "id", f"call_{idx}"),
+                    id=item_id,
                     status="completed",
                     name=name,
-                    call_id=getattr(tool_call, "id", None),
+                    call_id=call_id,
                     arguments=arguments_value,
                 )
             )

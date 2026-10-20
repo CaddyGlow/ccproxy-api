@@ -49,6 +49,25 @@ class TestTokenLimitsService:
         # We just verify that models in the cache can be retrieved
         assert len(service.token_limits_data.models) > 0
 
+    def test_get_token_limits_for_1m_claude_aliases(
+        self, service: TokenLimitsService
+    ) -> None:
+        """Claude 1M aliases should expose their local token limits."""
+        assert service.get_max_output_tokens("sonnet[1m]") == 64000
+        assert service.token_limits_data.get_max_input_tokens("sonnet[1m]") == 1000000
+        assert service.get_max_output_tokens("claude-sonnet-4-6[1m]") == 64000
+        assert (
+            service.token_limits_data.get_max_input_tokens("claude-sonnet-4-6[1m]")
+            == 1000000
+        )
+        assert service.get_max_output_tokens("opus[1m]") == 128000
+        assert service.token_limits_data.get_max_input_tokens("opus[1m]") == 1000000
+        assert service.get_max_output_tokens("claude-opus-4-7[1m]") == 128000
+        assert (
+            service.token_limits_data.get_max_input_tokens("claude-opus-4-7[1m]")
+            == 1000000
+        )
+
     def test_get_max_output_tokens_unknown_model(
         self, service: TokenLimitsService
     ) -> None:

@@ -12,6 +12,10 @@ from typing import Any
 import structlog
 from pydantic import TypeAdapter, ValidationError
 
+from ccproxy.llms.formatters.common import (
+    ensure_responses_function_call_identifiers,
+    normalize_responses_function_call_ids,
+)
 from ccproxy.llms.models import openai as openai_models
 
 
@@ -598,6 +602,7 @@ class ResponsesAccumulator(StreamAccumulator):
         ] = {}
         self._reasoning_text: dict[tuple[str, int], list[str]] = {}
         self._function_arguments: dict[str, list[str]] = {}
+        self._function_item_id_aliases: dict[str, str] = {}
         self._latest_response: openai_models.ResponseObject | None = None
         self.completed_response: openai_models.ResponseObject | None = None
         self._sequence_counter = 0
@@ -766,13 +771,16 @@ class ResponsesAccumulator(StreamAccumulator):
         if self.text_content:
             payload["text"] = self.text_content
 
-        return payload
+        return normalize_responses_function_call_ids(payload)
 
     def get_completed_response(self) -> dict[str, Any] | None:
-        """Return the final response payload captured from the stream, if any."""
+        """Return the completed response merged with accumulated stream items."""
 
         if isinstance(self.completed_response, openai_models.ResponseObject):
-            return self.completed_response.model_dump()
+            payload = self.completed_response.model_dump()
+            return normalize_responses_function_call_ids(
+                self.rebuild_response_object(payload)
+            )
         return None
 
     def _coerce_stream_event(
@@ -819,6 +827,7 @@ class ResponsesAccumulator(StreamAccumulator):
     def _record_output_item(
         self, output_index: int, item: openai_models.OutputItem
     ) -> None:
+        item = self._normalize_function_output_item(output_index, item)
         self._items[item.id] = item
         self._items_by_index[output_index] = item.id
         if item.text:
@@ -827,6 +836,7 @@ class ResponsesAccumulator(StreamAccumulator):
     def _merge_output_item(
         self, output_index: int, item: openai_models.OutputItem
     ) -> None:
+        item = self._normalize_function_output_item(output_index, item)
         existing = self._items.get(item.id)
         if existing is not None:
             merged = existing.model_copy(update=item.model_dump(exclude_unset=True))
@@ -836,6 +846,42 @@ class ResponsesAccumulator(StreamAccumulator):
         self._items_by_index[output_index] = item.id
         if merged.text:
             self.text_content = merged.text
+
+    def _normalize_function_output_item(
+        self, output_index: int, item: openai_models.OutputItem
+    ) -> openai_models.OutputItem:
+        if item.type != "function_call":
+            return item
+
+        original_item_id = item.id
+        original_call_id = item.call_id
+        item_id, call_id = ensure_responses_function_call_identifiers(
+            item_id=original_item_id,
+            call_id=original_call_id,
+            fallback_index=output_index,
+        )
+
+        if original_item_id and original_item_id != item_id:
+            self._function_item_id_aliases[original_item_id] = item_id
+        if original_call_id and original_call_id != item_id:
+            self._function_item_id_aliases[original_call_id] = item_id
+
+        return item.model_copy(update={"id": item_id, "call_id": call_id})
+
+    def _normalize_function_item_id(
+        self, item_id: str, fallback_index: int | str = 0
+    ) -> str:
+        if item_id in self._function_item_id_aliases:
+            return self._function_item_id_aliases[item_id]
+
+        normalized_item_id, _ = ensure_responses_function_call_identifiers(
+            item_id=item_id,
+            call_id=None,
+            fallback_index=fallback_index,
+        )
+        if item_id != normalized_item_id:
+            self._function_item_id_aliases[item_id] = normalized_item_id
+        return normalized_item_id
 
     def _accumulate_text_delta(
         self, *, item_id: str, content_index: int, delta: str
@@ -861,17 +907,20 @@ class ResponsesAccumulator(StreamAccumulator):
         self.text_content = text
 
     def _accumulate_function_arguments(self, item_id: str, delta: str) -> None:
+        item_id = self._normalize_function_item_id(item_id)
         args = self._function_arguments.setdefault(item_id, [])
         args.append(delta)
         combined = "".join(args)
         self._update_output_item_arguments(item_id, combined)
 
     def _finalize_function_arguments(self, item_id: str, arguments: str) -> None:
+        item_id = self._normalize_function_item_id(item_id)
         if arguments:
             self._function_arguments[item_id] = [arguments]
             self._update_output_item_arguments(item_id, arguments)
 
     def _update_output_item_arguments(self, item_id: str, arguments: str) -> None:
+        item_id = self._normalize_function_item_id(item_id)
         item = self._items.get(item_id)
         if item is None:
             return
