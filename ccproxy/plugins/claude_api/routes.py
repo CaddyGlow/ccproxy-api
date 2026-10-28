@@ -24,6 +24,7 @@ from ccproxy.llms.models import openai as openai_models
 from ccproxy.streaming import DeferredStreaming
 
 from .config import ClaudeAPISettings
+from .live_models import fetch_live_models, merge_models
 
 
 if TYPE_CHECKING:
@@ -112,7 +113,15 @@ async def list_models(
     request: Request,
     auth: ConditionalAuthDep,
     config: ClaudeAPIConfigDep,
+    adapter: ClaudeAPIAdapterDep,
 ) -> dict[str, Any]:
-    """List available Claude models from configuration."""
-    models = [card.model_dump(mode="json") for card in config.models_endpoint]
-    return {"object": "list", "data": models}
+    """List available Claude models, merging Anthropic's live catalogue."""
+    static_models = [card.model_dump(mode="json") for card in config.models_endpoint]
+    if not config.live_models_enabled:
+        return {"object": "list", "data": static_models}
+
+    live_models = await fetch_live_models(adapter)
+    if not live_models:
+        return {"object": "list", "data": static_models}
+
+    return {"object": "list", "data": merge_models(live_models, static_models)}

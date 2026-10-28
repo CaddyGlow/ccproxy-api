@@ -192,6 +192,10 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         normalized = (endpoint or "").strip().lower()
         return normalized.startswith("/v1/chat/completions")
 
+    async def get_access_token(self) -> str:
+        """Return a usable OAuth access token for provider requests."""
+        return await self._resolve_access_token()
+
     async def _resolve_access_token(self) -> str:
         """Resolve a usable Claude API OAuth token from the token manager.
 

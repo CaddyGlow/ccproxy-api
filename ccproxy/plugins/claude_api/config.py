@@ -41,6 +41,8 @@ class ClaudeAPISettings(ProviderConfig):
 
     # Feature flags
     include_sdk_content_as_xml: bool = False
+    # Query Anthropic for the current model list instead of using only static cards
+    live_models_enabled: bool = True
     support_openai_format: bool = True  # Support both Anthropic and OpenAI formats
 
     # System prompt injection mode
