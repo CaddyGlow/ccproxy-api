@@ -166,6 +166,16 @@ owned_by = "openai"
 root = "gpt-5-nano"
 permission = []
 
+# MiniMax provider: select a region (global_en | cn_zh) to resolve the
+# OpenAI and Anthropic base URLs, and supply an API key.
+[plugins.minimax]
+enabled = true
+region = "global_en"
+# api_key = "<your-minimax-api-key>"
+# Built-in models: MiniMax-M3.1-Flash (first/default alias), MiniMax-M3.
+# Omit model_mappings/models_endpoint to use the built-in aliases and metadata.
+# Explicit custom model mappings and model cards are preserved.
+
 # DuckDB storage plugin configuration (replaces observability.duckdb_path/backends)
 [plugins.duckdb_storage]
 # database_path = "/var/lib/ccproxy/metrics.duckdb"  # Optional override

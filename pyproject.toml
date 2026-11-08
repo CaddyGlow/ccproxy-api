@@ -122,6 +122,7 @@ claude_sdk = "ccproxy.plugins.claude_sdk.plugin:factory"
 codex = "ccproxy.plugins.codex.plugin:factory"
 command_replay = "ccproxy.plugins.command_replay.plugin:factory"
 copilot = "ccproxy.plugins.copilot.plugin:factory"
+minimax = "ccproxy.plugins.minimax.plugin:factory"
 dashboard = "ccproxy.plugins.dashboard.plugin:factory"
 docker = "ccproxy.plugins.docker.plugin:factory"
 duckdb_storage = "ccproxy.plugins.duckdb_storage.plugin:factory"
@@ -335,6 +336,7 @@ markers = [
   "metrics: Metrics and monitoring plugin tests",
   "claude_api: Claude API plugin tests",
   "codex: Codex plugin tests",
+  "minimax: MiniMax plugin tests",
 ]
 
 [tool.bandit]
