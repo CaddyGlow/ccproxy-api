@@ -350,7 +350,7 @@ async def test_catalog_and_custom_cards() -> None:
 @pytest.mark.parametrize("path", ["chat/completions", "messages"])
 async def test_streaming_transport_and_custom_native_endpoint(path: str) -> None:
     captured = []
-    events = [
+    events: list[dict[str, Any]] = [
         {
             "type": "message_start",
             "message": {"id": "msg_stream", "role": "assistant", "content": []},
