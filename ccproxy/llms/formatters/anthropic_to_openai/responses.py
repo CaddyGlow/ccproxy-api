@@ -44,13 +44,10 @@ def convert__anthropic_message_to_openai_responses__response(
             text_parts.append(getattr(block, "text", ""))
         elif block_type == "thinking":
             thinking = getattr(block, "thinking", None) or ""
-            signature = getattr(block, "signature", None)
-            sig_attr = (
-                f' signature="{signature}"'
-                if isinstance(signature, str) and signature
-                else ""
-            )
-            text_parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
+            text_parts.append(f"<think>{thinking}</think>")
+        elif block_type == "redacted_thinking":
+            # Skip redacted thinking blocks
+            continue
         elif block_type == "tool_use":
             tool_contents.append(
                 {
@@ -113,14 +110,11 @@ def convert__anthropic_message_to_openai_chat__response(
                 parts.append(text)
         elif btype == "thinking":
             thinking = getattr(block, "thinking", None)
-            signature = getattr(block, "signature", None)
             if isinstance(thinking, str):
-                sig_attr = (
-                    f' signature="{signature}"'
-                    if isinstance(signature, str) and signature
-                    else ""
-                )
-                parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
+                parts.append(f"<think>{thinking}</think>")
+        # Skip redacted_thinking blocks
+        elif btype == "redacted_thinking":
+            continue
         elif btype == "tool_use":
             tool_calls.append(
                 build_openai_tool_call(
