@@ -473,11 +473,18 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
             )
             return None
 
-    async def save_credentials(self, credentials: CopilotCredentials | None) -> bool:
+    async def save_credentials(
+        self,
+        credentials: CopilotCredentials | None,
+        custom_path: Any | None = None,
+    ) -> bool:
         """Save credentials to storage.
 
         Args:
             credentials: Copilot credentials to save (None to clear)
+            custom_path: Optional custom storage path (accepted for interface
+                compatibility with other providers but unused — Copilot
+                credentials are always written to the provider's own storage).
 
         Returns:
             True if save was successful
